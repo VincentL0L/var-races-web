@@ -84,7 +84,7 @@ public class GameScreen implements Screen {
         player.setInputEnabled(false);
         player.getImage().setPosition(x, y);
 
-        BitmapFont font = Ui.display(15);
+        BitmapFont font = Ui.displayOutlined(15);
         
         cd = new Label("", new LabelStyle(font, Color.RED));
         cd.setFontScale(Ui.fontScale(3f));

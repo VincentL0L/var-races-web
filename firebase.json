@@ -4,8 +4,8 @@
     "ignore": ["firebase.json", "**/.*", "WEB-INF/**"],
     "headers": [
       {
-        "source": "**/*.@(js|wasm|png|mp3|fnt|atlas|json|tmx|txt)",
-        "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
+        "source": "**",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       }
     ]
   }

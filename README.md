@@ -42,7 +42,9 @@ This copy adds:
   browser and desktop versions can race each other.
 - Single Player runs the same race logic locally against 3 CPU cars (`NetworkClient`).
 - Multiplayer lists public races, creates public or private races, or joins one with a 4-letter code.
-- Sharp text on Retina screens (`Ui`), using Racing Sans One and Michroma (both SIL OFL, see `tools/`).
+- Sharp text on Retina screens (`Ui`). Titles use the game's own racing font drawn by
+  `tools/make_speed_font.py`; small text uses Michroma (SIL OFL, see `tools/`).
+- Gilded 16-bit buttons and panels (`tools/make_ui.py`).
 - A pixel-art speedometer (`tools/make_speedometer.py`).
 
 Commands:

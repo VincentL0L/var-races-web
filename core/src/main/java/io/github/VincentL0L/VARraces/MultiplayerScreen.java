@@ -52,7 +52,7 @@ public class MultiplayerScreen implements Screen {
         this.game = game;
         this.selectedCar = selectedCar;
         stage = new Stage(Ui.viewport());
-        skin = Ui.sharpen(new Skin(Gdx.files.internal("ui/uiskin.json")));
+        skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
         bgTexture = new Texture("ui/menu.png");
 
         networkClient = new NetworkClient(null);
@@ -74,14 +74,14 @@ public class MultiplayerScreen implements Screen {
         Table mainTable = new Table();
         mainTable.setFillParent(true);
 
-        Label.LabelStyle titleStyle = new Label.LabelStyle(Ui.display(36), Color.GOLD);
-        Label.LabelStyle normalStyle = new Label.LabelStyle(Ui.font(13), Color.WHITE);
+        Label.LabelStyle titleStyle = new Label.LabelStyle(Ui.display(36), Ui.GOLD);
+        Label.LabelStyle normalStyle = new Label.LabelStyle(Ui.font(13), Ui.CREAM);
 
         statusLabel = new Label("Connecting to race server...", normalStyle);
         roomsTable = new Table();
 
-        TextButton createPublic = new TextButton("Create Public Race", skin);
-        TextButton createPrivate = new TextButton("Create Private Race", skin);
+        TextButton createPublic = new TextButton("Public", skin);
+        TextButton createPrivate = new TextButton("Private", skin);
         TextButton joinCode = new TextButton("Join", skin);
         TextButton back = new TextButton("Back", skin);
         codeField = new TextField("", skin);
@@ -119,13 +119,14 @@ public class MultiplayerScreen implements Screen {
         actionButtons = new TextButton[] {createPublic, createPrivate, joinCode};
 
         Table createRow = new Table();
-        createRow.add(createPublic).width(200).height(50).pad(5);
-        createRow.add(createPrivate).width(200).height(50).pad(5);
+        createRow.add(new Label("Create a race:", normalStyle)).padRight(10);
+        createRow.add(createPublic).width(150).height(54).pad(5);
+        createRow.add(createPrivate).width(150).height(54).pad(5);
 
         Table joinRow = new Table();
         joinRow.add(new Label("Room code:", normalStyle)).padRight(10);
-        joinRow.add(codeField).width(100).height(40);
-        joinRow.add(joinCode).width(100).height(40).padLeft(10);
+        joinRow.add(codeField).width(110).height(44);
+        joinRow.add(joinCode).width(100).height(48).padLeft(10);
 
         mainTable.add(new Label("Multiplayer", titleStyle)).pad(15).row();
         mainTable.add(statusLabel).pad(5).row();
@@ -133,9 +134,15 @@ public class MultiplayerScreen implements Screen {
         mainTable.add(roomsTable).width(420).height(150).top().row();
         mainTable.add(createRow).pad(10).row();
         mainTable.add(joinRow).pad(10).row();
-        mainTable.add(back).width(140).height(45).pad(15).row();
+        mainTable.add(back).width(150).height(50).padTop(15).row();
 
-        stage.addActor(mainTable);
+        Table panel = new Table();
+        panel.setFillParent(true);
+        mainTable.setFillParent(false);
+        mainTable.setBackground(Ui.panel());
+        mainTable.pad(20, 40, 25, 40);
+        panel.add(mainTable);
+        stage.addActor(panel);
         rebuildRooms();
     }
 
@@ -145,7 +152,7 @@ public class MultiplayerScreen implements Screen {
     private void rebuildRooms() {
         roomsTable.clear();
         roomsTable.top();
-        Label.LabelStyle style = new Label.LabelStyle(Ui.font(13), Color.WHITE);
+        Label.LabelStyle style = new Label.LabelStyle(Ui.font(13), Ui.CREAM);
         List<String[]> rooms = networkClient.getPublicRooms();
 
         if (!networkClient.isConnected()) {
@@ -166,7 +173,7 @@ public class MultiplayerScreen implements Screen {
                     networkClient.joinRoom(code, selectedCar);
                 }
             });
-            roomsTable.add(join).width(80).height(35).pad(4).row();
+            roomsTable.add(join).width(90).height(42).pad(4).row();
         }
     }
 
@@ -187,7 +194,7 @@ public class MultiplayerScreen implements Screen {
             statusLabel.setColor(Color.SALMON);
         } else if (networkClient.isConnected()) {
             statusLabel.setText("Join a public race, create one, or enter a friend's code");
-            statusLabel.setColor(Color.WHITE);
+            statusLabel.setColor(Ui.CREAM);
         }
         for (TextButton b : actionButtons) {
             b.setDisabled(!networkClient.isConnected());

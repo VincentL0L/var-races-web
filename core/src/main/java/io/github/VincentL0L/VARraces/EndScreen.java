@@ -40,7 +40,7 @@ public class EndScreen implements Screen {
         this.finalPosition = finalPosition;
         this.leaderboard = leaderboard;
         stage = new Stage(Ui.viewport());
-        skin = Ui.sharpen(new Skin(Gdx.files.internal("ui/uiskin.json")));
+        skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
         
         createUI();
         Gdx.input.setInputProcessor(stage);
@@ -52,23 +52,24 @@ public class EndScreen implements Screen {
         Table mainTable = new Table();
         mainTable.setFillParent(true);
 
-        Label.LabelStyle titleStyle = new Label.LabelStyle(Ui.display(36), Color.GOLD);
+        Label.LabelStyle titleStyle = new Label.LabelStyle(Ui.display(36), Ui.GOLD);
         Label titleLabel = new Label("Race Complete!", titleStyle);
 
-        Label.LabelStyle resultStyle = new Label.LabelStyle(Ui.font(13), Color.WHITE);
+        Label.LabelStyle resultStyle = new Label.LabelStyle(Ui.font(13), Ui.CREAM);
         Label positionLabel = new Label(String.format("Position: %d", finalPosition), resultStyle);
 
         Table leaderboardTable = new Table();
-        leaderboardTable.setBackground(skin.newDrawable("white", new Color(0.2f, 0.2f, 0.2f, 0.8f)));
+        leaderboardTable.setBackground(Ui.panel());
+        leaderboardTable.pad(15);
         
-        Label.LabelStyle headerStyle = new Label.LabelStyle(Ui.font(13), Color.GOLD);
+        Label.LabelStyle headerStyle = new Label.LabelStyle(Ui.font(13), Ui.GOLD);
         leaderboardTable.add(new Label("Pos", headerStyle)).pad(10);
         leaderboardTable.add(new Label("Player", headerStyle)).pad(10).row();
 
-        Label.LabelStyle entryStyle = new Label.LabelStyle(Ui.font(13), Color.WHITE);
+        Label.LabelStyle entryStyle = new Label.LabelStyle(Ui.font(13), Ui.CREAM);
         int position = 1;
         for (RacerInfo racer : leaderboard) {
-            Color rowColor = position == finalPosition ? Color.YELLOW : Color.WHITE;
+            Color rowColor = position == finalPosition ? Ui.GOLD : Ui.CREAM;
             Label posLabel = new Label(String.valueOf(position), entryStyle);
             Label nameLabel = new Label(racer.name, entryStyle);
             
@@ -92,7 +93,7 @@ public class EndScreen implements Screen {
         mainTable.add(titleLabel).padBottom(30).row();
         //mainTable.add(timeLabel).padBottom(10).row();
         mainTable.add(positionLabel).padBottom(30).row();
-        mainTable.add(scrollPane).width(400).height(200).padBottom(30).row();
+        mainTable.add(scrollPane).width(460).height(260).padBottom(30).row();
 
         TextButton menuButton = new TextButton("Main Menu", skin);
         menuButton.addListener(new ClickListener() {
@@ -100,7 +101,7 @@ public class EndScreen implements Screen {
                 game.setScreen(new MenuScreen(game, selectedCar));
             }
         });
-        mainTable.add(menuButton).width(200).height(50).row();
+        mainTable.add(menuButton).width(220).height(56).row();
 
         stage.addActor(mainTable);
     }
@@ -110,7 +111,7 @@ public class EndScreen implements Screen {
      * @param delta time from last frame
      */
     public void render(float delta) {
-        Gdx.gl.glClearColor(0.2f, 0.2f, 0.2f, 1);
+        Gdx.gl.glClearColor(0.12f, 0.07f, 0.04f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         
         stage.act(delta);

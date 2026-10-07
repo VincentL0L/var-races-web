@@ -30,7 +30,7 @@ public class MenuScreen implements Screen {
      */
     public MenuScreen(Game g) {
         game = g;
-        button = Ui.sharpen(new Skin(Gdx.files.internal("ui/uiskin.json")));
+        button = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
         bgImg = new Image( new Texture("ui/menu.png"));
         bgImg.setFillParent(true);
         car = 1;
@@ -58,7 +58,7 @@ public class MenuScreen implements Screen {
         TextButton skin = new TextButton("Skin", button);
 
         float buttonWidth = 220;
-        float buttonHeight = play.getHeight() * 2.5f;
+        float buttonHeight = 58;
         play.setSize(buttonWidth, buttonHeight);
         online.setSize(buttonWidth, buttonHeight);
         exit.setSize(buttonWidth, buttonHeight);
@@ -118,9 +118,9 @@ public class MenuScreen implements Screen {
         Car1img.setSize(Car1img.getWidth(), Car1img.getHeight());
         Car2img.setSize(Car2img.getWidth(), Car2img.getHeight());
         Car3img.setSize(Car3img.getWidth(), Car3img.getHeight());
-        Car1.setSize(Car1.getWidth() * 2.5f, Car1.getHeight() * 2.5f);
-        Car2.setSize(Car2.getWidth() * 2.5f, Car2.getHeight() * 2.5f);
-        Car3.setSize(Car3.getWidth() * 2.5f, Car3.getHeight() * 2.5f);
+        Car1.setSize(140, 58);
+        Car2.setSize(140, 58);
+        Car3.setSize(140, 58);
 
         Car1img.setPosition(Ui.width() * 0.25f - Car1img.getWidth() * 0.5f, 300);
         Car2img.setPosition(Ui.width() * 0.50f - Car2img.getWidth() * 0.5f, 300);

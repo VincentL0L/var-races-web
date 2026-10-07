@@ -59,7 +59,7 @@ public class LobbyScreen implements Screen {
         stage.getViewport().update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
         uiStage = new Stage(Ui.viewport());
         
-        skin = Ui.sharpen(new Skin(Gdx.files.internal("ui/uiskin.json")));
+        skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
         
         if (client != null) {
             networkClient = client;
@@ -81,14 +81,14 @@ public class LobbyScreen implements Screen {
         Table mainTable = new Table();
         mainTable.setFillParent(true);
 
-        Label.LabelStyle titleStyle = new Label.LabelStyle(Ui.display(36), Color.GOLD);
+        Label.LabelStyle titleStyle = new Label.LabelStyle(Ui.display(36), Ui.GOLD);
         String title = "Race Lobby";
         if (networkClient.isOnline()) {
             title = (networkClient.isRoomPublic() ? "Public Race " : "Private Race ") + networkClient.getRoomCode();
         }
         Label titleLabel = new Label(title, titleStyle);
 
-        Label.LabelStyle normalStyle = new Label.LabelStyle(Ui.font(13), Color.WHITE);
+        Label.LabelStyle normalStyle = new Label.LabelStyle(Ui.font(13), Ui.CREAM);
         statusLabel = new Label("Press Ready to race", normalStyle);
         playersLabel = new Label("Connected Players: 1", normalStyle);
 
@@ -130,12 +130,12 @@ public class LobbyScreen implements Screen {
         });
         mainTable.add(leaveButton).width(140).height(45).row();
 
-        // dark panel behind the text so it reads over the track
+        // gilded panel behind the text so it reads over the track
         Table panel = new Table();
         panel.setFillParent(true);
         mainTable.setFillParent(false);
-        mainTable.setBackground(skin.newDrawable("white", new Color(0.16f, 0.2f, 0.27f, 0.9f)));
-        mainTable.pad(10, 30, 20, 30);
+        mainTable.setBackground(Ui.panel());
+        mainTable.pad(20, 40, 30, 40);
         panel.add(mainTable);
         uiStage.addActor(panel);
     }
