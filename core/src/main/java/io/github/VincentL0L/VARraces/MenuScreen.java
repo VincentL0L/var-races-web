@@ -115,9 +115,10 @@ public class MenuScreen implements Screen {
         TextButton Car2 = new TextButton("Car2", button);
         TextButton Car3 = new TextButton("Car3", button);
 
-        Car1img.setSize(Car1img.getWidth(), Car1img.getHeight());
-        Car2img.setSize(Car2img.getWidth(), Car2img.getHeight());
-        Car3img.setSize(Car3img.getWidth(), Car3img.getHeight());
+        // the cars are small pixel art: show them 6x bigger (textures keep crisp nearest filtering)
+        Car1img.setSize(Car1img.getWidth() * 6, Car1img.getHeight() * 6);
+        Car2img.setSize(Car2img.getWidth() * 6, Car2img.getHeight() * 6);
+        Car3img.setSize(Car3img.getWidth() * 6, Car3img.getHeight() * 6);
         Car1.setSize(140, 58);
         Car2.setSize(140, 58);
         Car3.setSize(140, 58);

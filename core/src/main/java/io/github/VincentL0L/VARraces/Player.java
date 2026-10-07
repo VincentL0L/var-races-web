@@ -11,6 +11,7 @@ import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
 
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarBody;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
 
 /**
@@ -55,6 +56,8 @@ public class Player {
     private static final float WALL_SCRAPE = 0.6f;
     /** extra slow-down per second while grinding along a wall */
     private static final float SCRAPE_FRICTION = 2.5f;
+    /** how bouncy car-to-car hits are (0 = dead stop, 1 = full bounce) */
+    private static final float CAR_BOUNCE = 0.3f;
     /** physics runs in fixed steps so the car drives the same at any frame rate */
     private static final float STEP = 1f / 120f;
 
@@ -66,6 +69,7 @@ public class Player {
     private float steer = 0f;
     private float stepTimer = 0f;
     private float bumpCooldown = 0f;
+    private final Vector2 push = new Vector2();
 
     private int lapCount = 0;
     private int currentWaypointIndex = 0;
@@ -82,7 +86,9 @@ public class Player {
         this.currentWaypointIndex = 0; 
         
         car = new Texture(Gdx.files.internal("ui/car" + carNumber + ".png"));
-        float scaleFactor = 10f / car.getWidth();
+        // smooth filtering looks best on a small rotating pixel-art sprite
+        car.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+        float scaleFactor = CarBody.WIDTH / car.getWidth();
         i = new Image(car);
         i.setSize(car.getWidth() * scaleFactor, car.getHeight() * scaleFactor);
         i.setOrigin(i.getWidth() / 2, i.getHeight() / 2);
@@ -233,6 +239,35 @@ public class Player {
         if (impact > 60f) {
             velocity.scl(WALL_SCRAPE);
             bump();
+        }
+    }
+
+    /**
+     * Pushes this car out of another car it's touching and takes away the speed it was
+     * carrying into that car (with a little bounce).
+     * @param ox other car image x   @param oy other car image y
+     * @param oHeading other car's heading in degrees (90 = up)
+     */
+    public void collideWith(float ox, float oy, float oHeading) {
+        if (!CarBody.separation(getX(), getY(), getRotation() + 90f, ox, oy, oHeading, push)) {
+            return;
+        }
+        float nx = getX() + push.x;
+        float ny = getY() + push.y;
+        if (onRoad(nx, ny, getWidth(), getHeight())) {
+            i.setPosition(nx, ny);
+        } else if (onRoad(getX() + push.x / 2f, getY() + push.y / 2f, getWidth(), getHeight())) {
+            i.setPosition(getX() + push.x / 2f, getY() + push.y / 2f);
+        }
+        float len = push.len();
+        float dirX = push.x / len, dirY = push.y / len;
+        float into = velocity.x * dirX + velocity.y * dirY;   // negative = moving into the other car
+        if (into < 0f) {
+            velocity.x -= dirX * into * (1f + CAR_BOUNCE);
+            velocity.y -= dirY * into * (1f + CAR_BOUNCE);
+            if (-into > 50f) {
+                bump();
+            }
         }
     }
 

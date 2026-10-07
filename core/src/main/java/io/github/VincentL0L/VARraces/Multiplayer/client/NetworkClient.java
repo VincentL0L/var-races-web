@@ -11,6 +11,7 @@ import com.badlogic.gdx.math.Vector2;
 import io.github.VincentL0L.VARraces.Multiplayer.packets.Entry;
 import io.github.VincentL0L.VARraces.Multiplayer.packets.LeaderboardPacket;
 import io.github.VincentL0L.VARraces.Multiplayer.packets.PositionPacket;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CpuTraffic;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Opponent;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RacerInfo;
@@ -60,6 +61,9 @@ public class NetworkClient {
     private final RaceManager serverRaceManager = new RaceManager();
     private final List<Opponent> cpuOpponents = new ArrayList<>();
     private final Vector2 playerPos = new Vector2(200, 300);
+    private float playerHeading = 90f;
+    private CpuTraffic traffic;
+    private PixmapTrack track;
     private int playerWaypointIndex = 0;
     private int playerLapCount = 0;
     private boolean gameStarted = false;
@@ -106,6 +110,8 @@ public class NetworkClient {
             packet.rotation = 90;
             opponents.put(packet.playerId, packet);
         }
+        track = new PixmapTrack();
+        traffic = new CpuTraffic(cpuOpponents, track);
         connected = true;
     }
 
@@ -190,9 +196,11 @@ public class NetworkClient {
         float step = updateTimer;
         updateTimer = 0f;
 
+        // all CPUs move together so they can avoid and bump each other and the player
+        traffic.setPlayer(playerId, playerPos.x, playerPos.y, playerHeading);
+        traffic.update(step, gameStarted);
         for (Opponent cpu : cpuOpponents) {
             if (gameStarted) {
-                cpu.update(step, gameStarted);
                 serverRaceManager.updateRacer(cpu.getName(), cpu.getLapCount(),
                     cpu.getCurrentWaypointIndex(), cpu.getPosition());
             }
@@ -318,6 +326,10 @@ public class NetworkClient {
         if (socket != null) {
             socket.close();
         }
+        if (track != null) {
+            track.dispose();
+            track = null;
+        }
         connected = false;
         opponents.clear();
         countdownText = "";
@@ -346,6 +358,7 @@ public class NetworkClient {
     public void sendPos(float x, float y, float rotation) {
         if (!connected || playerId == null) return;
         playerPos.set(x, y);
+        playerHeading = rotation + 90f;
         if (isOnline() && sendTimer >= UPDATE_INTERVAL) {
             sendTimer = 0f;
             send("POS|" + x + "|" + y + "|" + rotation);

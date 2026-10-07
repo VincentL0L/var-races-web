@@ -13,6 +13,11 @@ dependencies {
   implementation "org.slf4j:slf4j-simple:1.7.36"
 }
 
+// the server needs the road mask so CPUs are never pushed off the road
+processResources {
+  from(rootProject.file('assets/ui/road_mask.png'))
+}
+
 // one runnable jar with everything inside: server/build/libs/var-races-server.jar
 jar {
   archiveFileName.set('var-races-server.jar')

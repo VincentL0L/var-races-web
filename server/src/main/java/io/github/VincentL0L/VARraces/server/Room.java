@@ -10,6 +10,8 @@ import org.java_websocket.WebSocket;
 import com.badlogic.gdx.math.Vector2;
 
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Opponent;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Track;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CpuTraffic;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RacerInfo;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Waypoints;
@@ -27,6 +29,9 @@ public class Room {
     private final boolean isPublic;
     private final Map<WebSocket, PlayerState> players = new LinkedHashMap<>();
     private final List<Opponent> cpuOpponents = new ArrayList<>();
+    private final CpuTraffic traffic;
+    /** one road mask shared by every room */
+    private static final Track TRACK = new ImageTrack();
     private final List<Vector2> waypoints = Waypoints.getWaypoints();
     private final RaceManager raceManager = new RaceManager();
     private int nextPlayerNumber = 1;
@@ -48,6 +53,7 @@ public class Room {
         for (int i = 0; i < grid.size(); i++) {
             cpuOpponents.add(new Opponent("CPU" + (i + 1), waypoints, grid.get(i)));
         }
+        traffic = new CpuTraffic(cpuOpponents, TRACK);
     }
 
     /**
@@ -75,6 +81,7 @@ public class Room {
     public void leave(WebSocket conn) {
         PlayerState state = players.remove(conn);
         if (state != null) {
+            traffic.removePlayer(state.id);
             broadcast("LEFT|" + state.id);
             checkAllReady();
         }
@@ -136,9 +143,13 @@ public class Room {
             }
         }
 
+        // all CPUs move together so they avoid and bump each other and the players
+        for (PlayerState p : players.values()) {
+            traffic.setPlayer(p.id, p.position.x, p.position.y, p.rotation + 90f);
+        }
+        traffic.update(delta, started);
         for (Opponent cpu : cpuOpponents) {
             if (started) {
-                cpu.update(delta, true);
                 raceManager.updateRacer(cpu.getName(), cpu.getLapCount(),
                     cpu.getCurrentWaypointIndex(), cpu.getPosition());
             }

@@ -16,6 +16,7 @@ import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
@@ -103,9 +104,11 @@ public class GameScreen implements Screen {
 
         bg = new Background(stage);
 
-        oppSkins = new Texture[3];
-        for (int i = 0; i < 3; i++) {
+        // car1-3 are the skins players pick, car4-6 are CPU1-CPU3
+        oppSkins = new Texture[6];
+        for (int i = 0; i < oppSkins.length; i++) {
             oppSkins[i] = new Texture(Gdx.files.internal("ui/car" + (i + 1) + ".png"));
+            oppSkins[i].setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
         }
 
         over = new Overlay(rm);
@@ -218,7 +221,7 @@ public class GameScreen implements Screen {
             Vector2 newPos = new Vector2(pos.x, pos.y);
 
             if (state == null) {
-                Image actor = new Image(oppSkins[nc.getOpponentCar(id) - 1]);
+                Image actor = new Image(oppSkins[skinFor(id) - 1]);
                 actor.setSize(player.getWidth(), player.getHeight());
                 stage.addActor(actor);
                 state = new OpponentState(actor, newPos);
@@ -249,6 +252,11 @@ public class GameScreen implements Screen {
         }
 
 
+        // bump into the other cars (they're drawn 10x20 like the player, so their image is their body)
+        for (OpponentState other : nwOpp.values()) {
+            player.collideWith(other.img.getX(), other.img.getY(), other.img.getRotation() + 90f);
+        }
+
         stage.act(delta);
         stage.draw();
 
@@ -257,6 +265,17 @@ public class GameScreen implements Screen {
         uiStage.getViewport().apply();
         uiStage.draw();
         over.render(player, camControl);
+    }
+
+    /**
+     * @param id opponent id
+     * @return which car sprite to draw: CPU1-3 use cars 4-6, players use the car they picked
+     */
+    private int skinFor(String id) {
+        if (id.startsWith("CPU") && id.length() == 4) {
+            return 3 + MathUtils.clamp(id.charAt(3) - '0', 1, 3);
+        }
+        return MathUtils.clamp(nc.getOpponentCar(id), 1, 3);
     }
 
     /**

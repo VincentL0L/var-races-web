@@ -34,8 +34,16 @@ public class Opponent {
     private int currentWaypointIndex = 0;
     private float distanceToNextWaypoint;
 
-    // the point the CPU is aiming at: the waypoint moved sideways onto its chosen line
+    // the point the CPU is aiming at: the waypoint moved sideways onto its chosen line,
+    // plus an extra sideways shift while it's passing another car
     private final Vector2 target = new Vector2();
+    private final Vector2 dodgePoint = new Vector2();
+    private final Vector2 basePoint = new Vector2();
+    private final Vector2 leftOfTravel = new Vector2();
+    private float lineOffset;
+    private float passShift = 0f;
+    private float passSide = 0f;
+    private float passHold = 0f;
     private float arriveRadius;
 
     // personality, picked once per CPU
@@ -79,8 +87,8 @@ public class Opponent {
     }
 
     /**
-     * Called every server tick, updates CPU position and rotation.
-     * Runs the driving in small fixed steps so it behaves the same at any tick rate.
+     * Drives this CPU on its own (no other cars), in small fixed steps.
+     * Races use CpuTraffic instead, which moves all CPUs together and handles collisions.
      * @param delta amount of time between updates
      * @param raceInProgress boolean status if race is finished or not
      */
@@ -89,27 +97,43 @@ public class Opponent {
             speed = 0f;
             return;
         }
-        previousPosition.set(position);
+        beginTick();
         stepTimer += Math.min(delta, 0.25f);
         while (stepTimer >= STEP) {
             stepTimer -= STEP;
-            step(STEP);
+            drive(STEP, null);
         }
+        endTick();
+    }
+
+    /** called by CpuTraffic before a batch of steps */
+    void beginTick() {
+        previousPosition.set(position);
+    }
+
+    /** called by CpuTraffic after a batch of steps */
+    void endTick() {
         distanceToNextWaypoint = position.dst(waypoints.get(currentWaypointIndex));
     }
 
     /**
      * one small step of driving
      * @param dt step length in seconds
+     * @param traffic the other cars, or null when driving alone
      */
-    private void step(float dt) {
+    void drive(float dt, CpuTraffic traffic) {
+        if (isFinished) {
+            speed = 0f;
+            return;
+        }
         if (reactionDelay > 0) {
             reactionDelay -= dt;
             return;
         }
 
         // reached the current waypoint: move on and pick a new line for the next one
-        if (position.dst(target) < arriveRadius || position.dst(waypoints.get(currentWaypointIndex)) < arriveRadius) {
+        if (position.dst(target) < arriveRadius || position.dst(waypoints.get(currentWaypointIndex)) < arriveRadius
+                || passedCorner()) {
             currentWaypointIndex++;
             if (currentWaypointIndex == waypoints.size()) {
                 currentWaypointIndex = 0;
@@ -126,11 +150,45 @@ public class Opponent {
             pickTarget();
         }
 
+        // traffic: keep a gap to a car in front and pull out to the side to pass it
+        float followSpeed = Float.MAX_VALUE;
+        boolean dodging = false;
+        if (traffic != null && traffic.findCarAhead(this, 30f + speed * 0.3f)) {
+            // keep a gap, but never stop completely: a crawling car can still steer around
+            followSpeed = Math.max(45f, traffic.aheadSpeed + (traffic.aheadAlong - CarBody.LENGTH - 8f) * 4f);
+            if (passHold <= 0f) {
+                // car on our right: pass on the left, and the other way round
+                passSide = traffic.aheadLateral > 0.5f ? 1f : traffic.aheadLateral < -0.5f ? -1f : (lineBias >= 0 ? -1f : 1f);
+            }
+            passHold = 1.2f;   // keep the passing line until we're well past it
+            // right behind it: steer straight for a spot beside it (whichever side has road)
+            if (traffic.aheadAlong < 70f) {
+                dodging = setDodgePoint(traffic, passSide) || setDodgePoint(traffic, -passSide);
+                if (!dodging) {
+                    followSpeed = Math.min(followSpeed, traffic.aheadSpeed);
+                }
+            }
+        }
+        passHold -= dt;
+        // no passing moves in the middle of a sharp corner: wait for the exit
+        boolean inCorner = cornerSharpness() > 0.5f && position.dst(basePoint) < 140f;
+        float passTarget = passHold > 0f && !inCorner ? passSide * 30f : 0f;
+        passShift += MathUtils.clamp(passTarget - passShift, -60f * dt, 60f * dt);
+        updateTarget();
+
         // steer toward the target, limited by how fast this car can turn
-        float wanted = MathUtils.atan2(target.y - position.y, target.x - position.x) * MathUtils.radiansToDegrees;
+        Vector2 aim = dodging ? dodgePoint : target;
+        float wanted = MathUtils.atan2(aim.y - position.y, aim.x - position.x) * MathUtils.radiansToDegrees;
         float diff = angleDiff(wanted, heading);
         updateWobble(dt);
         float maxTurn = turnRate * dt;
+        // edge of the road coming up: steer back harder and ease off
+        boolean nearEdge = traffic != null && !traffic.carOnRoad(
+            position.x + MathUtils.cosDeg(heading) * speed * 0.12f,
+            position.y + MathUtils.sinDeg(heading) * speed * 0.12f);
+        if (nearEdge) {
+            maxTurn *= 1.8f;
+        }
         heading += MathUtils.clamp(diff, -maxTurn, maxTurn) + wobble * dt;
 
         // pick a speed: full speed on straights, slow down before sharp corners
@@ -146,6 +204,10 @@ public class Opponent {
             if (distance < brakeDistance + 40f) {
                 desired = Math.min(desired, cornerSpeed);
             }
+        }
+        desired = Math.min(desired, followSpeed);
+        if (nearEdge) {
+            desired = Math.min(desired, speed * 0.85f);
         }
         // a car pointed the wrong way slows down to turn around
         desired *= MathUtils.clamp(1f - Math.abs(diff) / 120f, 0.35f, 1f);
@@ -172,11 +234,79 @@ public class Opponent {
         Vector2 point = waypoints.get(currentWaypointIndex);
         Vector2 before = waypoints.get((currentWaypointIndex - 1 + waypoints.size()) % waypoints.size());
         Vector2 dir = new Vector2(point).sub(before).nor();
-        float offset = MathUtils.clamp(lineBias * 14f + MathUtils.random(-16f, 16f), -MAX_LINE_OFFSET, MAX_LINE_OFFSET);
-        // perpendicular to the direction of travel
-        target.set(point.x - dir.y * offset, point.y + dir.x * offset);
+        lineOffset = MathUtils.clamp(lineBias * 14f + MathUtils.random(-16f, 16f), -MAX_LINE_OFFSET, MAX_LINE_OFFSET);
+        basePoint.set(point);
+        leftOfTravel.set(-dir.y, dir.x);
+        updateTarget();
         arriveRadius = MathUtils.random(40f, 70f);
         throttleNoise = MathUtils.random(0.94f, 1.0f);
+    }
+
+    /**
+     * picks a point beside and a little past the car in front
+     * @param side 1 = pass on its left, -1 = on its right
+     * @return false if that spot isn't on the road
+     */
+    private boolean setDodgePoint(CpuTraffic traffic, float side) {
+        float fx = MathUtils.cosDeg(heading), fy = MathUtils.sinDeg(heading);
+        dodgePoint.set(traffic.aheadX - fy * side * 24f + fx * 25f, traffic.aheadY + fx * side * 24f + fy * 25f);
+        // the whole way there, and a bit past it, has to be road (no cutting across a corner)
+        float beyondX = dodgePoint.x + fx * 20f, beyondY = dodgePoint.y + fy * 20f;
+        for (int i = 1; i <= 6; i++) {
+            float t = i / 6f;
+            if (!traffic.carOnRoad(MathUtils.lerp(position.x, dodgePoint.x, t), MathUtils.lerp(position.y, dodgePoint.y, t))
+                    || !traffic.carOnRoad(MathUtils.lerp(dodgePoint.x, beyondX, t), MathUtils.lerp(dodgePoint.y, beyondY, t))) {
+                return false;
+            }
+        }
+        passSide = side;
+        return true;
+    }
+
+    /**
+     * aim point = waypoint + sideways offset (own line plus passing shift), kept on the road
+     */
+    private void updateTarget() {
+        float offset = MathUtils.clamp(lineOffset + passShift, -MAX_LINE_OFFSET, MAX_LINE_OFFSET);
+        target.set(basePoint.x + leftOfTravel.x * offset, basePoint.y + leftOfTravel.y * offset);
+    }
+
+    /**
+     * moves the car (used to push cars apart after a bump)
+     */
+    void push(float dx, float dy) {
+        position.add(dx, dy);
+    }
+
+    /**
+     * @param newSpeed speed after a bump
+     */
+    void setSpeed(float newSpeed) {
+        speed = Math.max(0f, newSpeed);
+    }
+
+    /**
+     * @return current speed in pixels per second
+     */
+    public float getSpeed() {
+        return speed;
+    }
+
+    /**
+     * True once the car is already past the current waypoint, heading down the next
+     * stretch (e.g. it cut inside the corner while passing someone), so it never turns back.
+     */
+    private boolean passedCorner() {
+        Vector2 point = waypoints.get(currentWaypointIndex);
+        Vector2 before = waypoints.get((currentWaypointIndex - 1 + waypoints.size()) % waypoints.size());
+        Vector2 after = waypoints.get((currentWaypointIndex + 1) % waypoints.size());
+        Vector2 in = new Vector2(point).sub(before).nor();
+        Vector2 out = new Vector2(after).sub(point).nor();
+        // the corner's bisector: the diagonal line through the waypoint halfway between the
+        // direction we came from and the direction we leave in. Crossing it = past the corner.
+        float nx = in.x + out.x, ny = in.y + out.y;
+        float rx = position.x - point.x, ry = position.y - point.y;
+        return rx * nx + ry * ny > 0f && rx * rx + ry * ry < 160f * 160f;
     }
 
     /**
