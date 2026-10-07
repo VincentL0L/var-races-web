@@ -22,18 +22,21 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RacerInfo;
  * Everything is drawn in screen points (see Ui).
  */
 public class Overlay {
-    private static final float MAX_SPEED_MPH = 200f;
+    private static final float MAX_SPEED_MPH = 240f;
 
-    // speedometer.png is pixel art: 48x44 pixels, needle pivot at (23.5, 23.5) from the top left
-    private static final float GAUGE_SCALE = 4f;
-    private static final float GAUGE_PIVOT_X = 23.5f;
-    private static final float GAUGE_PIVOT_Y = 23.5f;
-    private static final float NEEDLE_LENGTH = 14f;
-    // needle sweeps clockwise from 210 degrees (0 mph) to -30 degrees (max)
+    // speedometer.png is 64x64 pixel art (tools/make_speedometer.py), center at (32, 32) from the top left
+    private static final float GAUGE_SCALE = Ui.PIXEL;
+    private static final float GAUGE_CENTER = 32f;
+    private static final float NEEDLE_LENGTH = 20f;
+    // the readout window in the image: center (32, 44), and the MPH label below it at y 51.5
+    private static final float READOUT_Y = 44f;
+    private static final float UNIT_Y = 51.5f;
+    // needle sweeps clockwise from 210 degrees (0 mph) to -30 degrees (max), matching the dots
     private static final float START_ANGLE = 210f;
     private static final float SWEEP = 240f;
 
     private static final Color GOLD = new Color(0.98f, 0.76f, 0.26f, 1f);
+    private static final Color NEEDLE = new Color(0.94f, 0.32f, 0.16f, 1f);
     private static final Color DARK = new Color(0.13f, 0.07f, 0.04f, 1f);
 
     private SpriteBatch batch;
@@ -57,11 +60,11 @@ public class Overlay {
         batch = new SpriteBatch();
         font = Ui.font(12);
         font.setColor(Color.WHITE);
-        speedFont = Ui.display(26);
+        speedFont = Ui.display(19);
         titleFont = Ui.display(16);
         panel = Ui.patch("panel", 6, 6, 6, 6);
         frame = Ui.frame();
-        unitFont = Ui.font(10);
+        unitFont = Ui.font(9);
         render = new ShapeRenderer();
         gauge = new Texture(Gdx.files.internal("ui/speedometer.png"));
         gauge.setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
@@ -166,41 +169,49 @@ public class Overlay {
         float h = gauge.getHeight() * GAUGE_SCALE;
         float x = (Ui.width() - w) / 2f;
         float y = Ui.height() - h - 20;
-        float pivotX = x + GAUGE_PIVOT_X * GAUGE_SCALE;
-        float pivotY = y + h - GAUGE_PIVOT_Y * GAUGE_SCALE;
+        float pivotX = x + GAUGE_CENTER * GAUGE_SCALE;
+        float pivotY = y + h - GAUGE_CENTER * GAUGE_SCALE;
 
         batch.begin();
         batch.draw(gauge, x, y, w, h);
-        batch.end();
-
-        float ratio = MathUtils.clamp(shownSpeed / MAX_SPEED_MPH, 0f, 1f);
-        float angle = (START_ANGLE - ratio * SWEEP) * MathUtils.degreesToRadians;
-        float length = NEEDLE_LENGTH * GAUGE_SCALE;
-        float tipX = pivotX + MathUtils.cos(angle) * length;
-        float tipY = pivotY + MathUtils.sin(angle) * length;
-
-        render.begin(ShapeRenderer.ShapeType.Filled);
-        render.setColor(DARK);
-        render.rectLine(pivotX, pivotY, tipX, tipY, 8f);
-        render.setColor(GOLD);
-        render.rectLine(pivotX, pivotY, tipX, tipY, 4f);
-        render.setColor(DARK);
-        render.circle(pivotX, pivotY, 9f, 20);
-        render.setColor(GOLD);
-        render.circle(pivotX, pivotY, 7f, 20);
-        render.setColor(DARK);
-        render.circle(pivotX, pivotY, 2.5f, 12);
-        render.end();
-
-        batch.begin();
         String speedText = String.valueOf(Math.round(speedMph));
         speedFont.setColor(GOLD);
         layout.setText(speedFont, speedText);
-        speedFont.draw(batch, speedText, pivotX - layout.width / 2f, pivotY - 16f);
+        float readoutY = y + h - READOUT_Y * GAUGE_SCALE;
+        speedFont.draw(batch, speedText, pivotX - layout.width / 2f, readoutY + speedFont.getCapHeight() / 2f);
         unitFont.setColor(new Color(0.85f, 0.65f, 0.3f, 1f));
         layout.setText(unitFont, "MPH");
-        unitFont.draw(batch, "MPH", pivotX - layout.width / 2f, pivotY - 44f);
+        float unitY = y + h - UNIT_Y * GAUGE_SCALE;
+        unitFont.draw(batch, "MPH", pivotX - layout.width / 2f, unitY + unitFont.getCapHeight() / 2f);
         batch.end();
+
+        // tapered red needle with a dark outline, then the hub on top
+        float ratio = MathUtils.clamp(shownSpeed / MAX_SPEED_MPH, 0f, 1f);
+        float angle = (START_ANGLE - ratio * SWEEP) * MathUtils.degreesToRadians;
+        float dirX = MathUtils.cos(angle);
+        float dirY = MathUtils.sin(angle);
+        float length = NEEDLE_LENGTH * GAUGE_SCALE;
+        render.begin(ShapeRenderer.ShapeType.Filled);
+        drawNeedle(pivotX, pivotY, dirX, dirY, length + 3f, 6.5f, DARK);
+        drawNeedle(pivotX, pivotY, dirX, dirY, length, 4f, NEEDLE);
+        render.setColor(DARK);
+        render.circle(pivotX, pivotY, 10f, 24);
+        render.setColor(GOLD);
+        render.circle(pivotX, pivotY, 7.5f, 24);
+        render.setColor(DARK);
+        render.circle(pivotX, pivotY, 3f, 16);
+        render.end();
+    }
+
+    /**
+     * draws a needle as a thin triangle from the hub to the tip
+     * @param halfWidth half the needle's width at the hub
+     */
+    private void drawNeedle(float px, float py, float dirX, float dirY, float length, float halfWidth, Color color) {
+        render.setColor(color);
+        render.triangle(px - dirY * halfWidth, py + dirX * halfWidth,
+            px + dirY * halfWidth, py - dirX * halfWidth,
+            px + dirX * length, py + dirY * length);
     }
 
     /**

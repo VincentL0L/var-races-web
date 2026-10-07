@@ -14,31 +14,58 @@ import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
 
 /**
- * Player is in charge of the car physics(accelerate, break, collision with edge of track)
+ * Player is in charge of the car physics: engine, brakes, steering that depends on speed,
+ * tire grip (a little drift when boosting) and sliding along walls
  */
 public class Player {
     private static Pixmap roadMask;
     private Texture car;
     private Image i;
     private Vector2 velocity;
-    private Vector2 acceleration;
-    private float turnSpeed;
     private Sound oof;
     private Music sound;
 
-    private final float maxTurnSpeed = 2f;
-    private final float turnAccel = 0.7f;
-    private final float turnDecel = 0.3f;
-    private final float brakeFactor = 0.98f;
-    private final float restitution = 0.9f;
-    private final float friction = 0.95f;
-    private final float maxSpeed = 3000f;
+    // ---- car tuning (distances in track pixels, times in seconds) ----
+    // The engine works like a real one: at low speed the tires limit how hard the car can
+    // launch (TRACTION); once moving, engine power divided by speed limits it, so the pull
+    // fades the faster you go. Air drag grows with speed squared and sets the top speed.
+    // On the speedometer 1 mph = 2.5 track pixels/s: about 0-60 in 2 s, 0-100 in 4.5 s,
+    // top speed about 190 mph (about 235 mph boosting).
+    private static final float TRACTION = 100f;
+    private static final float ENGINE_POWER = 12000f;
+    private static final float BOOST_TRACTION = 130f;
+    private static final float BOOST_POWER_MULT = 1.7f;
+    private static final float BRAKE_DECEL = 420f;
+    private static final float REVERSE_ACCEL = 170f;
+    private static final float REVERSE_TOP_SPEED = 90f;
+    /** tire rolling resistance, always there */
+    private static final float ROLLING_DRAG = 8f;
+    /** extra slow-down from the engine when you let off the gas */
+    private static final float ENGINE_BRAKING = 22f;
+    /** wind resistance, grows with speed squared */
+    private static final float AIR_DRAG = 0.000077f;
+    /** fastest the car can rotate, in degrees per second */
+    private static final float MAX_YAW_RATE = 200f;
+    /** how quickly the wheels turn toward the pressed direction */
+    private static final float STEER_RESPONSE = 8f;
+    /** how strongly the tires stop sideways sliding (higher = grippier) */
+    private static final float GRIP = 9f;
+    private static final float BOOST_GRIP = 5.5f;
+    /** fraction of speed kept when hitting a wall hard */
+    private static final float WALL_SCRAPE = 0.6f;
+    /** extra slow-down per second while grinding along a wall */
+    private static final float SCRAPE_FRICTION = 2.5f;
+    /** physics runs in fixed steps so the car drives the same at any frame rate */
+    private static final float STEP = 1f / 120f;
+
     private final float manaRegenRate = 10f;
-    private final float boostMult = 1.5f;
     private final float boostCost = 20f;
 
     private float mana = 100f;
     private boolean isBoosting = false;
+    private float steer = 0f;
+    private float stepTimer = 0f;
+    private float bumpCooldown = 0f;
 
     private int lapCount = 0;
     private int currentWaypointIndex = 0;
@@ -61,7 +88,6 @@ public class Player {
         i.setOrigin(i.getWidth() / 2, i.getHeight() / 2);
 
         velocity = new Vector2();
-        acceleration = new Vector2();
 
         roadMask = new Pixmap(Gdx.files.internal("ui/road_mask.png"));
 
@@ -82,110 +108,150 @@ public class Player {
         if (prevPos == null) {
             prevPos = new Vector2(getX(), getY());
         }
-        
-        if (inputEnabled) {
-            if (Gdx.input.isKeyPressed(Input.Keys.W)) {
-                sound.play();
-            } 
-            else {
-                sound.stop();
-            }
-            boolean turn = false;
-            acceleration.setZero();
 
-            float angle = (i.getRotation() + 90) * MathUtils.degreesToRadians;
+        boolean gas = inputEnabled && Gdx.input.isKeyPressed(Input.Keys.W);
+        boolean brake = inputEnabled && Gdx.input.isKeyPressed(Input.Keys.S);
+        boolean left = inputEnabled && Gdx.input.isKeyPressed(Input.Keys.A);
+        boolean right = inputEnabled && Gdx.input.isKeyPressed(Input.Keys.D);
+        boolean boost = inputEnabled && Gdx.input.isKeyPressed(Input.Keys.SPACE);
 
-            isBoosting = false;
-            if (Gdx.input.isKeyPressed(Input.Keys.W)) {
-                float curBM = 1f;
-                if (Gdx.input.isKeyPressed(Input.Keys.SPACE) && mana > 0) {
-                    curBM = boostMult;
-                    isBoosting = true;
-                    mana -= boostCost * delta;
-                    mana = Math.max(mana, 0);
-                } 
-                else {
-                    mana += manaRegenRate * delta;
-                    mana = Math.min(mana, 100f);
-                }
-
-                float accelScale = 1f - (velocity.len() / maxSpeed);
-                accelScale = MathUtils.clamp(accelScale, 0f, 1f);
-                acceleration.x = MathUtils.cos(angle) * 800 * accelScale * curBM;
-                acceleration.y = MathUtils.sin(angle) * 800 * accelScale * curBM;
-            } 
-            else {
-                velocity.x *= 0.999f;
-                velocity.y *= 0.9979f;
-
-                mana += manaRegenRate * delta;
-                mana = Math.min(mana, 100f);
-            }
-
-            if (Gdx.input.isKeyPressed(Input.Keys.S)) {
-                velocity.x *= brakeFactor;
-                velocity.y *= brakeFactor;
-            }
-
-            if (Gdx.input.isKeyPressed(Input.Keys.A)) {
-                turn = true;
-                turnSpeed += turnAccel;
-                turnSpeed = Math.min(turnSpeed, maxTurnSpeed);
-            }
-            if (Gdx.input.isKeyPressed(Input.Keys.D)) {
-                turn = true;
-                turnSpeed -= turnAccel;
-                turnSpeed = Math.max(turnSpeed, -maxTurnSpeed);
-            }
-            if (!turn){
-                if (turnSpeed > 0){
-                    turnSpeed -= turnDecel;
-                    turnSpeed = Math.max(0, turnSpeed);
-                } 
-                else if (turnSpeed < 0){
-                    turnSpeed += turnDecel;
-                    turnSpeed = Math.min(0, turnSpeed);
-                }
-            }
-            i.rotateBy(turnSpeed);
-            velocity.add(acceleration.x * delta, acceleration.y * delta);
-            velocity.scl(friction);
-            float currentMaxSpeed = isBoosting ? maxSpeed * boostMult : maxSpeed;
-            if (velocity.len() > currentMaxSpeed) {
-                velocity.setLength(currentMaxSpeed);
-            }
-        } 
-        else {
-            velocity.scl(0.98f);
-            if (velocity.len() < 0.1f) {
-                velocity.setZero();
-            }
+        if (gas) {
+            sound.play();
+        } else {
             sound.stop();
         }
 
-        float newX = i.getX() + velocity.x * delta;
-        float newY = i.getY() + velocity.y * delta;
-
-
-        if (!onRoad(newX, newY, i.getWidth(), i.getHeight())) {
-            velocity.scl(-restitution);
-            newX = i.getX();
-            newY = i.getY();
-            oof.play();
+        bumpCooldown -= delta;
+        stepTimer += Math.min(delta, 0.1f);
+        while (stepTimer >= STEP) {
+            stepTimer -= STEP;
+            step(STEP, gas, brake, left, right, boost);
         }
 
-        Vector2 currentPos = new Vector2(newX, newY);
+        Vector2 currentPos = new Vector2(getX(), getY());
         RaceManager raceManager = new RaceManager();
 
         if (raceManager.crossedFinishLineBackwards(prevPos, currentPos)) {
-            velocity.y = -velocity.y * restitution;
-            newY = 301;
-            oof.play();
+            velocity.y = -velocity.y * 0.5f;
+            i.setY(301);
+            bump();
         }
 
-        i.setPosition(newX, newY);
-
         prevPos.set(getX(), getY());
+    }
+
+    /**
+     * one fixed physics step: engine, brakes, drag, steering, tire grip and walls
+     */
+    private void step(float dt, boolean gas, boolean brake, boolean left, boolean right, boolean boost) {
+        // split velocity into "along the car" and "sideways" parts
+        float heading = (i.getRotation() + 90) * MathUtils.degreesToRadians;
+        float fx = MathUtils.cos(heading);
+        float fy = MathUtils.sin(heading);
+        float forward = velocity.x * fx + velocity.y * fy;
+        float sideways = velocity.x * -fy + velocity.y * fx;
+
+        isBoosting = gas && boost && mana > 0;
+        if (isBoosting) {
+            mana = Math.max(0f, mana - boostCost * dt);
+        } else {
+            mana = Math.min(100f, mana + manaRegenRate * dt);
+        }
+
+        if (brake) {
+            if (forward > 5f) {
+                forward = Math.max(0f, forward - BRAKE_DECEL * dt);
+            } else {
+                // stopped and still holding brake: reverse
+                forward = Math.max(-REVERSE_TOP_SPEED, forward - REVERSE_ACCEL * dt);
+            }
+        } else if (gas) {
+            if (forward < 0) {
+                forward = Math.min(0f, forward + BRAKE_DECEL * dt);  // going backwards: gas acts as a brake first
+            } else {
+                float traction = isBoosting ? BOOST_TRACTION : TRACTION;
+                float power = ENGINE_POWER * (isBoosting ? BOOST_POWER_MULT : 1f);
+                forward += Math.min(traction, power / Math.max(forward, 1f)) * dt;
+            }
+        } else {
+            forward = approachZero(forward, ENGINE_BRAKING * dt);
+        }
+        forward = approachZero(forward, ROLLING_DRAG * dt);
+        forward -= Math.signum(forward) * AIR_DRAG * forward * forward * dt;
+
+        // tires resist sliding sideways; less grip while boosting so the car drifts a bit
+        sideways *= (float) Math.exp(-(isBoosting ? BOOST_GRIP : GRIP) * dt);
+
+        velocity.set(fx * forward - fy * sideways, fy * forward + fx * sideways);
+
+        // steering: wheels turn smoothly, and a car can only rotate while it's moving
+        float steerTarget = (left ? 1f : 0f) - (right ? 1f : 0f);
+        steer += (steerTarget - steer) * Math.min(1f, STEER_RESPONSE * dt);
+        float speed = Math.abs(forward);
+        float speedFactor = MathUtils.clamp(speed / 70f, 0f, 1f) / (1f + speed / 550f);
+        float direction = forward >= 0 ? 1f : -1f;  // steering flips when reversing, like a real car
+        i.rotateBy(steer * MAX_YAW_RATE * speedFactor * direction * dt);
+        if (speed < 1f && !gas && !brake) {
+            velocity.setZero();
+        }
+
+        moveWithWalls(dt);
+    }
+
+    /**
+     * moves the car; on hitting a wall it slides along it instead of bouncing backwards
+     */
+    private void moveWithWalls(float dt) {
+        float x = i.getX();
+        float y = i.getY();
+        float w = i.getWidth();
+        float h = i.getHeight();
+        float nx = x + velocity.x * dt;
+        float ny = y + velocity.y * dt;
+
+        if (onRoad(nx, ny, w, h)) {
+            i.setPosition(nx, ny);
+            return;
+        }
+        float impact;
+        if (onRoad(nx, y, w, h)) {
+            // wall is above or below: keep sliding sideways along it
+            impact = Math.abs(velocity.y);
+            velocity.y = 0f;
+            velocity.x *= (float) Math.exp(-SCRAPE_FRICTION * dt);
+            i.setPosition(nx, y);
+        } else if (onRoad(x, ny, w, h)) {
+            impact = Math.abs(velocity.x);
+            velocity.x = 0f;
+            velocity.y *= (float) Math.exp(-SCRAPE_FRICTION * dt);
+            i.setPosition(x, ny);
+        } else {
+            // head-on: stop with a small knock back
+            impact = velocity.len();
+            velocity.scl(-0.2f);
+        }
+        if (impact > 60f) {
+            velocity.scl(WALL_SCRAPE);
+            bump();
+        }
+    }
+
+    /**
+     * plays the crash sound, at most a couple of times a second
+     */
+    private void bump() {
+        if (bumpCooldown <= 0f) {
+            oof.play();
+            bumpCooldown = 0.5f;
+        }
+    }
+
+    /**
+     * moves a value toward 0 by amount without passing it
+     */
+    private static float approachZero(float value, float amount) {
+        if (value > 0) return Math.max(0f, value - amount);
+        return Math.min(0f, value + amount);
     }
 
     /**

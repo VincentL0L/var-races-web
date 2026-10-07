@@ -11,6 +11,19 @@ import com.badlogic.gdx.math.Vector2;
  */
 public class Waypoints {
     /**
+     * starting spots for the 3 CPUs, staggered behind the player's spot (200, 300)
+     * on the start straight (all checked to be on the road)
+     * @return grid positions
+     */
+    public static List<Vector2> getCpuGrid() {
+        List<Vector2> grid = new ArrayList<>();
+        grid.add(new Vector2(165, 262));
+        grid.add(new Vector2(235, 262));
+        grid.add(new Vector2(200, 226));
+        return grid;
+    }
+
+    /**
      * only called by gameServer to update waypoint list.
      * which is why no constructor and inefficient as it is called
      * one time in total

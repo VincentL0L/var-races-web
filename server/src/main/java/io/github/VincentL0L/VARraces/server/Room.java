@@ -44,9 +44,9 @@ public class Room {
     public Room(String code, boolean isPublic) {
         this.code = code;
         this.isPublic = isPublic;
-        for (int i = 0; i < 3; i++) {
-            Vector2 cpuPos = new Vector2(200 + i * 40, 300);
-            cpuOpponents.add(new Opponent("CPU" + (i + 1), waypoints, cpuPos));
+        List<Vector2> grid = Waypoints.getCpuGrid();
+        for (int i = 0; i < grid.size(); i++) {
+            cpuOpponents.add(new Opponent("CPU" + (i + 1), waypoints, grid.get(i)));
         }
     }
 

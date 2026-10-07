@@ -1,57 +1,91 @@
-"""Draws assets/ui/speedometer.png, a pixel-art gauge face (needle is drawn by the game).
+"""Draws assets/ui/speedometer.png: a round, mirror-symmetric pixel-art gauge face.
+The needle, hub and speed number are drawn by the game (Overlay.java).
+
+Layout (64x64 art pixels, center at 32,32):
+  needle sweeps 240 degrees, from 210 (0 mph, lower left) to -30 (max, lower right)
+  9 dot markers along the sweep (big dots every 50 mph, the last ones red = redline)
+  a recessed readout window in the gap at the bottom for the digital speed
 Run: python3 tools/make_speedometer.py   (needs Pillow)"""
 from PIL import Image
 import math, os
 
-W, H = 48, 44
-CX, CY, R = 23.5, 23.5, 22.5
-OUTLINE, RIM_HI, RIM, RIM_LO = (52, 26, 10), (255, 220, 110), (240, 170, 40), (190, 110, 20)
-FACE_EDGE, FACE, TICK, TICK_DIM = (24, 14, 10), (44, 28, 20), (250, 190, 70), (170, 120, 50)
-img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+S = 64
+C = S / 2                      # 32.0: exact center, so the art is symmetric
+OUTLINE = (42, 20, 8)
+GOLD_HI = (255, 230, 140)
+GOLD = (243, 180, 52)
+GOLD_LO = (196, 118, 24)
+GOLD_DEEP = (132, 72, 14)
+FACE_EDGE = (22, 12, 7)
+FACE = (40, 26, 18)
+DOT = (250, 196, 80)
+DOT_DIM = (150, 104, 48)
+RED = (232, 64, 40)
+WINDOW = (14, 8, 4)
+
+img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
 px = img.load()
 
-def inside(x, y):
-    dx, dy = x + 0.5 - CX, y + 0.5 - CY
-    d = math.hypot(dx, dy)
-    dome = d <= R and y <= CY + 13          # round top, flat-ish bottom
-    tab = abs(dx) <= 7 and y <= CY + 17 and math.hypot(dx * 0.9, (y - CY - 12) * 1.2) <= 8
-    return dome or tab
-
-mask = [[inside(x, y) for x in range(W)] for y in range(H)]
-def depth(x, y):  # distance in pixels to the outside of the shape
-    for k in range(0, 8):
-        for ox in range(-k, k + 1):
-            for oy in range(-k, k + 1):
-                if max(abs(ox), abs(oy)) != k:
-                    continue
-                nx, ny = x + ox, y + oy
-                if not (0 <= nx < W and 0 <= ny < H) or not mask[ny][nx]:
-                    return k
-    return 8
-
-for y in range(H):
-    for x in range(W):
-        if not mask[y][x]:
+for y in range(S):
+    for x in range(S):
+        dx, dy = x + 0.5 - C, y + 0.5 - C
+        d = math.hypot(dx, dy)
+        top = dy < 0                       # light comes from above, same on both sides
+        if d > 31.2:
             continue
-        d = depth(x, y)
-        light = (CY - y) / R  # top of the rim catches the light
-        if d <= 1:
+        elif d > 30.2:
             c = OUTLINE
-        elif d <= 4:
-            c = RIM_HI if (d == 2 and light > 0.2) else RIM_LO if (d == 4 or light < -0.4) else RIM
-        elif d == 5:
+        elif d > 29.2:
+            c = GOLD_HI if top else GOLD
+        elif d > 27.2:
+            c = GOLD if top else GOLD_LO
+        elif d > 26.2:
+            c = GOLD_DEEP
+        elif d > 25.2:
             c = FACE_EDGE
         else:
             c = FACE
         px[x, y] = c + (255,)
 
-# tick marks from 210 degrees (0 mph) clockwise to -30 degrees (max), like the game's needle
-for i in range(11):
-    a = math.radians(210 - 24 * i)
-    major = i % 2 == 0
-    for r in ([R - 7, R - 8] if major else [R - 7]):
-        x, y = int(CX + r * math.cos(a)), int(CY - r * math.sin(a))
-        px[x, y] = (TICK if major else TICK_DIM) + (255,)
+# dot markers: compute the left half and mirror it, so both sides match exactly
+def put(x, y, color):
+    px[x, y] = color + (255,)
+    px[S - 1 - x, y] = color + (255,)
 
-img.save(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "ui", "speedometer.png"))
-print("gauge ok", W, H)
+marks = 9
+for i in range(marks // 2 + 1):            # 210 deg down to 90 deg (top)
+    a = math.radians(210 - 240 * i / (marks - 1))
+    major = i % 2 == 0
+    rad = 22.0
+    fx, fy = C + rad * math.cos(a), C - rad * math.sin(a)
+    if major:
+        x0, y0 = int(round(fx - 1)), int(round(fy - 1))
+        for ox in range(2):
+            for oy in range(2):
+                put(x0 + ox, y0 + oy, DOT)
+    else:
+        put(int(fx), int(fy), DOT_DIM)
+
+# redline: recolor the last two markers on the right side (175 and 200 mph)
+for i in (marks - 2, marks - 1):
+    a = math.radians(210 - 240 * i / (marks - 1))
+    fx, fy = C + 22.0 * math.cos(a), C - 22.0 * math.sin(a)
+    if i % 2 == 0:
+        x0, y0 = int(round(fx - 1)), int(round(fy - 1))
+        for ox in range(2):
+            for oy in range(2):
+                px[x0 + ox, y0 + oy] = RED + (255,)
+    else:
+        px[int(fx), int(fy)] = RED + (255,)
+
+# readout window centered under the hub (x 22..41 is symmetric around 32)
+for y in range(39, 49):
+    for x in range(22, 42):
+        edge = y in (39, 48) or x in (22, 41)
+        px[x, y] = (GOLD_LO if edge else WINDOW) + (255,)
+for x in range(23, 41):                    # inner shadow under the top edge: looks sunken
+    px[x, 40] = (6, 3, 1, 255)
+
+out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "ui", "speedometer.png")
+img.save(out)
+print("gauge ok", S, S)

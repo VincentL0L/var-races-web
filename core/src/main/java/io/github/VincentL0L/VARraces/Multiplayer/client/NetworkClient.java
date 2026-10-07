@@ -93,11 +93,9 @@ public class NetworkClient {
         }
         playerReadyStates.put(playerId, false);
 
-        float cpuBaseX = 200;
-        float cpuBaseY = 300;
-        float cpuSpacing = 40;
-        for (int i = 0; i < 3; i++) {
-            Vector2 cpuPos = new Vector2(cpuBaseX + (i * cpuSpacing), cpuBaseY);
+        List<Vector2> grid = Waypoints.getCpuGrid();
+        for (int i = 0; i < grid.size(); i++) {
+            Vector2 cpuPos = grid.get(i);
             Opponent cpu = new Opponent("CPU" + (i + 1), waypoints, cpuPos);
             cpuOpponents.add(cpu);
 
