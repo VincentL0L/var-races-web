@@ -99,7 +99,7 @@ public class Overlay {
             boxWidth += pad * 2;
             float boxHeight = pad * 2 + 26 + lineHeight * leaderboard.size();
             float boxX = 10;
-            float boxY = Ui.height() - boxHeight - 10;
+            float boxY = 10;
 
             batch.begin();
             panel.draw(batch, boxX, boxY, boxWidth, boxHeight);
@@ -115,30 +115,35 @@ public class Overlay {
 
         batch.begin();
         font.setColor(Ui.CREAM);
-        font.draw(batch, "Player: (" + (int)player.getX() + ", " + (int)player.getY() + ")", 20, 40);
-        font.draw(batch, "Camera: (" + (int)camera.getX() + ", " + (int)camera.getY() + ")", 20, 60);
+        String playerText = "Player: (" + (int)player.getX() + ", " + (int)player.getY() + ")";
+        String cameraText = "Camera: (" + (int)camera.getX() + ", " + (int)camera.getY() + ")";
+        layout.setText(font, playerText);
+        font.draw(batch, playerText, Ui.width() - layout.width - 16, Ui.height() - 14);
+        layout.setText(font, cameraText);
+        font.draw(batch, cameraText, Ui.width() - layout.width - 16, Ui.height() - 34);
         batch.end();
 
         renderSpeedometer(player.getVelocity().len() * 0.4f);
 
         // narrower on small windows so it doesn't run under the speedometer
-        // boost (mana) bar: gold frame, glowing blue fill
-        float barWidth = Math.min(400, Ui.width() - 2 * (gauge.getWidth() * GAUGE_SCALE + 30));
-        float barHeight = 36;
-        float barX = (Ui.width() - barWidth) / 2f;
-        float barY = 30;
+        // boost (mana) bar: vertical gold frame in the bottom right, glowing blue fill rising from the bottom
+        float barWidth = 36;
+        float barHeight = Math.min(240, Ui.height() * 0.4f);
+        float barX = Ui.width() - barWidth - 24;
+        float barY = 24;
         float inset = 4 * Ui.PIXEL;
-        float fill = (barWidth - inset * 2) * MathUtils.clamp(player.getMana() / 100f, 0f, 1f);
+        float fill = (barHeight - inset * 2) * MathUtils.clamp(player.getMana() / 100f, 0f, 1f);
         batch.begin();
         frame.draw(batch, barX, barY, barWidth, barHeight);
         titleFont.setColor(Ui.GOLD);
-        titleFont.draw(batch, "BOOST", barX + 4, barY + barHeight + 24);
+        layout.setText(titleFont, "BOOST");
+        titleFont.draw(batch, "BOOST", barX + barWidth - layout.width, barY + barHeight + 24);
         batch.end();
         render.begin(ShapeRenderer.ShapeType.Filled);
         render.setColor(0.2f, 0.62f, 0.95f, 1f);
-        render.rect(barX + inset, barY + inset, fill, barHeight - inset * 2);
+        render.rect(barX + inset, barY + inset, barWidth - inset * 2, fill);
         render.setColor(0.6f, 0.9f, 1f, 1f);
-        render.rect(barX + inset, barY + barHeight - inset - Ui.PIXEL, fill, Ui.PIXEL);
+        render.rect(barX + inset, barY + inset, Ui.PIXEL, fill);
         render.end();
     }
 
@@ -150,7 +155,7 @@ public class Overlay {
     }
 
     /**
-     * draws the gauge in the bottom right corner: pixel-art dial, moving needle and digital readout
+     * draws the gauge in the top left corner: pixel-art dial, moving needle and digital readout
      * @param speedMph current speed
      */
     private void renderSpeedometer(float speedMph) {
@@ -159,8 +164,8 @@ public class Overlay {
 
         float w = gauge.getWidth() * GAUGE_SCALE;
         float h = gauge.getHeight() * GAUGE_SCALE;
-        float x = Ui.width() - w - 20;
-        float y = 20;
+        float x = 20;
+        float y = Ui.height() - h - 20;
         float pivotX = x + GAUGE_PIVOT_X * GAUGE_SCALE;
         float pivotY = y + h - GAUGE_PIVOT_Y * GAUGE_SCALE;
 
