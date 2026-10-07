@@ -22,8 +22,6 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Waypoints;
  */
 public class Room {
     public static final int MAX_PLAYERS = 6;
-    private static final float WAYPOINT_THRESHOLD = 150f;
-    private static final float LEADERBOARD_INTERVAL = 0.5f;
 
     private final String code;
     private final boolean isPublic;
@@ -39,7 +37,7 @@ public class Room {
     private boolean started = false;
     private float countdownTimer = 0f;
     private String lastCountdown = "";
-    private float leaderboardTimer = 0f;
+    private float raceTime = 0f;
 
     /**
      * creates a room with 3 CPU opponents on the starting line
@@ -148,10 +146,12 @@ public class Room {
             traffic.setPlayer(p.id, p.position.x, p.position.y, p.rotation + 90f);
         }
         traffic.update(delta, started);
+        if (started) {
+            raceTime += delta;
+        }
         for (Opponent cpu : cpuOpponents) {
             if (started) {
-                raceManager.updateRacer(cpu.getName(), cpu.getLapCount(),
-                    cpu.getCurrentWaypointIndex(), cpu.getPosition());
+                raceManager.updateRacer(cpu.getName(), cpu.getPosition(), raceTime);
             }
             broadcast("POS|" + cpu.getName() + "|" + cpu.getPosition().x + "|"
                 + cpu.getPosition().y + "|" + cpu.getRotation() + "|1");
@@ -159,20 +159,18 @@ public class Room {
 
         for (PlayerState p : players.values()) {
             if (started) {
-                p.update(waypoints);
-                raceManager.updateRacer(p.id, p.lapCount, p.waypointIndex, p.position);
+                raceManager.updateRacer(p.id, p.position, raceTime);
             }
             broadcast("POS|" + p.id + "|" + p.position.x + "|" + p.position.y + "|"
                 + p.rotation + "|" + p.car);
         }
 
-        leaderboardTimer += delta;
-        if (started && leaderboardTimer > LEADERBOARD_INTERVAL) {
-            leaderboardTimer = 0f;
+        // leaderboard every tick: LEADER|name|laps|progress|finishTime|...
+        if (started) {
             StringBuilder msg = new StringBuilder("LEADER");
             for (RacerInfo r : raceManager.getSortedLeaderboard()) {
                 msg.append('|').append(r.name).append('|').append(r.lapCount).append('|')
-                    .append(r.currentWaypointIndex).append('|').append(r.distanceToNextWaypoint);
+                    .append(r.progress).append('|').append(r.finishTime);
             }
             broadcast(msg.toString());
         }
@@ -221,28 +219,12 @@ public class Room {
         int car;
         Vector2 position;
         float rotation = 0f;
-        int waypointIndex = 0;
-        int lapCount = 0;
         boolean ready = false;
 
         PlayerState(String id, int car, Vector2 spawn) {
             this.id = id;
             this.car = car;
             this.position = spawn.cpy();
-        }
-
-        /**
-         * moves on to the next waypoint when close enough, counting laps
-         * @param waypoints track waypoints
-         */
-        void update(List<Vector2> waypoints) {
-            if (waypoints.get(waypointIndex).dst(position) < WAYPOINT_THRESHOLD) {
-                waypointIndex++;
-                if (waypointIndex >= waypoints.size()) {
-                    waypointIndex = 0;
-                    lapCount++;
-                }
-            }
         }
     }
 }

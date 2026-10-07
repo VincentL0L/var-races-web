@@ -5,8 +5,9 @@ import com.badlogic.gdx.math.MathUtils;
 
 public class CameraController {
     private OrthographicCamera camera;
-    private float smoothing = 0.1f;
-    private float rotationSmoothing = 0.1f;
+    /** how quickly the camera catches up with the car (per second); higher = tighter */
+    private static final float FOLLOW_RATE = 12f;
+    private static final float ROTATION_RATE = 6f;
     /**
      * 1-Arg constructor for camera
      * @param cam camera
@@ -19,8 +20,11 @@ public class CameraController {
      * @param targetX new x-position to follow
      * @param targetY new y-position to follow
      * @param targetRotationDegrees new rotation to follow
+     * @param delta seconds since last frame (the smoothing depends on time, not frame count)
      */
-    public void update(float targetX, float targetY, float targetRotationDegrees) {
+    public void update(float targetX, float targetY, float targetRotationDegrees, float delta) {
+        float smoothing = 1f - (float) Math.exp(-FOLLOW_RATE * delta);
+        float rotationSmoothing = 1f - (float) Math.exp(-ROTATION_RATE * delta);
         float newX = MathUtils.lerp(camera.position.x, targetX, smoothing);
         float newY = MathUtils.lerp(camera.position.y, targetY, smoothing);
         camera.position.set(newX, newY, 0);

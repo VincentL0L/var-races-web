@@ -14,7 +14,6 @@ import io.github.VincentL0L.VARraces.Multiplayer.packets.PositionPacket;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CpuTraffic;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Opponent;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
-import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RacerInfo;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Waypoints;
 
 /**
@@ -32,8 +31,8 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Waypoints;
  */
 public class NetworkClient {
     private static final float UPDATE_INTERVAL = 0.05f;
-    private static final float LEADERBOARD_INTERVAL = 0.5f;
-    private static final float WAYPOINT_THRESHOLD = 150f;
+    /** online cars are drawn this far in the past so there's always an update to slide toward */
+    private static final float INTERPOLATION_DELAY = 0.1f;
 
     private String playerId;
     private final Map<String, PositionPacket> opponents = new HashMap<>();
@@ -64,13 +63,12 @@ public class NetworkClient {
     private float playerHeading = 90f;
     private CpuTraffic traffic;
     private PixmapTrack track;
-    private int playerWaypointIndex = 0;
-    private int playerLapCount = 0;
+    private float raceTime = 0f;
+    private float clock = 0f;
+    private final Map<String, PoseHistory> poseHistory = new HashMap<>();
     private boolean gameStarted = false;
     private boolean countdownInProgress = false;
     private float countdownTimer = 0f;
-    private float updateTimer = 0f;
-    private float leaderboardTimer = 0f;
 
     /**
      * Constructor for NetworkClient.
@@ -173,6 +171,7 @@ public class NetworkClient {
      * @param delta time since last frame
      */
     public void update(float delta) {
+        clock += delta;
         if (isOnline()) {
             readMessages();
             sendTimer += delta;
@@ -191,47 +190,24 @@ public class NetworkClient {
             }
         }
 
-        updateTimer += delta;
-        if (updateTimer < UPDATE_INTERVAL) return;
-        float step = updateTimer;
-        updateTimer = 0f;
-
-        // all CPUs move together so they can avoid and bump each other and the player
+        // single player: everything updates every frame so the CPUs move smoothly
         traffic.setPlayer(playerId, playerPos.x, playerPos.y, playerHeading);
-        traffic.update(step, gameStarted);
+        traffic.update(delta, gameStarted);
+        if (gameStarted) {
+            raceTime += delta;
+        }
         for (Opponent cpu : cpuOpponents) {
             if (gameStarted) {
-                serverRaceManager.updateRacer(cpu.getName(), cpu.getLapCount(),
-                    cpu.getCurrentWaypointIndex(), cpu.getPosition());
+                serverRaceManager.updateRacer(cpu.getName(), cpu.getPosition(), raceTime);
             }
-            PositionPacket packet = new PositionPacket();
-            packet.playerId = cpu.getName();
+            PositionPacket packet = opponents.get(cpu.getName());
             packet.x = cpu.getPosition().x;
             packet.y = cpu.getPosition().y;
             packet.rotation = cpu.getRotation();
-            opponents.put(packet.playerId, packet);
         }
-
         if (gameStarted) {
-            Vector2 target = waypoints.get(playerWaypointIndex);
-            if (target.dst(playerPos) < WAYPOINT_THRESHOLD) {
-                playerWaypointIndex++;
-                if (playerWaypointIndex >= waypoints.size()) {
-                    playerWaypointIndex = 0;
-                    playerLapCount++;
-                }
-            }
-            serverRaceManager.updateRacer(playerId, playerLapCount, playerWaypointIndex, playerPos);
-        }
-
-        leaderboardTimer += step;
-        if (leaderboardTimer > LEADERBOARD_INTERVAL) {
-            leaderboardTimer = 0f;
-            List<Entry> entries = new ArrayList<>();
-            for (RacerInfo r : serverRaceManager.getSortedLeaderboard()) {
-                entries.add(new Entry(r.name, r.lapCount, r.distanceToNextWaypoint, r.currentWaypointIndex));
-            }
-            setLeaderboard(new LeaderboardPacket(entries));
+            serverRaceManager.updateRacer(playerId, playerPos, raceTime);
+            setLeaderboard(new LeaderboardPacket(serverRaceManager.toEntries()));
         }
     }
 
@@ -288,11 +264,18 @@ public class NetworkClient {
             pp.rotation = Float.parseFloat(parts[4]);
             opponents.put(pp.playerId, pp);
             opponentCars.put(pp.playerId, Integer.parseInt(parts[5]));
+            PoseHistory history = poseHistory.get(pp.playerId);
+            if (history == null) {
+                history = new PoseHistory();
+                poseHistory.put(pp.playerId, history);
+            }
+            history.add(pp.x, pp.y, pp.rotation, clock);
         } else if (type.equals("LEADER")) {
+            // LEADER|name|laps|progress|finishTime|name|...
             List<Entry> entries = new ArrayList<>();
             for (int i = 1; i + 3 < parts.length; i += 4) {
                 entries.add(new Entry(parts[i], Integer.parseInt(parts[i + 1]),
-                    Float.parseFloat(parts[i + 3]), Integer.parseInt(parts[i + 2])));
+                    Float.parseFloat(parts[i + 2]), Float.parseFloat(parts[i + 3])));
             }
             setLeaderboard(new LeaderboardPacket(entries));
         }
@@ -364,6 +347,29 @@ public class NetworkClient {
             send("POS|" + x + "|" + y + "|" + rotation);
         }
     }
+    /**
+     * Where to draw an opponent this frame. Online, server updates arrive 20 times a second,
+     * so cars are drawn slightly in the past, sliding smoothly between the last two updates.
+     * @param id opponent id
+     * @param out filled with x, y, rotation
+     * @return false if this opponent isn't known
+     */
+    public boolean getOpponentPose(String id, float[] out) {
+        PositionPacket latest = opponents.get(id);
+        if (latest == null) {
+            return false;
+        }
+        PoseHistory history = poseHistory.get(id);
+        if (!isOnline() || history == null || !history.hasTwo) {
+            out[0] = latest.x;
+            out[1] = latest.y;
+            out[2] = latest.rotation;
+            return true;
+        }
+        history.sample(clock - INTERPOLATION_DELAY, out);
+        return true;
+    }
+
     /**
      * @return opponents in NetworkClient
      */
@@ -462,5 +468,34 @@ public class NetworkClient {
      */
     public Map<String, Boolean> getPlayerReadyStates() {
         return playerReadyStates;
+    }
+
+    /**
+     * the last two positions received for an online opponent, and when they arrived
+     */
+    private static class PoseHistory {
+        float x0, y0, r0, t0;
+        float x1, y1, r1, t1;
+        boolean hasTwo = false;
+        boolean hasOne = false;
+
+        void add(float x, float y, float rotation, float time) {
+            if (hasOne) {
+                x0 = x1; y0 = y1; r0 = r1; t0 = t1;
+                hasTwo = true;
+            }
+            x1 = x; y1 = y; r1 = rotation; t1 = time;
+            hasOne = true;
+        }
+
+        void sample(float time, float[] out) {
+            float span = t1 - t0;
+            float a = span > 1e-4f ? (time - t0) / span : 1f;
+            a = Math.max(0f, Math.min(1.2f, a));   // a little past the newest update if one is late
+            out[0] = x0 + (x1 - x0) * a;
+            out[1] = y0 + (y1 - y0) * a;
+            float dr = ((r1 - r0) % 360f + 540f) % 360f - 180f;   // shortest way round
+            out[2] = r0 + dr * a;
+        }
     }
 }

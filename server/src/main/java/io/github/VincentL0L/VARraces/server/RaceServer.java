@@ -21,7 +21,7 @@ import org.java_websocket.server.WebSocketServer;
  * from players:  LIST | CREATE|public or private|car | JOIN|code|car | READY|true | POS|x|y|rotation
  * to players:    ROOMS|code|count|code|count... | JOINED|code|public|playerId | ERROR|text
  *                READY|id|true | LEFT|id | COUNTDOWN|3 | POS|id|x|y|rotation|car
- *                LEADER|name|lap|waypoint|distance|name|lap...
+ *                LEADER|name|laps|progress|finishTime|name|laps...   (race order, finishTime -1 = racing)
  *
  * Run with: ./gradlew server:run   (port 8080, or the PORT environment variable)
  */

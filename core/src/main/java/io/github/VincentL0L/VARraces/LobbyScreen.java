@@ -8,6 +8,7 @@ import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
@@ -39,6 +40,15 @@ public class LobbyScreen implements Screen {
     private OrthographicCamera camera;
     private Background background;
     private float panDuration = 8f;
+    private final FrostedBackdrop frost = new FrostedBackdrop();
+    private float frostAmount = 1f;
+    // the track behind the lobby drifts like the old DVD logo, bouncing off the map's edges
+    private static final float MAP_WIDTH = 1920f;
+    private static final float MAP_HEIGHT = 1080f;
+    private float driftX = MathUtils.randomSign() * 70f;
+    private float driftY = MathUtils.randomSign() * 45f;
+    private float panFromX;
+    private float panFromY;
 
     /**
      * creates lobby screen passing on the current game and car selected,
@@ -151,8 +161,7 @@ public class LobbyScreen implements Screen {
         networkClient.update(delta);
 
         if (!isPanning) {
-            camera.position.set(1000, 465, 0);
-            camera.update();
+            driftCamera(delta);
         }
 
         StringBuilder playerList = new StringBuilder();
@@ -183,11 +192,11 @@ public class LobbyScreen implements Screen {
         String countdownText = networkClient.getCountdownText();
         if (countdownText != null && !countdownText.isEmpty()) {
             if (countdownText.equals("3") && !isPanning) {
+                // sweep down to the start line from wherever the drifting camera is
                 isPanning = true;
                 cameraPanTimer = 0f;
-                camera.position.x = 1000;
-                camera.position.y = 465;
-                camera.update();
+                panFromX = camera.position.x;
+                panFromY = camera.position.y;
             } 
             else if (countdownText.equals("GO!")) {
                 GameScreen gameScreen = new GameScreen(game, selectedCar, networkClient, 900, 500);
@@ -197,6 +206,10 @@ public class LobbyScreen implements Screen {
             statusLabel.setText(countdownText);
         }
 
+        // the track behind the lobby panel is frosted; the frost melts away when the
+        // countdown starts so you can see the camera sweep down to the start line
+        frostAmount = isPanning ? Math.max(0f, frostAmount - delta * 2f) : 1f;
+        frost.begin();
         background.render(stage.getCamera());
 
         if (isPanning) {
@@ -205,8 +218,8 @@ public class LobbyScreen implements Screen {
             progress = Math.min(1.5f, progress);
 
             if (progress <= 1.5f) {
-                float startX = 1000;
-                float startY = 500;
+                float startX = panFromX;
+                float startY = panFromY;
                 float endX = 200;
                 float endY = 300;
                 
@@ -223,9 +236,37 @@ public class LobbyScreen implements Screen {
         
         stage.act(delta);
         stage.draw();
+        frost.end();
+        frost.draw(frostAmount);
         uiStage.act(delta);
         uiStage.getViewport().apply();
         uiStage.draw();
+    }
+
+    /**
+     * moves the camera at a steady speed, bouncing whenever the view reaches an edge of the map
+     */
+    private void driftCamera(float delta) {
+        float halfW = Math.min(camera.viewportWidth * camera.zoom / 2f, MAP_WIDTH / 2f);
+        float halfH = Math.min(camera.viewportHeight * camera.zoom / 2f, MAP_HEIGHT / 2f);
+        float x = camera.position.x + driftX * delta;
+        float y = camera.position.y + driftY * delta;
+        if (x < halfW) {
+            x = halfW;
+            driftX = Math.abs(driftX);
+        } else if (x > MAP_WIDTH - halfW) {
+            x = MAP_WIDTH - halfW;
+            driftX = -Math.abs(driftX);
+        }
+        if (y < halfH) {
+            y = halfH;
+            driftY = Math.abs(driftY);
+        } else if (y > MAP_HEIGHT - halfH) {
+            y = MAP_HEIGHT - halfH;
+            driftY = -Math.abs(driftY);
+        }
+        camera.position.set(x, y, 0);
+        camera.update();
     }
 
     /**
@@ -249,6 +290,7 @@ public class LobbyScreen implements Screen {
      * removes memory
      */
     public void dispose() {
+        frost.dispose();
         stage.dispose();
         uiStage.dispose();
         skin.dispose();

@@ -9,7 +9,7 @@ import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 
 /**
- * Moves all the CPU cars of one race together, 60 small steps per second, and after
+ * Moves all the CPU cars of one race together in small steps (at most 1/60 s), and after
  * every step pushes apart any cars that touch. CPUs are never left overlapping each
  * other, and are never pushed off the road.
  *
@@ -17,7 +17,7 @@ import com.badlogic.gdx.math.Vector2;
  * away from them (each player's own game pushes the player away from the CPUs).
  */
 public class CpuTraffic {
-    private static final float STEP = 1f / 60f;
+    private static final float MAX_STEP = 1f / 60f;
     private static final int SEPARATION_PASSES = 8;
     /** pushes leave this tiny gap so cars end up just apart, not exactly touching */
     private static final float CLEARANCE = 0.05f;
@@ -26,7 +26,6 @@ public class CpuTraffic {
     private final Track track;
     private final Map<String, PlayerCar> players = new LinkedHashMap<>();
     private final Vector2 push = new Vector2();
-    private float stepTimer = 0f;
 
     // filled in by findCarAhead
     float aheadAlong;
@@ -89,11 +88,14 @@ public class CpuTraffic {
         for (Opponent cpu : cpus) {
             cpu.beginTick();
         }
-        stepTimer += Math.min(delta, 0.25f);
-        while (stepTimer >= STEP) {
-            stepTimer -= STEP;
+        // split this update into equal small steps (at most 1/60 s each), so the cars move
+        // the same distance every frame and look smooth at any frame rate
+        float time = Math.min(delta, 0.25f);
+        int steps = Math.max(1, (int) Math.ceil(time / MAX_STEP - 1e-4f));
+        float dt = time / steps;
+        for (int s = 0; s < steps; s++) {
             for (Opponent cpu : cpus) {
-                cpu.drive(STEP, this);
+                cpu.drive(dt, this);
             }
             resolveCollisions();
         }

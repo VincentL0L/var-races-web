@@ -8,6 +8,12 @@ import java.util.Map;
 
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
+import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
+import com.badlogic.gdx.scenes.scene2d.ui.Table;
+import com.badlogic.gdx.scenes.scene2d.ui.Skin;
+import com.badlogic.gdx.scenes.scene2d.InputEvent;
+import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.graphics.Color;
@@ -15,7 +21,6 @@ import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
-import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.Stage;
@@ -50,11 +55,23 @@ public class GameScreen implements Screen {
     private boolean done = false;
     private float goTime = 0f;
     private Texture[] oppSkins;
+    private final float[] pose = new float[3];
     private Background bg;
     private CameraController camControl;
     private Overlay over;
     private Player player;
     private float end = 0f;
+    /** stopwatch: seconds since GO */
+    private float raceClock = 0f;
+    private boolean paused = false;
+    private Table pausePanel;
+    private Skin pauseSkin;
+    private final FrostedBackdrop frost = new FrostedBackdrop();
+    private float frostAmount = 0f;
+    /** follows only our own car, for the RETURN TO TRACK warning */
+    private final RaceManager trackWatch = new RaceManager();
+    /** how far from the track counts as off it (the road is about 125 wide) */
+    private static final float OFF_TRACK_DISTANCE = 95f;
 
     /**
      * Creates a GameScreen class with parameters, initializes fields, loads sounds
@@ -74,7 +91,7 @@ public class GameScreen implements Screen {
         OrthographicCamera cam = new OrthographicCamera();
         camControl = new CameraController(cam);
         stage = new Stage(new ExtendViewport(675, 360, cam));
-        Gdx.input.setInputProcessor(stage);
+        Gdx.input.setInputProcessor(uiStage);
         uiStage = new Stage(Ui.viewport());
 
         bgm = Gdx.audio.newMusic(Gdx.files.internal("idle.mp3"));
@@ -112,6 +129,11 @@ public class GameScreen implements Screen {
         }
 
         over = new Overlay(rm);
+        over.setOnline(nc.isOnline());
+        pauseSkin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
+        pausePanel = buildPausePanel();
+        uiStage.addActor(pausePanel);
+        over.setPlayerId(nc.getPlayerId());
     }
 
     /**
@@ -120,13 +142,19 @@ public class GameScreen implements Screen {
      * @param delta time between last render
      */
     public void render(float delta) {
+        handleMenuInput();
+        // single player freezes completely while paused; online the race goes on without us
+        boolean frozen = paused && !nc.isOnline();
+        float dt = frozen ? 0f : delta;
+
         Gdx.gl.glClearColor(0f, 0f, 0f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        bg.render(stage.getCamera());
-        nc.update(delta);
+        if (!frozen) {
+            nc.update(delta);
+        }
         String cdtxt = nc.getCountdownText();
-       
+
         if (!start) {
             if (!cdtxt.equals("GO!")) {
                 cd.setText(cdtxt);
@@ -146,48 +174,29 @@ public class GameScreen implements Screen {
                 cd.pack();
                 cd.setPosition(Ui.width() / 2f, Ui.height() / 2f, Align.center);
                 start = true;
-                player.setInputEnabled(true);
                 player.getImage().setPosition(200, 300);
             }
-        } 
+        }
         else {
-            goTime += delta;
+            goTime += dt;
             if (goTime >= 1f) {
                 cd.remove();
             }
         }
 
-
-        if (!done && rm.getLapCount(nc.getPlayerId()) >= RaceManager.LAPS) {
+        if (!done && rm.isFinished(nc.getPlayerId())) {
             done = true;
             end = 0f;
-            player.setInputEnabled(false);
             finish.setVisible(true);
         }
-        /*if (!done && player.getLapCount() >= 1) {
-            done = true;
-            end = 0f;
-            player.setInputEnabled(false);
-            finish.setVisible(true);
-        }*/
 
         if (done) {
-            end += delta;
-
-            ShapeRenderer fadeIn = new ShapeRenderer();
-            Gdx.gl.glEnable(GL20.GL_BLEND);
-            fadeIn.begin(ShapeRenderer.ShapeType.Filled);
-            fadeIn.setColor(0, 0, 0, 0.5f * Math.min(end / 3f, 1f));
-            fadeIn.rect(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
-            fadeIn.end();
-            Gdx.gl.glDisable(GL20.GL_BLEND);
-            fadeIn.dispose();
-
+            end += dt;
             if (end >= 3f) {
                 int pos = 1;
                 String id = nc.getPlayerId();
                 List<RacerInfo> lead = rm.getSortedLeaderboard();
-               
+
                 for (RacerInfo racer : lead) {
                     if (racer.name.equals(id)) {
                         break;
@@ -199,72 +208,174 @@ public class GameScreen implements Screen {
             }
         }
 
-
-        player.render(delta);
+        // controls work while racing and not paused
+        player.setInputEnabled(start && !done && !paused);
+        if (!frozen) {
+            player.render(delta);
+        }
         camControl.update(player.getX() + player.getWidth() / 2f,
-        player.getY() + player.getHeight() / 2f, player.getRotation() + 90f);
+        player.getY() + player.getHeight() / 2f, player.getRotation() + 90f, delta);
 
-        nc.sendPos(player.getX(), player.getY(), player.getRotation());
+        if (!frozen) {
+            nc.sendPos(player.getX(), player.getY(), player.getRotation());
+        }
 
         Map<String, PositionPacket> opp = nc.getOpponents();
         discOpp(opp);
 
         for (Map.Entry<String, PositionPacket> entry : opp.entrySet()) {
             String id = entry.getKey();
-            PositionPacket pos = entry.getValue();
-            
+
             if (id.equals(nc.getPlayerId())){
                 continue;
             }
 
+            if (!nc.getOpponentPose(id, pose)) {
+                continue;
+            }
             OpponentState state = nwOpp.get(id);
-            Vector2 newPos = new Vector2(pos.x, pos.y);
-
             if (state == null) {
                 Image actor = new Image(oppSkins[skinFor(id) - 1]);
                 actor.setSize(player.getWidth(), player.getHeight());
+                actor.setOrigin(actor.getWidth() / 2, actor.getHeight() / 2);
                 stage.addActor(actor);
-                state = new OpponentState(actor, newPos);
+                state = new OpponentState(actor, new Vector2(pose[0], pose[1]));
                 nwOpp.put(id, state);
-            } 
-            else {
-                state.lastPos.set(state.img.getX(), state.img.getY());
-                state.targetPos.set(newPos);
-                state.interp = 0f;
             }
-
-            if (state.interp < 1f) {
-                state.interp = Math.min(1f, state.interp + delta * 5f);
-                Vector2 interpPos = state.lastPos.cpy().lerp(state.targetPos, state.interp);
-                state.img.setPosition(interpPos.x, interpPos.y);
-            } 
-            else {
-                state.img.setPosition(newPos.x, newPos.y);
-            }
-            state.img.setOrigin(state.img.getWidth() / 2, state.img.getHeight() / 2);
-           
-            if (id.substring(0, 3).equals("CPU")){
-                state.img.setRotation(pos.rotation - 90);
-            } 
-            else{
-                state.img.setRotation(pos.rotation);
-            }
+            // single player: exact positions every frame; online: smoothly interpolated
+            state.img.setPosition(pose[0], pose[1]);
+            // CPUs report their driving direction, players report their sprite rotation
+            state.img.setRotation(id.startsWith("CPU") ? pose[2] - 90 : pose[2]);
         }
-
 
         // bump into the other cars (they're drawn 10x20 like the player, so their image is their body)
-        for (OpponentState other : nwOpp.values()) {
-            player.collideWith(other.img.getX(), other.img.getY(), other.img.getRotation() + 90f);
+        if (!frozen) {
+            for (OpponentState other : nwOpp.values()) {
+                player.collideWith(other.img.getX(), other.img.getY(), other.img.getRotation() + 90f);
+            }
         }
 
-        stage.act(delta);
+        // the track frosts over while paused, and after you cross the finish line
+        float frostTarget = paused ? 1f : done ? 0.85f : 0f;
+        frostAmount += MathUtils.clamp(frostTarget - frostAmount, -delta * 4f, delta * 3f);
+        boolean frosted = frostAmount > 0.001f;
+        if (frosted) {
+            frost.begin();
+        }
+        bg.render(stage.getCamera());
+        stage.act(dt);
         stage.draw();
+        if (frosted) {
+            frost.end();
+            frost.draw(frostAmount);
+        }
 
+        // stopwatch: runs from GO; once you finish it shows your official finish time
+        if (start && !done && !frozen) {
+            raceClock += delta;
+        }
+        RacerInfo me = rm.getRacerInfoByName(nc.getPlayerId());
+        over.setRaceTime(me != null && me.isFinished() ? me.finishTime : raceClock);
+        // RETURN TO TRACK: track our own car's place on the course; far from the stretch
+        // we should be on means we're out on the grass or skipped part of the track
+        if (start && !done && !frozen) {
+            trackWatch.updateRacer(nc.getPlayerId(), new Vector2(player.getX(), player.getY()), raceClock);
+        }
+        over.setOffTrack(start && !done && trackWatch.distanceFromTrack(nc.getPlayerId()) > OFF_TRACK_DISTANCE);
+        over.setPaused(paused);
+        over.render(player);
 
+        // countdown / FINISH! / pause panel on top of everything
         uiStage.act(delta);
         uiStage.getViewport().apply();
         uiStage.draw();
-        over.render(player, camControl);
+    }
+
+    /**
+     * Esc pauses / resumes; R restarts and Q quits while paused; the menu panel's rows can be clicked
+     */
+    private void handleMenuInput() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) || Gdx.input.isKeyJustPressed(Input.Keys.P)) {
+            setPaused(!paused);
+        } else if (paused && Gdx.input.isKeyJustPressed(Input.Keys.R)) {
+            restart();
+        } else if (paused && Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
+            quit();
+        } else if (Gdx.input.justTouched()) {
+            int row = over.menuRowAt(Gdx.input.getX(), Gdx.input.getY());
+            if (row == 0) {
+                setPaused(!paused);
+            } else if (row == 1) {
+                restart();
+            } else if (row == 2) {
+                quit();
+            }
+        }
+    }
+
+    private void setPaused(boolean value) {
+        paused = value;
+        pausePanel.setVisible(paused);
+        if (paused) {
+            bgm.pause();
+        } else {
+            bgm.play();
+        }
+    }
+
+    /**
+     * single player: back to a fresh lobby; online: leave the race
+     */
+    private void restart() {
+        if (nc.isOnline()) {
+            quit();
+        } else {
+            game.setScreen(new LobbyScreen(game, car, null));
+        }
+    }
+
+    private void quit() {
+        game.setScreen(new MenuScreen(game, car));
+    }
+
+    /**
+     * the centered pause panel: RESUME / RESTART / MAIN MENU, hidden until paused
+     */
+    private Table buildPausePanel() {
+        Table panel = new Table();
+        panel.setBackground(Ui.panel());
+        panel.pad(24, 44, 30, 44);
+        panel.add(new Label("PAUSED", new LabelStyle(Ui.display(40), Ui.GOLD))).padBottom(6).row();
+        String note = nc.isOnline() ? "The race keeps going online" : "Esc to resume";
+        panel.add(new Label(note, new LabelStyle(Ui.font(12), Ui.CREAM))).padBottom(18).row();
+
+        TextButton resume = new TextButton("Resume", pauseSkin);
+        resume.addListener(new ClickListener() {
+            public void clicked(InputEvent e, float x, float y) {
+                setPaused(false);
+            }
+        });
+        TextButton again = new TextButton(nc.isOnline() ? "Leave Race" : "Restart", pauseSkin);
+        again.addListener(new ClickListener() {
+            public void clicked(InputEvent e, float x, float y) {
+                restart();
+            }
+        });
+        TextButton menu = new TextButton("Main Menu", pauseSkin);
+        menu.addListener(new ClickListener() {
+            public void clicked(InputEvent e, float x, float y) {
+                quit();
+            }
+        });
+        panel.add(resume).width(240).height(56).pad(6).row();
+        panel.add(again).width(240).height(56).pad(6).row();
+        panel.add(menu).width(240).height(56).pad(6).row();
+
+        Table holder = new Table();
+        holder.setFillParent(true);
+        holder.add(panel);
+        holder.setVisible(false);
+        return holder;
     }
 
     /**
@@ -316,6 +427,9 @@ public class GameScreen implements Screen {
      * clears memory
      */
     public void dispose() {
+        frost.dispose();
+        pauseSkin.dispose();
+        over.dispose();
         stage.dispose();
         for (Texture t : oppSkins) {
             t.dispose();

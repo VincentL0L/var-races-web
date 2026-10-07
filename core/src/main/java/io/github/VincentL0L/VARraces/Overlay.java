@@ -18,8 +18,13 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RacerInfo;
 
 /**
- * Contains HUD elements: mana bar, leaderboard, speedometer, player coordinates.
- * Everything is drawn in screen points (see Ui).
+ * The race HUD, laid out like a car's digital driver display in the gilded pixel style.
+ *
+ * Across the top, symmetrical: the standings tower on the left, the instrument cluster in
+ * the middle (speedometer pod hanging below it, boost meter and position on its left, lap
+ * and stopwatch on its right), and a matching menu panel on the right (pause, restart, quit).
+ * Every readout sits in a recessed "screen" with a gold bezel, like the speedometer's own
+ * readout window. Drawn in screen points (see Ui), scaled down evenly on narrow windows.
  */
 public class Overlay {
     private static final float MAX_SPEED_MPH = 240f;
@@ -35,22 +40,56 @@ public class Overlay {
     private static final float START_ANGLE = 210f;
     private static final float SWEEP = 240f;
 
-    private static final Color GOLD = new Color(0.98f, 0.76f, 0.26f, 1f);
+    // cluster layout, in points
+    private static final float CLUSTER_WIDTH = 640f;
+    private static final float CLUSTER_HEIGHT = 124f;
+    private static final float MARGIN = 12f;
+    /** the top row (standings + cluster + menu) needs about this much width before it shrinks */
+    private static final float FULL_WIDTH = 1240f;
+    private static final float BEZEL = 6 * Ui.PIXEL;      // the gold frame of a panel
+    private static final float SCREEN_HEIGHT = 38f;
+    private static final int BOOST_SEGMENTS = 12;
+    private static final float ROW_HEIGHT = 26f;
+    private static final float TAB_SIZE = 26f;
+    private static final float TITLE_HEIGHT = 30f;
+
     private static final Color NEEDLE = new Color(0.94f, 0.32f, 0.16f, 1f);
     private static final Color DARK = new Color(0.13f, 0.07f, 0.04f, 1f);
+    private static final Color LABEL = new Color(0.85f, 0.65f, 0.3f, 1f);
+    private static final Color TAB = new Color(0.8f, 0.55f, 0.15f, 1f);
+    private static final Color SEGMENT_OFF = new Color(0.12f, 0.16f, 0.22f, 1f);
+    private static final Color SEGMENT_ON = new Color(0.25f, 0.68f, 1f, 1f);
+    private static final Color SEGMENT_ON_TOP = new Color(0.62f, 0.9f, 1f, 1f);
+    private static final Color WARNING = new Color(1f, 0.36f, 0.22f, 1f);
+    private static final Color HIGHLIGHT = new Color(1f, 0.8f, 0.28f, 0.22f);
 
     private SpriteBatch batch;
     private BitmapFont font;
+    private BitmapFont valueFont;
+    private BitmapFont tabFont;
     private BitmapFont speedFont;
     private BitmapFont titleFont;
+    private BitmapFont labelFont;
+    private BitmapFont warningFont;
     private NinePatch panel;
-    private NinePatch frame;
-    private BitmapFont unitFont;
+    private NinePatch screen;
     private GlyphLayout layout = new GlyphLayout();
     private ShapeRenderer render;
     private Texture gauge;
     private RaceManager raceManager;
+    private String playerId = "";
+    private float raceTime = 0f;
     private float shownSpeed = 0f;
+    private boolean offTrack = false;
+    private boolean paused = false;
+    private boolean online = false;
+    private float clock = 0f;
+    // HUD space: screen points divided by the HUD scale
+    private float hudScale = 1f;
+    private float vw = 1f;
+    private float vh = 1f;
+    // clickable menu rows: x, y, width, height for each (pause, restart, quit)
+    private final float[][] menuRows = new float[3][4];
 
     /**
      * creates a new overlay
@@ -59,12 +98,14 @@ public class Overlay {
         raceManager = rm;
         batch = new SpriteBatch();
         font = Ui.font(12);
-        font.setColor(Color.WHITE);
+        valueFont = Ui.display(20);
+        tabFont = Ui.display(16);
         speedFont = Ui.display(19);
         titleFont = Ui.display(16);
+        labelFont = Ui.font(9);
+        warningFont = Ui.displayOutlined(26);
         panel = Ui.patch("panel", 6, 6, 6, 6);
-        frame = Ui.frame();
-        unitFont = Ui.font(9);
+        screen = Ui.patch("field", 3, 3, 3, 3);
         render = new ShapeRenderer();
         gauge = new Texture(Gdx.files.internal("ui/speedometer.png"));
         gauge.setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
@@ -82,110 +123,297 @@ public class Overlay {
     }
 
     /**
-     * renders leaderboard, player coordinates, speedometer, and mana bar in order
-     * @param player player being rendered
-     * @param camera camera needed to find coordinates of player
+     * draws the whole HUD
+     * @param player the local player's car
      */
-    public void render(Player player, CameraController camera) {
-        if (raceManager != null) {
-            List<RacerInfo> leaderboard = raceManager.getSortedLeaderboard();
+    public void render(Player player) {
+        clock += Gdx.graphics.getDeltaTime();
+        hudScale = Math.min(1f, Ui.width() / FULL_WIDTH);
+        vw = Ui.width() / hudScale;
+        vh = Ui.height() / hudScale;
+        batch.getProjectionMatrix().setToOrtho2D(0, 0, vw, vh);
+        render.getProjectionMatrix().setToOrtho2D(0, 0, vw, vh);
 
-            // fit the gilded panel to the widest line
-            float pad = 20;
-            float lineHeight = 20;
-            layout.setText(titleFont, "LEADERBOARD");
-            float boxWidth = layout.width;
-            for (int i = 0; i < leaderboard.size(); i++) {
-                layout.setText(font, leaderboardLine(i, leaderboard.get(i)));
-                boxWidth = Math.max(boxWidth, layout.width);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        List<RacerInfo> standings = raceManager.getSortedLeaderboard();
+        // both side panels share one size so the top row is symmetrical
+        int rows = Math.max(standings.size(), 3);
+        float sideWidth = sidePanelWidth(standings);
+        float sideHeight = BEZEL * 2 + TITLE_HEIGHT + ROW_HEIGHT * rows;
+        renderStandings(standings, sideWidth, sideHeight);
+        renderMenu(sideWidth, sideHeight);
+        renderCluster(player, standings);
+        if (offTrack && !paused) {
+            renderWarning("RETURN TO TRACK");
+        }
+    }
+
+    // ---------------------------------------------------------------- standings tower
+
+    /**
+     * top left: one row per racer with a gold position tab, name and lap or finish time;
+     * your own row is highlighted
+     */
+    private void renderStandings(List<RacerInfo> standings, float width, float height) {
+        float rowHeight = ROW_HEIGHT;
+        float tab = TAB_SIZE;
+        float titleHeight = TITLE_HEIGHT;
+        float x = MARGIN;
+        float y = vh - height - MARGIN;
+
+        batch.begin();
+        panel.draw(batch, x, y, width, height);
+        titleFont.setColor(Ui.GOLD);
+        layout.setText(titleFont, "STANDINGS");
+        titleFont.draw(batch, "STANDINGS", x + BEZEL, y + height - BEZEL - (titleHeight - layout.height) / 2f + 2f);
+        batch.end();
+
+        float rowsTop = y + height - BEZEL - titleHeight;
+        for (int i = 0; i < standings.size(); i++) {
+            RacerInfo r = standings.get(i);
+            float rowY = rowsTop - rowHeight * (i + 1);
+            float middle = rowY + rowHeight / 2f;
+            boolean me = r.name.equals(playerId);
+
+            // the sprite batch switches blending off when it ends; the highlight needs it on
+            Gdx.gl.glEnable(GL20.GL_BLEND);
+            Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+            render.begin(ShapeRenderer.ShapeType.Filled);
+            if (me) {
+                render.setColor(HIGHLIGHT);
+                render.rect(x + BEZEL - 3, rowY + 2, width - BEZEL * 2 + 6, rowHeight - 4);
             }
-            boxWidth += pad * 2;
-            float boxHeight = pad * 2 + 26 + lineHeight * leaderboard.size();
-            float boxX = 10;
-            float boxY = 10;
+            // gold position tab, the leader's is brightest
+            render.setColor(i == 0 ? Ui.GOLD : TAB);
+            render.rect(x + BEZEL, rowY + 4, tab, rowHeight - 8);
+            render.end();
 
             batch.begin();
-            panel.draw(batch, boxX, boxY, boxWidth, boxHeight);
-            titleFont.setColor(Ui.GOLD);
-            titleFont.draw(batch, "LEADERBOARD", boxX + pad, boxY + boxHeight - pad + 2);
-            for (int i = 0; i < leaderboard.size(); i++) {
-                RacerInfo r = leaderboard.get(i);
-                font.setColor(i == 0 ? Ui.GOLD : Ui.CREAM);
-                font.draw(batch, leaderboardLine(i, r), boxX + pad, boxY + boxHeight - pad - 26 - lineHeight * i);
-            }
+            String pos = String.valueOf(i + 1);
+            tabFont.setColor(Ui.TEXT_DARK);
+            layout.setText(tabFont, pos);
+            tabFont.draw(batch, pos, x + BEZEL + (tab - layout.width) / 2f, middle + layout.height / 2f);
+
+            String name = displayName(r);
+            font.setColor(me ? Ui.GOLD : Ui.CREAM);
+            layout.setText(font, name);
+            font.draw(batch, name, x + BEZEL + tab + 10, middle + layout.height / 2f);
+
+            String status = r.isFinished() ? formatTime(r.finishTime)
+                : "LAP " + currentLap(r) + "/" + RaceManager.LAPS;
+            font.setColor(r.isFinished() ? Ui.GOLD : LABEL);
+            layout.setText(font, status);
+            font.draw(batch, status, x + width - BEZEL - layout.width, middle + layout.height / 2f);
             batch.end();
         }
+    }
 
+    /**
+     * width that fits the longest standings row (and the menu rows, which use the same size)
+     */
+    private float sidePanelWidth(List<RacerInfo> standings) {
+        float nameWidth = textWidth(font, "RESTART");
+        for (RacerInfo r : standings) {
+            nameWidth = Math.max(nameWidth, textWidth(font, displayName(r)));
+        }
+        return BEZEL * 2 + TAB_SIZE + 10 + nameWidth + 18 + textWidth(font, "0:00.00");
+    }
+
+    // ---------------------------------------------------------------- menu panel
+
+    /**
+     * top right, mirroring the standings: PAUSE / RESTART / QUIT rows with key tabs
+     */
+    private void renderMenu(float width, float height) {
+        float x = vw - width - MARGIN;
+        float y = vh - height - MARGIN;
         batch.begin();
-        font.setColor(Ui.CREAM);
-        String playerText = "Player: (" + (int)player.getX() + ", " + (int)player.getY() + ")";
-        String cameraText = "Camera: (" + (int)camera.getX() + ", " + (int)camera.getY() + ")";
-        layout.setText(font, playerText);
-        font.draw(batch, playerText, Ui.width() - layout.width - 16, Ui.height() - 14);
-        layout.setText(font, cameraText);
-        font.draw(batch, cameraText, Ui.width() - layout.width - 16, Ui.height() - 34);
-        batch.end();
-
-        renderSpeedometer(player.getVelocity().len() * 0.4f);
-
-        // narrower on small windows so it doesn't run under the speedometer
-        // boost (mana) bar: vertical gold frame in the bottom right, glowing blue fill rising from the bottom
-        float barWidth = 36;
-        float barHeight = Math.min(240, Ui.height() * 0.4f);
-        float barX = Ui.width() - barWidth - 24;
-        float barY = 24;
-        float inset = 4 * Ui.PIXEL;
-        float fill = (barHeight - inset * 2) * MathUtils.clamp(player.getMana() / 100f, 0f, 1f);
-        batch.begin();
-        frame.draw(batch, barX, barY, barWidth, barHeight);
+        panel.draw(batch, x, y, width, height);
         titleFont.setColor(Ui.GOLD);
-        layout.setText(titleFont, "BOOST");
-        titleFont.draw(batch, "BOOST", barX + barWidth - layout.width, barY + barHeight + 24);
+        layout.setText(titleFont, "MENU");
+        // title right-aligned, mirroring STANDINGS on the left
+        titleFont.draw(batch, "MENU", x + width - BEZEL - layout.width,
+            y + height - BEZEL - (TITLE_HEIGHT - layout.height) / 2f + 2f);
         batch.end();
+
+        String[] labels = {paused ? "RESUME" : "PAUSE", online ? "LEAVE" : "RESTART", "QUIT"};
+        String[] keys = {"ESC", "R", "Q"};
+        float rowsTop = y + height - BEZEL - TITLE_HEIGHT;
+        float keyWidth = TAB_SIZE * 1.8f;
+        for (int i = 0; i < labels.length; i++) {
+            float rowY = rowsTop - ROW_HEIGHT * (i + 1);
+            float middle = rowY + ROW_HEIGHT / 2f;
+            menuRows[i][0] = x + BEZEL;
+            menuRows[i][1] = rowY;
+            menuRows[i][2] = width - BEZEL * 2;
+            menuRows[i][3] = ROW_HEIGHT;
+
+            // key tab on the right edge (the standings put their tab on the left)
+            Gdx.gl.glEnable(GL20.GL_BLEND);
+            Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+            render.begin(ShapeRenderer.ShapeType.Filled);
+            if (i == 0 && paused) {
+                render.setColor(HIGHLIGHT);
+                render.rect(x + BEZEL - 3, rowY + 2, width - BEZEL * 2 + 6, ROW_HEIGHT - 4);
+            }
+            render.setColor(TAB);
+            render.rect(x + width - BEZEL - keyWidth, rowY + 4, keyWidth, ROW_HEIGHT - 8);
+            render.end();
+
+            batch.begin();
+            labelFont.setColor(Ui.TEXT_DARK);
+            layout.setText(labelFont, keys[i]);
+            labelFont.draw(batch, keys[i], x + width - BEZEL - keyWidth + (keyWidth - layout.width) / 2f,
+                middle + layout.height / 2f);
+            font.setColor(i == 0 && paused ? Ui.GOLD : Ui.CREAM);
+            layout.setText(font, labels[i]);
+            font.draw(batch, labels[i], x + BEZEL + 4, middle + layout.height / 2f);
+            batch.end();
+        }
+    }
+
+    /**
+     * @param screenX touch x from Gdx.input   @param screenY touch y from Gdx.input (top = 0)
+     * @return which menu row was hit: 0 pause, 1 restart/leave, 2 quit, or -1
+     */
+    public int menuRowAt(int screenX, int screenY) {
+        float x = screenX / (float) Gdx.graphics.getWidth() * vw;
+        float y = (1f - screenY / (float) Gdx.graphics.getHeight()) * vh;
+        for (int i = 0; i < menuRows.length; i++) {
+            float[] r = menuRows[i];
+            if (x >= r[0] && x <= r[0] + r[2] && y >= r[1] && y <= r[1] + r[3]) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private String displayName(RacerInfo r) {
+        return r.name.equals(playerId) ? r.name + " (YOU)" : r.name;
+    }
+
+    private static int currentLap(RacerInfo r) {
+        return Math.max(1, Math.min(RaceManager.LAPS, r.lapCount + 1));
+    }
+
+    // ---------------------------------------------------------------- instrument cluster
+
+    /**
+     * top middle: one gilded housing with the speedometer pod hanging out of the middle,
+     * boost + position screens on the left, lap + stopwatch screens on the right
+     */
+    private void renderCluster(Player player, List<RacerInfo> standings) {
+        float gaugeSize = gauge.getWidth() * GAUGE_SCALE;
+        float cx = vw / 2f;
+        float x = cx - CLUSTER_WIDTH / 2f;
+        float y = vh - MARGIN - CLUSTER_HEIGHT;
+
+        batch.begin();
+        panel.draw(batch, x, y, CLUSTER_WIDTH, CLUSTER_HEIGHT);
+        batch.end();
+
+        // the side modules fill the space between the bezel and the gauge pod
+        float moduleWidth = (CLUSTER_WIDTH - gaugeSize) / 2f - BEZEL - 14f;
+        float leftX = x + BEZEL;
+        float rightX = cx + gaugeSize / 2f + 14f;
+        float topRowY = y + CLUSTER_HEIGHT - BEZEL - SCREEN_HEIGHT;
+        float bottomRowY = y + BEZEL;
+
+        // left: boost meter (top) and race position (bottom)
+        renderBoost(leftX, topRowY, moduleWidth, player.getMana() / 100f);
+        int position = 0;
+        for (int i = 0; i < standings.size(); i++) {
+            if (standings.get(i).name.equals(playerId)) {
+                position = i + 1;
+            }
+        }
+        String pos = position > 0 ? "P" + position + "/" + standings.size() : "--";
+        renderScreen(leftX, bottomRowY, moduleWidth, "POS", pos, Ui.CREAM);
+
+        // right: lap (top) and stopwatch (bottom)
+        RacerInfo me = raceManager.getRacerInfoByName(playerId);
+        boolean finished = me != null && me.isFinished();
+        String lap = finished ? "DONE" : (me != null ? currentLap(me) : 1) + "/" + RaceManager.LAPS;
+        renderScreen(rightX, topRowY, moduleWidth, "LAP", lap, Ui.CREAM);
+        renderScreen(rightX, bottomRowY, moduleWidth, "TIME", formatTime(raceTime), finished ? Ui.GOLD : Ui.CREAM);
+
+        // center pod: the speedometer sits high so it hangs below the housing
+        renderSpeedometer(cx - gaugeSize / 2f, y + CLUSTER_HEIGHT + 6f - gaugeSize, player.getVelocity().len() * 0.4f);
+    }
+
+    /**
+     * a recessed display: small gold label on the left, value on the right
+     */
+    private void renderScreen(float x, float y, float width, String label, String value, Color valueColor) {
+        batch.begin();
+        screen.draw(batch, x, y, width, SCREEN_HEIGHT);
+        labelFont.setColor(LABEL);
+        layout.setText(labelFont, label);
+        labelFont.draw(batch, label, x + 12, y + SCREEN_HEIGHT / 2f + layout.height / 2f);
+        valueFont.setColor(valueColor);
+        layout.setText(valueFont, value);
+        valueFont.draw(batch, value, x + width - 12 - layout.width, y + SCREEN_HEIGHT / 2f + layout.height / 2f);
+        batch.end();
+    }
+
+    /**
+     * a recessed display with a segmented, LED-style boost meter
+     */
+    private void renderBoost(float x, float y, float width, float amount) {
+        batch.begin();
+        screen.draw(batch, x, y, width, SCREEN_HEIGHT);
+        labelFont.setColor(LABEL);
+        layout.setText(labelFont, "BOOST");
+        float labelWidth = layout.width;
+        labelFont.draw(batch, "BOOST", x + 12, y + SCREEN_HEIGHT / 2f + layout.height / 2f);
+        batch.end();
+
+        float meterX = x + 12 + labelWidth + 10;
+        float meterWidth = width - (meterX - x) - 12;
+        float gap = 3f;
+        float segment = (meterWidth - gap * (BOOST_SEGMENTS - 1)) / BOOST_SEGMENTS;
+        float segmentHeight = SCREEN_HEIGHT - 20f;
+        float segmentY = y + 10f;
+        int lit = Math.round(MathUtils.clamp(amount, 0f, 1f) * BOOST_SEGMENTS);
         render.begin(ShapeRenderer.ShapeType.Filled);
-        render.setColor(0.2f, 0.62f, 0.95f, 1f);
-        render.rect(barX + inset, barY + inset, barWidth - inset * 2, fill);
-        render.setColor(0.6f, 0.9f, 1f, 1f);
-        render.rect(barX + inset, barY + inset, Ui.PIXEL, fill);
+        for (int i = 0; i < BOOST_SEGMENTS; i++) {
+            float sx = meterX + i * (segment + gap);
+            boolean on = i < lit;
+            render.setColor(on ? SEGMENT_ON : SEGMENT_OFF);
+            render.rect(sx, segmentY, segment, segmentHeight);
+            if (on) {
+                // lighter top edge on each lit segment, like a backlit LED
+                render.setColor(SEGMENT_ON_TOP);
+                render.rect(sx, segmentY + segmentHeight - Ui.PIXEL, segment, Ui.PIXEL);
+            }
+        }
         render.end();
     }
 
     /**
-     * @return one leaderboard row, ex "1. CPU2   Lap 1/1" or "1. CPU2   Finished"
+     * the round gauge: pixel-art dial, moving needle and digital readout
+     * @param x left edge   @param y bottom edge   @param speedMph current speed
      */
-    private String leaderboardLine(int index, RacerInfo r) {
-        if (r.lapCount >= RaceManager.LAPS) {
-            return String.format("%d. %s   Finished", index + 1, r.name);
-        }
-        return String.format("%d. %s   Lap %d/%d", index + 1, r.name, r.lapCount + 1, RaceManager.LAPS);
-    }
-
-    /**
-     * draws the gauge at the top middle of the screen: pixel-art dial, moving needle and digital readout
-     * @param speedMph current speed
-     */
-    private void renderSpeedometer(float speedMph) {
+    private void renderSpeedometer(float x, float y, float speedMph) {
         // ease the needle toward the real speed so it sweeps like a physical gauge
         shownSpeed += (speedMph - shownSpeed) * Math.min(1f, Gdx.graphics.getDeltaTime() * 10f);
 
         float w = gauge.getWidth() * GAUGE_SCALE;
         float h = gauge.getHeight() * GAUGE_SCALE;
-        float x = (Ui.width() - w) / 2f;
-        float y = Ui.height() - h - 20;
         float pivotX = x + GAUGE_CENTER * GAUGE_SCALE;
         float pivotY = y + h - GAUGE_CENTER * GAUGE_SCALE;
 
         batch.begin();
         batch.draw(gauge, x, y, w, h);
         String speedText = String.valueOf(Math.round(speedMph));
-        speedFont.setColor(GOLD);
+        speedFont.setColor(Ui.GOLD);
         layout.setText(speedFont, speedText);
         float readoutY = y + h - READOUT_Y * GAUGE_SCALE;
         speedFont.draw(batch, speedText, pivotX - layout.width / 2f, readoutY + speedFont.getCapHeight() / 2f);
-        unitFont.setColor(new Color(0.85f, 0.65f, 0.3f, 1f));
-        layout.setText(unitFont, "MPH");
+        labelFont.setColor(LABEL);
+        layout.setText(labelFont, "MPH");
         float unitY = y + h - UNIT_Y * GAUGE_SCALE;
-        unitFont.draw(batch, "MPH", pivotX - layout.width / 2f, unitY + unitFont.getCapHeight() / 2f);
+        labelFont.draw(batch, "MPH", pivotX - layout.width / 2f, unitY + labelFont.getCapHeight() / 2f);
         batch.end();
 
         // tapered red needle with a dark outline, then the hub on top
@@ -199,7 +427,7 @@ public class Overlay {
         drawNeedle(pivotX, pivotY, dirX, dirY, length, 4f, NEEDLE);
         render.setColor(DARK);
         render.circle(pivotX, pivotY, 10f, 24);
-        render.setColor(GOLD);
+        render.setColor(Ui.GOLD);
         render.circle(pivotX, pivotY, 7.5f, 24);
         render.setColor(DARK);
         render.circle(pivotX, pivotY, 3f, 16);
@@ -218,14 +446,84 @@ public class Overlay {
     }
 
     /**
+     * a flashing warning above the cluster
+     */
+    private void renderWarning(String text) {
+        if ((int) (clock * 3f) % 2 == 1) {
+            return;
+        }
+        batch.begin();
+        warningFont.setColor(WARNING);
+        layout.setText(warningFont, text);
+        // just below the speedometer pod
+        warningFont.draw(batch, text, (vw - layout.width) / 2f, vh - MARGIN - CLUSTER_HEIGHT - 110f);
+        batch.end();
+    }
+
+    private float textWidth(BitmapFont f, String text) {
+        layout.setText(f, text);
+        return layout.width;
+    }
+
+    // ---------------------------------------------------------------- settings from GameScreen
+
+    /**
+     * @param seconds time to show on the stopwatch
+     */
+    public void setRaceTime(float seconds) {
+        raceTime = seconds;
+    }
+
+    /**
+     * @param id this player's racer name, highlighted in the standings
+     */
+    public void setPlayerId(String id) {
+        playerId = id;
+    }
+
+    /**
+     * @param value true while the game is paused (the menu shows RESUME)
+     */
+    public void setPaused(boolean value) {
+        paused = value;
+    }
+
+    /**
+     * @param value true in online races (RESTART becomes LEAVE)
+     */
+    public void setOnline(boolean value) {
+        online = value;
+    }
+
+    /**
+     * @param value true to flash RETURN TO TRACK
+     */
+    public void setOffTrack(boolean value) {
+        offTrack = value;
+    }
+
+    /**
+     * @param seconds race time
+     * @return time like 0:29.41
+     */
+    public static String formatTime(float seconds) {
+        int minutes = (int) (seconds / 60f);
+        float rest = seconds - minutes * 60;
+        return String.format("%d:%05.2f", minutes, rest);
+    }
+
+    /**
      * removes memory
      */
     public void dispose () {
         batch.dispose();
         font.dispose();
+        valueFont.dispose();
+        tabFont.dispose();
         speedFont.dispose();
         titleFont.dispose();
-        unitFont.dispose();
+        labelFont.dispose();
+        warningFont.dispose();
         render.dispose();
         gauge.dispose();
     }

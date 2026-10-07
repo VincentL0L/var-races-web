@@ -12,11 +12,11 @@ import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Image;
 
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarBody;
-import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
 
 /**
  * Player is in charge of the car physics: engine, brakes, steering that depends on speed,
- * tire grip (a little drift when boosting) and sliding along walls
+ * tire grip (a little drift when boosting), slow grass off the road, and sliding along
+ * the walls at the edge of the map
  */
 public class Player {
     private static Pixmap roadMask;
@@ -52,14 +52,22 @@ public class Player {
     /** how strongly the tires stop sideways sliding (higher = grippier) */
     private static final float GRIP = 9f;
     private static final float BOOST_GRIP = 5.5f;
+    /** top speed on grass, about 46 mph */
+    private static final float GRASS_TOP_SPEED = 115f;
+    /** how hard the grass slows a fast car down to that speed */
+    private static final float GRASS_DRAG = 520f;
+    /** tires slide more on grass */
+    private static final float GRASS_GRIP = 4f;
+    /** cars can't drive closer than this to the edge of the map */
+    private static final float MAP_MARGIN = 8f;
     /** fraction of speed kept when hitting a wall hard */
     private static final float WALL_SCRAPE = 0.6f;
     /** extra slow-down per second while grinding along a wall */
     private static final float SCRAPE_FRICTION = 2.5f;
     /** how bouncy car-to-car hits are (0 = dead stop, 1 = full bounce) */
     private static final float CAR_BOUNCE = 0.3f;
-    /** physics runs in fixed steps so the car drives the same at any frame rate */
-    private static final float STEP = 1f / 120f;
+    /** longest physics step; each frame is split into equal steps no longer than this */
+    private static final float MAX_STEP = 1f / 120f;
 
     private final float manaRegenRate = 10f;
     private final float boostCost = 20f;
@@ -67,8 +75,8 @@ public class Player {
     private float mana = 100f;
     private boolean isBoosting = false;
     private float steer = 0f;
-    private float stepTimer = 0f;
     private float bumpCooldown = 0f;
+    private boolean onGrass = false;
     private final Vector2 push = new Vector2();
 
     private int lapCount = 0;
@@ -128,19 +136,13 @@ public class Player {
         }
 
         bumpCooldown -= delta;
-        stepTimer += Math.min(delta, 0.1f);
-        while (stepTimer >= STEP) {
-            stepTimer -= STEP;
-            step(STEP, gas, brake, left, right, boost);
-        }
-
-        Vector2 currentPos = new Vector2(getX(), getY());
-        RaceManager raceManager = new RaceManager();
-
-        if (raceManager.crossedFinishLineBackwards(prevPos, currentPos)) {
-            velocity.y = -velocity.y * 0.5f;
-            i.setY(301);
-            bump();
+        // split the frame into equal small steps (at most 1/120 s each): the car moves the
+        // same distance every frame, so it looks smooth, and handles the same at any frame rate
+        float time = Math.min(delta, 0.1f);
+        int steps = Math.max(1, (int) Math.ceil(time / MAX_STEP - 1e-4f));
+        float dt = time / steps;
+        for (int n = 0; n < steps; n++) {
+            step(dt, gas, brake, left, right, boost);
         }
 
         prevPos.set(getX(), getY());
@@ -185,8 +187,16 @@ public class Player {
         forward = approachZero(forward, ROLLING_DRAG * dt);
         forward -= Math.signum(forward) * AIR_DRAG * forward * forward * dt;
 
-        // tires resist sliding sideways; less grip while boosting so the car drifts a bit
-        sideways *= (float) Math.exp(-(isBoosting ? BOOST_GRIP : GRIP) * dt);
+        // grass (like Mario Kart): way slower. Anything over the grass top speed is scrubbed
+        // off quickly, so cutting across the grass doesn't pay
+        onGrass = !onRoad(i.getX(), i.getY(), i.getWidth(), i.getHeight());
+        if (onGrass && Math.abs(forward) > GRASS_TOP_SPEED) {
+            forward = Math.signum(forward) * Math.max(GRASS_TOP_SPEED, Math.abs(forward) - GRASS_DRAG * dt);
+        }
+
+        // tires resist sliding sideways; less grip while boosting (a little drift) and on grass
+        float grip = onGrass ? GRASS_GRIP : isBoosting ? BOOST_GRIP : GRIP;
+        sideways *= (float) Math.exp(-grip * dt);
 
         velocity.set(fx * forward - fy * sideways, fy * forward + fx * sideways);
 
@@ -215,18 +225,18 @@ public class Player {
         float nx = x + velocity.x * dt;
         float ny = y + velocity.y * dt;
 
-        if (onRoad(nx, ny, w, h)) {
+        if (inBounds(nx, ny, w, h)) {
             i.setPosition(nx, ny);
             return;
         }
         float impact;
-        if (onRoad(nx, y, w, h)) {
+        if (inBounds(nx, y, w, h)) {
             // wall is above or below: keep sliding sideways along it
             impact = Math.abs(velocity.y);
             velocity.y = 0f;
             velocity.x *= (float) Math.exp(-SCRAPE_FRICTION * dt);
             i.setPosition(nx, y);
-        } else if (onRoad(x, ny, w, h)) {
+        } else if (inBounds(x, ny, w, h)) {
             impact = Math.abs(velocity.x);
             velocity.x = 0f;
             velocity.y *= (float) Math.exp(-SCRAPE_FRICTION * dt);
@@ -254,9 +264,9 @@ public class Player {
         }
         float nx = getX() + push.x;
         float ny = getY() + push.y;
-        if (onRoad(nx, ny, getWidth(), getHeight())) {
+        if (inBounds(nx, ny, getWidth(), getHeight())) {
             i.setPosition(nx, ny);
-        } else if (onRoad(getX() + push.x / 2f, getY() + push.y / 2f, getWidth(), getHeight())) {
+        } else if (inBounds(getX() + push.x / 2f, getY() + push.y / 2f, getWidth(), getHeight())) {
             i.setPosition(getX() + push.x / 2f, getY() + push.y / 2f);
         }
         float len = push.len();
@@ -297,6 +307,23 @@ public class Player {
      * @param height height of car
      * @return true if car is on the road; false if not
      */
+    /**
+     * The edge of the map is a wall; everywhere inside it (road or grass) can be driven on.
+     * @return true if a car at (x, y) is inside the map
+     */
+    public static boolean inBounds(float x, float y, float width, float height) {
+        float cx = x + width / 2, cy = y + height / 2;
+        return cx >= MAP_MARGIN && cy >= MAP_MARGIN
+            && cx < roadMask.getWidth() - MAP_MARGIN && cy < roadMask.getHeight() - MAP_MARGIN;
+    }
+
+    /**
+     * @return true while the car is off the road, on the grass
+     */
+    public boolean isOnGrass() {
+        return onGrass;
+    }
+
     public static boolean onRoad(float x, float y, float width, float height) {
         int X = (int)(x + width / 2);
         int Y = roadMask.getHeight() - (int)(y + height/2);
