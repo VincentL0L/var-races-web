@@ -15,7 +15,6 @@ import com.badlogic.gdx.math.Vector2;
  * so races play out differently each time.
  */
 public class Opponent {
-    private static final int LAPS_TO_WIN = 3;
     private static final float STEP = 1f / 60f;
     /** how far off the middle of the road a CPU may drive (the road is about 125 wide) */
     private static final float MAX_LINE_OFFSET = 28f;
@@ -115,7 +114,7 @@ public class Opponent {
             if (currentWaypointIndex == waypoints.size()) {
                 currentWaypointIndex = 0;
                 lapCount++;
-                if (lapCount >= LAPS_TO_WIN) {
+                if (lapCount >= RaceManager.LAPS) {
                     shouldStopAtNextWaypoint = true;
                 }
             }

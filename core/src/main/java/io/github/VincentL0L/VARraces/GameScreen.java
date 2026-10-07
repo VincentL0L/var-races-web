@@ -155,7 +155,7 @@ public class GameScreen implements Screen {
         }
 
 
-        if (!done && rm.getLapCount(nc.getPlayerId()) >= 1) {
+        if (!done && rm.getLapCount(nc.getPlayerId()) >= RaceManager.LAPS) {
             done = true;
             end = 0f;
             player.setInputEnabled(false);

@@ -151,10 +151,13 @@ public class Overlay {
     }
 
     /**
-     * @return one leaderboard row, ex "1. CPU2  Lap 0/3"
+     * @return one leaderboard row, ex "1. CPU2   Lap 1/1" or "1. CPU2   Finished"
      */
     private String leaderboardLine(int index, RacerInfo r) {
-        return String.format("%d. %s   Lap %d/3", index + 1, r.name, r.lapCount);
+        if (r.lapCount >= RaceManager.LAPS) {
+            return String.format("%d. %s   Finished", index + 1, r.name);
+        }
+        return String.format("%d. %s   Lap %d/%d", index + 1, r.name, r.lapCount + 1, RaceManager.LAPS);
     }
 
     /**

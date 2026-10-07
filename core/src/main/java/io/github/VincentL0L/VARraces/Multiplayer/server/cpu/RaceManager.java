@@ -12,6 +12,9 @@ import io.github.VincentL0L.VARraces.Multiplayer.packets.Entry;
 
 public class RaceManager {
 
+    /** laps in a race; change this one number to make races longer */
+    public static final int LAPS = 1;
+
     
 
     public final List<RacerInfo> racers = new ArrayList<>();

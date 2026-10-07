@@ -16,6 +16,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.ScrollPane;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RacerInfo;
 /**
  * displays leaderboard at the end of the race
@@ -73,7 +74,7 @@ public class EndScreen implements Screen {
             Label posLabel = new Label(String.valueOf(position), entryStyle);
             Label nameLabel = new Label(racer.name, entryStyle);
             
-            if (racer.lapCount < 3) {
+            if (racer.lapCount < RaceManager.LAPS) {
                 rowColor = position == finalPosition ? 
                           new Color(1f, 1f, 0f, 0.5f) :
                           new Color(1f, 1f, 1f, 0.5f);   
