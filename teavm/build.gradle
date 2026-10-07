@@ -1,0 +1,23 @@
+plugins {
+  id 'java'
+}
+
+sourceSets.main.resources.srcDirs += [ rootProject.file('assets').path ]
+java.sourceCompatibility = 11
+java.targetCompatibility = 11
+eclipse.project.name = appName + '-teavm'
+
+dependencies {
+  implementation "com.github.xpenatan.gdx-teavm:backend-teavm:$gdxTeaVMVersion"
+  implementation project(':core')
+}
+
+// Compiles the game to JavaScript in teavm/build/dist/webapp
+tasks.register('buildJavaScript', JavaExec) {
+  dependsOn classes
+  description = 'Transpile bytecode to JavaScript via TeaVM'
+  mainClass.set('io.github.VincentL0L.VARraces.teavm.TeaVMBuilder')
+  classpath = sourceSets.main.runtimeClasspath
+  workingDir = projectDir
+}
+build.dependsOn buildJavaScript

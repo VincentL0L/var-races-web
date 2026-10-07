@@ -1,0 +1,26 @@
+plugins {
+  id 'application'
+}
+
+java.sourceCompatibility = 11
+java.targetCompatibility = 11
+eclipse.project.name = appName + '-server'
+application.mainClass.set('io.github.VincentL0L.VARraces.server.RaceServer')
+
+dependencies {
+  implementation project(':core')
+  implementation "org.java-websocket:Java-WebSocket:$javaWebSocketVersion"
+  implementation "org.slf4j:slf4j-simple:1.7.36"
+}
+
+// one runnable jar with everything inside: server/build/libs/var-races-server.jar
+jar {
+  archiveFileName.set('var-races-server.jar')
+  duplicatesStrategy(DuplicatesStrategy.EXCLUDE)
+  dependsOn configurations.runtimeClasspath
+  from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
+  exclude('META-INF/INDEX.LIST', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA')
+  manifest {
+    attributes 'Main-Class': application.mainClass.get()
+  }
+}

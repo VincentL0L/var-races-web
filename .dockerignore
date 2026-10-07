@@ -1,0 +1,5 @@
+**/build
+**/bin
+.gradle
+.git
+teavm/build

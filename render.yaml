@@ -1,0 +1,7 @@
+# Render blueprint for the multiplayer server: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: var-races-server
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
