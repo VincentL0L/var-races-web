@@ -155,7 +155,7 @@ public class Overlay {
     }
 
     /**
-     * draws the gauge in the top left corner: pixel-art dial, moving needle and digital readout
+     * draws the gauge at the top middle of the screen: pixel-art dial, moving needle and digital readout
      * @param speedMph current speed
      */
     private void renderSpeedometer(float speedMph) {
@@ -164,7 +164,7 @@ public class Overlay {
 
         float w = gauge.getWidth() * GAUGE_SCALE;
         float h = gauge.getHeight() * GAUGE_SCALE;
-        float x = 20;
+        float x = (Ui.width() - w) / 2f;
         float y = Ui.height() - h - 20;
         float pivotX = x + GAUGE_PIVOT_X * GAUGE_SCALE;
         float pivotY = y + h - GAUGE_PIVOT_Y * GAUGE_SCALE;
