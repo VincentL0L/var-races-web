@@ -8,28 +8,25 @@ import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
-import com.badlogic.gdx.math.MathUtils;
 
 /**
  * Phone and tablet controls, laid out like a real car's:
- *  - left half of the screen: a floating joystick (put a thumb down anywhere, drag left or
- *    right to steer, the further the sharper), like Brawl Stars.
+ *  - bottom left: big left and right arrow buttons to steer.
  *  - bottom right: a brake pedal and a gas pedal, side by side like in a car's footwell.
  *    Double tap and hold the gas for boost (when it runs out it carries on as gas).
- *  - to back up, pull the joystick down (backwards) and press the gas.
+ *  - to back up, stop and keep holding the brake: after a moment it reverses.
  *  - above the gas: the ITEM button, showing the item you're holding (tap to use it).
  * The car behaves like an automatic gas car (see Player): it creeps at idle, lifting off the
  * gas coasts with engine braking, and the brake stops it without rolling backwards.
  */
 public class TouchControls {
-    private static final float STICK_RADIUS = 64f;
-    private static final float DEAD_ZONE = 0.12f;
+    private static final float ARROW_SIZE = 96f;
+    /** holding the brake this long while stopped starts reversing */
+    private static final float REVERSE_DELAY = 0.4f;
     private static final float TAP_TIME = 0.3f;
     private static final float DOUBLE_TAP_GAP = 0.3f;
     /** touches this close to the top are for the HUD menu, not driving */
     private static final float TOP_ZONE = 0.3f;
-    /** pulling the stick down this far (of its radius) means "backwards" */
-    private static final float BACK_PULL = 0.45f;
 
     private static final Color GOLD = new Color(1f, 0.8f, 0.28f, 1f);
     private static final Color GOLD_DARK = new Color(0.55f, 0.32f, 0.08f, 1f);
@@ -43,9 +40,11 @@ public class TouchControls {
     private final GlyphLayout layout = new GlyphLayout();
     private final boolean[] wasTouched = new boolean[10];
 
-    // joystick
-    private int stickPointer = -1;
-    private float baseX, baseY, knobX, knobY;
+    // steering arrows, in points: x, y, width, height
+    private final float[] left = new float[4];
+    private final float[] right = new float[4];
+    private boolean leftDown, rightDown;
+    private float stoppedBraking = 0f;
     // pedals, in points: x, y, width, height
     private final float[] gas = new float[4];
     private final float[] brake = new float[4];
@@ -73,7 +72,7 @@ public class TouchControls {
         float height = Ui.height();
         layout(width);
         if (!enabled) {
-            stickPointer = -1;
+            leftDown = rightDown = false;
             gasPointer = -1;
             gasDown = brakeDown = boosting = false;
             player.setTouchInput(true, 0f, false, false, false, false);
@@ -84,14 +83,16 @@ public class TouchControls {
         }
         readFingers(width, height);
 
-        float steer = 0f;
-        boolean backwards = false;
-        if (stickPointer >= 0) {
-            float dx = (knobX - baseX) / STICK_RADIUS;
-            if (Math.abs(dx) > DEAD_ZONE) {
-                steer = -Math.signum(dx) * (Math.abs(dx) - DEAD_ZONE) / (1f - DEAD_ZONE);
-            }
-            backwards = (knobY - baseY) / STICK_RADIUS < -BACK_PULL;
+        float steer = (leftDown ? 1f : 0f) - (rightDown ? 1f : 0f);
+        // stopped and still holding the brake: after a moment it backs up
+        boolean stopped = player.getVelocity().len() < 8f;
+        stoppedBraking = brakeDown && !gasDown && (stopped || stoppedBraking > REVERSE_DELAY)
+            ? stoppedBraking + Gdx.graphics.getDeltaTime() : 0f;
+        boolean backwards = stoppedBraking > REVERSE_DELAY;
+        if (backwards) {
+            player.setTouchInput(true, steer, true, false, false, true);
+            draw(width, height);
+            return;
         }
         // once the boost runs dry, the held pedal is just gas until the finger lifts
         if (boosting && player.getMana() <= 0.5f) {
@@ -112,12 +113,20 @@ public class TouchControls {
         brake[3] = 92f;
         brake[0] = gas[0] - 18f - brake[2];
         brake[1] = pad;
+        left[0] = pad;
+        left[1] = pad;
+        left[2] = ARROW_SIZE;
+        left[3] = ARROW_SIZE;
+        right[0] = pad + ARROW_SIZE + 16f;
+        right[1] = pad;
+        right[2] = ARROW_SIZE;
+        right[3] = ARROW_SIZE;
         itemX = gas[0] + gas[2] / 2f - 20f;
         itemY = gas[1] + gas[3] + 30f + ITEM_RADIUS;
     }
 
     private void readFingers(float width, float height) {
-        boolean anyGas = false, anyBrake = false;
+        boolean anyGas = false, anyBrake = false, anyLeft = false, anyRight = false;
         // the line between the two pedals: right of it is gas, left of it (on the right half) brake
         float split = (brake[0] + brake[2] + gas[0]) / 2f;
         for (int p = 0; p < wasTouched.length; p++) {
@@ -127,18 +136,6 @@ public class TouchControls {
             boolean justDown = touched && !wasTouched[p];
             wasTouched[p] = touched;
 
-            if (p == stickPointer) {
-                if (touched) {
-                    float dx = x - baseX, dy = y - baseY;
-                    float len = (float) Math.hypot(dx, dy);
-                    float scale = len > STICK_RADIUS ? STICK_RADIUS / len : 1f;
-                    knobX = baseX + dx * scale;
-                    knobY = baseY + dy * scale;
-                } else {
-                    stickPointer = -1;
-                }
-                continue;
-            }
             if (p == itemPointer) {
                 if (!touched) {
                     itemPointer = -1;
@@ -162,17 +159,15 @@ public class TouchControls {
             if (justDown && y > height * (1f - TOP_ZONE)) {
                 continue;   // a tap on the HUD menu
             }
-            if (justDown && x < width / 2f) {
-                if (stickPointer < 0) {
-                    stickPointer = p;
-                    baseX = MathUtils.clamp(x, STICK_RADIUS + 10f, width / 2f - STICK_RADIUS);
-                    baseY = MathUtils.clamp(y, STICK_RADIUS + 10f, height * (1f - TOP_ZONE));
-                    knobX = baseX;
-                    knobY = baseY;
-                }
-                continue;
-            }
             if (x < width / 2f) {
+                // left half: whichever arrow the thumb is nearer (fingers can roll between them)
+                if (y < left[1] + left[3] + 60f) {
+                    if (x < (left[0] + left[2] + right[0]) / 2f) {
+                        anyLeft = true;
+                    } else {
+                        anyRight = true;
+                    }
+                }
                 continue;
             }
             // fingers can slide from one pedal to the other, like a foot
@@ -189,6 +184,8 @@ public class TouchControls {
         }
         gasDown = anyGas;
         brakeDown = anyBrake;
+        leftDown = anyLeft;
+        rightDown = anyRight;
         if (!gasDown) {
             boosting = false;
         }
@@ -200,37 +197,14 @@ public class TouchControls {
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
-        boolean held = stickPointer >= 0;
-        float sx = held ? baseX : 40f + STICK_RADIUS;
-        float sy = held ? baseY : 40f + STICK_RADIUS;
-        float kx = held ? knobX : sx;
-        float ky = held ? knobY : sy;
-        float alpha = held ? 0.9f : 0.45f;
-
         shapes.begin(ShapeRenderer.ShapeType.Filled);
-        // joystick
-        shapes.setColor(GOLD_DARK.r, GOLD_DARK.g, GOLD_DARK.b, alpha * 0.8f);
-        shapes.circle(sx, sy - 3f, STICK_RADIUS + 8f, 48);
-        shapes.setColor(GOLD.r, GOLD.g, GOLD.b, alpha * 0.8f);
-        shapes.circle(sx, sy, STICK_RADIUS + 8f, 48);
-        shapes.setColor(FACE.r, FACE.g, FACE.b, alpha * 0.55f);
-        shapes.circle(sx, sy, STICK_RADIUS + 2f, 48);
-        shapes.setColor(GOLD.r, GOLD.g, GOLD.b, alpha);
-        float a = 9f, edge = STICK_RADIUS - 12f;
-        shapes.triangle(sx - edge - a, sy, sx - edge + a * 0.6f, sy + a, sx - edge + a * 0.6f, sy - a);
-        shapes.triangle(sx + edge + a, sy, sx + edge - a * 0.6f, sy + a, sx + edge - a * 0.6f, sy - a);
-        shapes.setColor(GOLD_DARK.r, GOLD_DARK.g, GOLD_DARK.b, alpha);
-        shapes.circle(kx, ky - 3f, 28f, 32);
-        shapes.setColor(GOLD.r, GOLD.g, GOLD.b, alpha);
-        shapes.circle(kx, ky, 28f, 32);
+        arrow(left, leftDown, true);
+        arrow(right, rightDown, false);
 
         // pedals: a gold frame, a dark face with grip ridges that light up when pressed
         pedal(brake, brakeDown, BRAKE);
         pedal(gas, gasDown, boosting && gasDown ? BOOST : GOLD);
 
-        // a little down arrow under the stick: pull back + gas to reverse
-        shapes.setColor(GOLD.r, GOLD.g, GOLD.b, alpha);
-        shapes.triangle(sx, sy - edge - a, sx - a, sy - edge + a * 0.6f, sx + a, sy - edge + a * 0.6f);
         // the item button
         shapes.setColor(GOLD_DARK.r, GOLD_DARK.g, GOLD_DARK.b, 0.9f);
         shapes.circle(itemX, itemY - 3f, ITEM_RADIUS, 40);
@@ -260,6 +234,19 @@ public class TouchControls {
         shapes.rect(x, y, w, h);
         shapes.setColor(FACE.r, FACE.g, FACE.b, alpha);
         shapes.rect(x + 4f, y + 4f, w - 8f, h - 8f);
+    }
+
+    /** a steering button: gilded frame with a big arrow that lights up when held */
+    private void arrow(float[] r, boolean down, boolean pointsLeft) {
+        float sink = down ? 3f : 0f;
+        frame(r[0], r[1] - sink, r[2], r[3], down ? 0.95f : 0.6f);
+        shapes.setColor(GOLD.r, GOLD.g, GOLD.b, down ? 1f : 0.55f);
+        float cx = r[0] + r[2] / 2f, cy = r[1] + r[3] / 2f - sink, a = r[2] * 0.26f;
+        if (pointsLeft) {
+            shapes.triangle(cx - a, cy, cx + a * 0.7f, cy + a, cx + a * 0.7f, cy - a);
+        } else {
+            shapes.triangle(cx + a, cy, cx - a * 0.7f, cy + a, cx - a * 0.7f, cy - a);
+        }
     }
 
     private void pedal(float[] r, boolean down, Color color) {
