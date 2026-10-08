@@ -72,6 +72,7 @@ public class Overlay {
     private BitmapFont titleFont;
     private BitmapFont labelFont;
     private BitmapFont warningFont;
+    private BitmapFont bannerFont;
     private NinePatch panel;
     private NinePatch button;
     private NinePatch buttonOver;
@@ -111,6 +112,7 @@ public class Overlay {
         titleFont = Ui.display(16);
         labelFont = Ui.font(9);
         warningFont = Ui.displayOutlined(26);
+        bannerFont = Ui.display(34);
         panel = Ui.patch("panel", 6, 6, 6, 6);
         button = Ui.patch("button", 3, 3, 3, 5);
         buttonOver = Ui.patch("button_over", 3, 3, 3, 5);
@@ -151,10 +153,15 @@ public class Overlay {
         int rows = Math.max(standings.size(), 4);
         float sideWidth = sidePanelWidth(standings);
         float sideHeight = BEZEL * 2 + TITLE_HEIGHT + ROW_HEIGHT * rows;
+        // left and right mirror each other: a tall panel on top, a strip of two screens under it
+        float stripY = vh - MARGIN - sideHeight - STRIP_GAP - STRIP_HEIGHT;
+        recordProgress(standings);
         renderStandings(standings, sideWidth, sideHeight);
-        renderItemPanel(sideWidth, sideHeight);
-        renderPauseButton(sideHeight);
+        renderGaps(standings, MARGIN, stripY, sideWidth);
+        renderMinimap(vw - MARGIN - sideWidth, vh - MARGIN - sideHeight, sideWidth, sideHeight);
+        renderItemStrip(vw - MARGIN - sideWidth, stripY, sideWidth);
         renderCluster(player, standings);
+        renderLapBanner(standings);
         if (offTrack && !paused) {
             renderWarning("RETURN TO TRACK");
         }
@@ -239,61 +246,255 @@ public class Overlay {
     private static final String[] ICON_RESUME = {
         ".#.....", ".##....", ".###...", ".####..", ".###...", ".##....", ".#....."};
 
-    private static final float ITEM_SIZE = 64f;
-    private static final float PAUSE_SIZE = 38f;
+    private static final float STRIP_GAP = 10f;
+    private static final float STRIP_HEIGHT = BEZEL * 2 + SCREEN_HEIGHT;
+    private static final float ROULETTE_TIME = 0.8f;
+    private static final Color TRACK_EDGE = new Color(0.1f, 0.08f, 0.07f, 1f);
+    private static final Color TRACK_ROAD = new Color(0.42f, 0.42f, 0.46f, 1f);
+    private static final Color DOT_CPU = new Color(1f, 0.95f, 0.84f, 1f);
+    private static final Color DOT_PLAYER = new Color(0.4f, 0.75f, 1f, 1f);
 
-    /**
-     * top right: a small gilded slot with the item you're holding (tap it on a phone to use it)
-     */
-    private void renderItemPanel(float width, float height) {
-        float size = ITEM_SIZE;
-        float x = vw - MARGIN - size;
-        float y = vh - MARGIN - size;
-        menuRows[1][0] = x;
-        menuRows[1][1] = y;
-        menuRows[1][2] = size;
-        menuRows[1][3] = size;
-        batch.begin();
-        panel.draw(batch, x, y, size, size);
-        if (itemIcon != null) {
-            float icon = size - 22f;
-            float bob = MathUtils.sin(clock * 5f) * 1.5f;
-            batch.draw(itemIcon, x + (size - icon) / 2f, y + (size - icon) / 2f + bob, icon, icon);
-            if (!Ui.touchScreen) {
-                // the key to use it, tucked in the corner
-                screen.draw(batch, x + size - 20f, y - 6f, 24f, 20f);
-                labelFont.setColor(Ui.GOLD);
-                layout.setText(labelFont, "E");
-                labelFont.draw(batch, "E", x + size - 8f - layout.width / 2f, y + 4f + layout.height / 2f);
-            }
-        } else {
-            labelFont.setColor(LABEL);
-            layout.setText(labelFont, "?");
-            labelFont.draw(batch, "?", x + (size - layout.width) / 2f, y + (size + layout.height) / 2f);
+    // ---------------------------------------------------------------- gaps (left strip)
+
+    /** each racer's progress over time, to work out time gaps: racer -> [time, progress, ...] */
+    private final java.util.Map<String, com.badlogic.gdx.utils.FloatArray> history = new java.util.HashMap<>();
+    private float lastSample = -1f;
+
+    /** notes everyone's progress ten times a second while racing */
+    private void recordProgress(List<RacerInfo> standings) {
+        if (raceTime <= 0f || raceTime - lastSample < 0.1f) {
+            return;
         }
-        batch.end();
+        lastSample = raceTime;
+        for (RacerInfo r : standings) {
+            com.badlogic.gdx.utils.FloatArray h = history.get(r.name);
+            if (h == null) {
+                h = new com.badlogic.gdx.utils.FloatArray();
+                history.put(r.name, h);
+            }
+            h.add(raceTime);
+            h.add(r.progress);
+        }
     }
 
     /**
-     * a small pause button just left of the item slot; it opens the pause menu
+     * @return when this racer had driven this far (seconds), or -1 if we don't know
      */
-    private void renderPauseButton(float sideHeight) {
-        float size = PAUSE_SIZE;
-        float x = vw - MARGIN - ITEM_SIZE - 10f - size;
-        float y = vh - MARGIN - (ITEM_SIZE + size) / 2f;
-        menuRows[0][0] = x;
-        menuRows[0][1] = y;
-        menuRows[0][2] = size;
-        menuRows[0][3] = size;
+    private float timeAt(String racer, float progress) {
+        com.badlogic.gdx.utils.FloatArray h = history.get(racer);
+        if (h == null || h.size < 4) {
+            return -1f;
+        }
+        for (int i = 2; i < h.size; i += 2) {
+            if (h.get(i + 1) >= progress) {
+                float t0 = h.get(i - 2), p0 = h.get(i - 1), t1 = h.get(i), p1 = h.get(i + 1);
+                return p1 > p0 ? t0 + (t1 - t0) * (progress - p0) / (p1 - p0) : t1;
+            }
+        }
+        return -1f;
+    }
+
+    /**
+     * under the standings: how far, in seconds, the car ahead is and the car behind
+     */
+    private void renderGaps(List<RacerInfo> standings, float x, float y, float width) {
+        int me = -1;
+        for (int i = 0; i < standings.size(); i++) {
+            if (standings.get(i).name.equals(playerId)) {
+                me = i;
+            }
+        }
+        String ahead = "--", behind = "--";
+        if (me >= 0 && raceTime > 0f && !standings.get(me).isFinished()) {
+            RacerInfo mine = standings.get(me);
+            if (me == 0) {
+                ahead = "LEAD";
+            } else {
+                float t = timeAt(standings.get(me - 1).name, mine.progress);
+                if (t >= 0f) {
+                    ahead = String.format("+%.1f", raceTime - t);
+                }
+            }
+            if (me < standings.size() - 1) {
+                float t = timeAt(playerId, standings.get(me + 1).progress);
+                if (t >= 0f) {
+                    behind = String.format("-%.1f", raceTime - t);
+                }
+            }
+        }
+        batch.begin();
+        panel.draw(batch, x, y, width, STRIP_HEIGHT);
+        batch.end();
+        float half = (width - BEZEL * 2 - 8f) / 2f;
+        renderScreen(x + BEZEL, y + BEZEL, half, "AHEAD", ahead, Ui.CREAM, tabFont);
+        renderScreen(x + BEZEL + half + 8f, y + BEZEL, half, "BEHIND", behind, Ui.CREAM, tabFont);
+    }
+
+    // ---------------------------------------------------------------- minimap (top right)
+
+    private java.util.Map<String, com.badlogic.gdx.math.Vector2> cars = new java.util.HashMap<>();
+
+    /**
+     * @param centers where every car is this frame (map coordinates, by racer id)
+     */
+    public void setCars(java.util.Map<String, com.badlogic.gdx.math.Vector2> centers) {
+        cars = centers;
+    }
+
+    /**
+     * top right, mirroring the standings: the whole track in miniature, a dot for every car
+     */
+    private void renderMinimap(float x, float y, float width, float height) {
+        batch.begin();
+        panel.draw(batch, x, y, width, height);
+        titleFont.setColor(Ui.GOLD);
+        layout.setText(titleFont, "TRACK");
+        titleFont.draw(batch, "TRACK", x + width - BEZEL - layout.width,
+            y + height - BEZEL - (TITLE_HEIGHT - layout.height) / 2f + 2f);
+        batch.end();
+
+        // fit the 1920 x 1080 map into the space under the title, centered
+        float areaW = width - BEZEL * 2 - 12f, areaH = height - BEZEL * 2 - TITLE_HEIGHT - 8f;
+        float scale = Math.min(areaW / 1920f, areaH / 1080f);
+        float ox = x + (width - 1920f * scale) / 2f;
+        float oy = y + BEZEL + 4f + (areaH - 1080f * scale) / 2f;
+        List<com.badlogic.gdx.math.Vector2> path = map.waypoints;
+
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        render.begin(ShapeRenderer.ShapeType.Filled);
+        for (int pass = 0; pass < 2; pass++) {
+            render.setColor(pass == 0 ? TRACK_EDGE : TRACK_ROAD);
+            float w = pass == 0 ? 7f : 4f;
+            for (int i = 0; i < path.size(); i++) {
+                com.badlogic.gdx.math.Vector2 a = path.get(i), b = path.get((i + 1) % path.size());
+                float ax = ox + a.x * scale, ay = oy + a.y * scale, bx = ox + b.x * scale, by = oy + b.y * scale;
+                render.rectLine(ax, ay, bx, by, w);
+                render.circle(ax, ay, w / 2f, 12);
+            }
+        }
+        // the start line
+        render.setColor(Color.WHITE);
+        render.rect(ox + (200f - 64f) * scale, oy + 300f * scale - 1f, 128f * scale, 2.5f);
+        // cars: everyone else first, you on top in gold
+        for (java.util.Map.Entry<String, com.badlogic.gdx.math.Vector2> e : cars.entrySet()) {
+            if (e.getKey().equals(playerId)) {
+                continue;
+            }
+            dot(ox + e.getValue().x * scale, oy + e.getValue().y * scale, 3.5f,
+                e.getKey().startsWith("CPU") ? DOT_CPU : DOT_PLAYER);
+        }
+        com.badlogic.gdx.math.Vector2 mine = cars.get(playerId);
+        if (mine != null) {
+            dot(ox + mine.x * scale, oy + mine.y * scale, 5f, Ui.GOLD);
+        }
+        render.end();
+    }
+
+    private void dot(float x, float y, float r, Color color) {
+        render.setColor(TRACK_EDGE);
+        render.circle(x, y, r + 1.5f, 16);
+        render.setColor(color);
+        render.circle(x, y, r, 16);
+    }
+
+    // ---------------------------------------------------------------- item + pause (right strip)
+
+    private Texture[] allIcons;
+    private float rouletteTimer = 0f;
+
+    /**
+     * @param icons every item's icon, for the roulette that spins when you pick one up
+     */
+    public void setItemIcons(Texture[] icons) {
+        allIcons = icons;
+    }
+
+    /**
+     * under the minimap, mirroring the gaps: a PAUSE screen and the ITEM screen
+     * (click either; on a phone tap the item to use it)
+     */
+    private void renderItemStrip(float x, float y, float width) {
+        rouletteTimer -= Gdx.graphics.getDeltaTime();
+        batch.begin();
+        panel.draw(batch, x, y, width, STRIP_HEIGHT);
+        batch.end();
+        float half = (width - BEZEL * 2 - 8f) / 2f;
+        float px = x + BEZEL, ix = x + BEZEL + half + 8f, sy = y + BEZEL;
+        menuRows[0][0] = px;
+        menuRows[0][1] = sy;
+        menuRows[0][2] = half;
+        menuRows[0][3] = SCREEN_HEIGHT;
+        menuRows[1][0] = ix;
+        menuRows[1][1] = sy;
+        menuRows[1][2] = half;
+        menuRows[1][3] = SCREEN_HEIGHT;
+
         float mx = Gdx.input.getX() / (float) Gdx.graphics.getWidth() * vw;
         float my = (1f - Gdx.input.getY() / (float) Gdx.graphics.getHeight()) * vh;
-        boolean hover = !Ui.touchScreen && mx >= x && mx <= x + size && my >= y && my <= y + size;
+        boolean hover = !Ui.touchScreen && mx >= px && mx <= px + half && my >= sy && my <= sy + SCREEN_HEIGHT;
+
         batch.begin();
-        (hover ? buttonOver : button).draw(batch, x, y, size, size);
+        screen.draw(batch, px, sy, half, SCREEN_HEIGHT);
+        screen.draw(batch, ix, sy, half, SCREEN_HEIGHT);
+        labelFont.setColor(hover || paused ? Ui.GOLD : LABEL);
+        String pauseLabel = paused ? "RESUME" : "PAUSE";
+        layout.setText(labelFont, pauseLabel);
+        labelFont.draw(batch, pauseLabel, px + 12, sy + SCREEN_HEIGHT / 2f + layout.height / 2f);
+        labelFont.setColor(LABEL);
+        layout.setText(labelFont, Ui.touchScreen ? "ITEM" : "ITEM  E");
+        labelFont.draw(batch, Ui.touchScreen ? "ITEM" : "ITEM  E", ix + 12, sy + SCREEN_HEIGHT / 2f + layout.height / 2f);
+        // the icon: spinning through every item for a moment after a pickup, then the one you got
+        Texture shown = itemIcon;
+        if (itemIcon != null && rouletteTimer > 0f && allIcons != null) {
+            shown = allIcons[(int) (clock * 14f) % allIcons.length];
+        }
+        float icon = SCREEN_HEIGHT - 8f;
+        if (shown != null) {
+            batch.draw(shown, ix + half - 8f - icon, sy + 4f, icon, icon);
+        } else {
+            valueFont.setColor(LABEL);
+            layout.setText(valueFont, "-");
+            valueFont.draw(batch, "-", ix + half - 12f - layout.width, sy + SCREEN_HEIGHT / 2f + layout.height / 2f);
+        }
         batch.end();
         render.begin(ShapeRenderer.ShapeType.Filled);
-        drawIcon(paused ? ICON_RESUME : ICON_PAUSE, x + (size - 14f) / 2f, y + (size - 14f) / 2f + 2f, 2f, Ui.TEXT_DARK);
+        drawIcon(paused ? ICON_RESUME : ICON_PAUSE, px + half - 12f - 14f, sy + (SCREEN_HEIGHT - 14f) / 2f, 2f,
+            hover || paused ? Ui.GOLD : Ui.CREAM);
         render.end();
+    }
+
+    // ---------------------------------------------------------------- lap banner
+
+    private int shownLap = 0;
+    private float bannerTimer = 0f;
+    private String bannerText = "";
+    private static final float BANNER_TIME = 1.8f;
+
+    /** "LAP 2/3" or "FINAL LAP" slides across the middle as you cross the line */
+    private void renderLapBanner(List<RacerInfo> standings) {
+        RacerInfo me = raceManager.getRacerInfoByName(playerId);
+        if (me != null && !me.isFinished() && me.lapCount > shownLap) {
+            shownLap = me.lapCount;
+            int lap = me.lapCount + 1;
+            bannerText = lap == raceManager.getLaps() ? "FINAL LAP" : "LAP " + lap + "/" + raceManager.getLaps();
+            bannerTimer = BANNER_TIME;
+        }
+        if (bannerTimer <= 0f) {
+            return;
+        }
+        bannerTimer -= Gdx.graphics.getDeltaTime();
+        float t = 1f - bannerTimer / BANNER_TIME;
+        // slide in, hold, slide out
+        float slide = t < 0.18f ? 1f - t / 0.18f : t > 0.82f ? -(t - 0.82f) / 0.18f : 0f;
+        slide = slide * Math.abs(slide);
+        float w = 360f, h = 64f;
+        float x = (vw - w) / 2f + slide * vw * 0.6f, y = vh * 0.58f;
+        batch.begin();
+        panel.draw(batch, x, y, w, h);
+        bannerFont.setColor(bannerText.equals("FINAL LAP") ? WARNING : Ui.GOLD);
+        layout.setText(bannerFont, bannerText);
+        bannerFont.draw(batch, bannerText, x + (w - layout.width) / 2f, y + (h + layout.height) / 2f);
+        batch.end();
     }
 
     /**
@@ -384,6 +585,10 @@ public class Overlay {
      * a recessed display: small gold label on the left, value on the right
      */
     private void renderScreen(float x, float y, float width, String label, String value, Color valueColor) {
+        renderScreen(x, y, width, label, value, valueColor, valueFont);
+    }
+
+    private void renderScreen(float x, float y, float width, String label, String value, Color valueColor, BitmapFont valueFont) {
         batch.begin();
         screen.draw(batch, x, y, width, SCREEN_HEIGHT);
         labelFont.setColor(LABEL);
@@ -492,6 +697,9 @@ public class Overlay {
      * @param name its name
      */
     public void setItem(Texture icon, String name) {
+        if (icon != null && itemIcon == null) {
+            rouletteTimer = ROULETTE_TIME;      // just picked one up: spin the roulette
+        }
         itemIcon = icon;
         itemName = name;
     }
@@ -576,6 +784,7 @@ public class Overlay {
         buttonFont.dispose();
         labelFont.dispose();
         warningFont.dispose();
+        bannerFont.dispose();
         render.dispose();
         gauge.dispose();
     }

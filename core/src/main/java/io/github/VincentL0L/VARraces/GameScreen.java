@@ -103,6 +103,8 @@ public class GameScreen implements Screen {
         rm = new RaceManager(map.waypoints);
         rm.setLaps(nc.getLaps());
         trackWatch = new RaceManager(map.waypoints);
+        // it only watches where we are on the track, so it must never think we've finished
+        trackWatch.setLaps(1000);
         nc.setRaceManager(rm);
 
         OrthographicCamera cam = new OrthographicCamera();
@@ -146,6 +148,13 @@ public class GameScreen implements Screen {
 
         over = new Overlay(rm, map);
         itemArt = new ItemRenderer(map);
+        com.badlogic.gdx.graphics.Texture[] icons = new com.badlogic.gdx.graphics.Texture[
+            io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem.Item.values().length];
+        for (io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem.Item item
+                : io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem.Item.values()) {
+            icons[item.ordinal()] = itemArt.icon(item);
+        }
+        over.setItemIcons(icons);
         over.setOnline(nc.isOnline());
         pauseSkin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
         pausePanel = buildPausePanel();
@@ -328,6 +337,7 @@ public class GameScreen implements Screen {
         }
         over.setOffTrack(start && !done && trackWatch.distanceFromTrack(nc.getPlayerId()) > OFF_TRACK_DISTANCE);
         over.setPaused(paused);
+        over.setCars(carCenters);
         over.render(player);
         lights.render(cdtxt, frozen ? 0f : delta);
         if (touch != null) {
