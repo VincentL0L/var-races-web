@@ -13,7 +13,7 @@ import io.github.VincentL0L.VARraces.Ui;
  */
 public class TeaVMLauncher {
     /** online race server used by the hosted site */
-    private static final String PUBLIC_SERVER = "wss://var-races-server.onrender.com";
+    private static final String PUBLIC_SERVER = "wss://var-races-web.onrender.com";
 
     public static void main(String[] args) {
         TeaApplicationConfiguration config = new TeaApplicationConfiguration("canvas");
