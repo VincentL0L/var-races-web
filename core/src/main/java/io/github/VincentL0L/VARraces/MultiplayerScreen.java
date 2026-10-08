@@ -5,12 +5,9 @@ import java.util.List;
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
-import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
-import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
-import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
 import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
@@ -21,26 +18,30 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import io.github.VincentL0L.VARraces.Multiplayer.client.NetworkClient;
 
 /**
- * Screen called by MenuScreen for online races. Lists public races,
- * creates public or private races, or joins one with a room code.
+ * Online races: one gilded card over the drifting, frosted track with three sections:
+ * open public races to join, hosting a public or private race, and joining with a code.
  * Moves to LobbyScreen once the server puts the player in a room.
  */
 public class MultiplayerScreen implements Screen {
     private static final float REFRESH_TIME = 2f;
     private static final int MAX_PLAYERS = 6;
+    /** the free server sleeps when nobody plays; after this long it's probably waking up */
+    private static final float WAKE_HINT_TIME = 3f;
+    private static final int MAX_ROWS = 3;
 
-    private Game game;
-    private int selectedCar;
-    private Stage stage;
-    private Skin skin;
-    private Texture bgTexture;
-    private NetworkClient networkClient;
-    private Label statusLabel;
+    private final Game game;
+    private final int selectedCar;
+    private final Stage stage;
+    private final Skin skin;
+    private final TrackBackdrop backdrop = new TrackBackdrop();
+    private final NetworkClient networkClient;
+    private Label kicker;
     private Table roomsTable;
     private TextField codeField;
     private TextButton[] actionButtons;
     private String shownRooms = null;
     private float refreshTimer = REFRESH_TIME;
+    private float connectingTime = 0f;
     private boolean leaving = false;
 
     /**
@@ -53,7 +54,6 @@ public class MultiplayerScreen implements Screen {
         this.selectedCar = selectedCar;
         stage = new Stage(Ui.viewport());
         skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
-        bgTexture = new Texture("ui/menu.png");
 
         networkClient = new NetworkClient(null);
         networkClient.connect(Main.socketFactory, Main.serverUrl);
@@ -63,43 +63,26 @@ public class MultiplayerScreen implements Screen {
     }
 
     /**
-     * builds the title, room list and buttons
+     * the card: status, title, open races, host buttons, join by code, back
      */
     private void createUI() {
-        Image bg = new Image(bgTexture);
-        bg.setFillParent(true);
-        bg.setColor(0.4f, 0.4f, 0.4f, 1f);
-        stage.addActor(bg);
+        Table card = Cards.card();
 
-        Table mainTable = new Table();
-        mainTable.setFillParent(true);
+        kicker = Cards.kicker("CONNECTING...");
+        card.add(kicker).left().row();
+        card.add(Cards.title("ONLINE RACE", 44)).left().padTop(2).padBottom(16).row();
 
-        Label.LabelStyle titleStyle = new Label.LabelStyle(Ui.display(36), Ui.GOLD);
-        Label.LabelStyle normalStyle = new Label.LabelStyle(Ui.font(13), Ui.CREAM);
-
-        statusLabel = new Label("Connecting to race server...", normalStyle);
+        // open public races
+        card.add(Cards.kicker("OPEN RACES")).left().padBottom(6).row();
         roomsTable = new Table();
+        roomsTable.top();
+        roomsTable.defaults().width(Cards.CARD_WIDTH).height(Cards.ROW_HEIGHT).padBottom(6);
+        card.add(roomsTable).top().row();
 
+        // host your own
+        card.add(Cards.kicker("HOST A RACE")).left().padTop(10).padBottom(6).row();
         TextButton createPublic = new TextButton("Public", skin);
         TextButton createPrivate = new TextButton("Private", skin);
-        TextButton joinCode = new TextButton("Join", skin);
-        TextButton back = new TextButton("Back", skin);
-        codeField = new TextField("", skin);
-        codeField.setMessageText("CODE");
-        codeField.setMaxLength(4);
-        // phones have no keyboard for the game itself, so ask with the browser's text box
-        codeField.addListener(new ClickListener() {
-            public void clicked(InputEvent e, float x, float y) {
-                if (Ui.touchScreen && Ui.textPrompt != null) {
-                    String code = Ui.textPrompt.ask("Room code", codeField.getText());
-                    if (code != null) {
-                        code = code.trim().toUpperCase();
-                        codeField.setText(code.length() > 4 ? code.substring(0, 4) : code);
-                    }
-                }
-            }
-        });
-
         createPublic.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {
                 if (networkClient.isConnected()) {
@@ -114,13 +97,49 @@ public class MultiplayerScreen implements Screen {
                 }
             }
         });
-        joinCode.addListener(new ClickListener() {
+        Table host = new Table();
+        float half = (Cards.CARD_WIDTH - 12f) / 2f;
+        host.add(createPublic).width(half).height(56);
+        host.add(createPrivate).width(half).height(56).padLeft(12);
+        card.add(host).row();
+
+        // join a friend's private race
+        card.add(Cards.kicker("JOIN WITH A CODE")).left().padTop(16).padBottom(6).row();
+        codeField = new TextField("", skin);
+        codeField.setMessageText("ABCD");
+        codeField.setMaxLength(4);
+        codeField.setAlignment(com.badlogic.gdx.utils.Align.center);
+        codeField.setTextFieldFilter(new TextField.TextFieldFilter() {
+            public boolean acceptChar(TextField field, char c) {
+                return Character.isLetterOrDigit(c);
+            }
+        });
+        // phones have no keyboard for the game itself, so ask with the browser's text box
+        codeField.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {
-                if (networkClient.isConnected() && codeField.getText().trim().length() == 4) {
-                    networkClient.joinRoom(codeField.getText(), selectedCar);
+                if (Ui.touchScreen && Ui.textPrompt != null) {
+                    String code = Ui.textPrompt.ask("Room code", codeField.getText());
+                    if (code != null) {
+                        code = code.trim().toUpperCase();
+                        codeField.setText(code.length() > 4 ? code.substring(0, 4) : code);
+                    }
                 }
             }
         });
+        TextButton joinCode = new TextButton("Join", skin);
+        joinCode.addListener(new ClickListener() {
+            public void clicked(InputEvent e, float x, float y) {
+                if (networkClient.isConnected() && codeField.getText().trim().length() == 4) {
+                    networkClient.joinRoom(codeField.getText().toUpperCase(), selectedCar);
+                }
+            }
+        });
+        Table join = new Table();
+        join.add(codeField).width(half).height(50);
+        join.add(joinCode).width(half).height(56).padLeft(12);
+        card.add(join).row();
+
+        TextButton back = Cards.smallButton("Back", skin);
         back.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {
                 leaving = true;
@@ -128,64 +147,43 @@ public class MultiplayerScreen implements Screen {
                 game.setScreen(new MenuScreen(game, selectedCar));
             }
         });
+        Table footer = new Table();
+        footer.add(back).width(130).height(50);
+        footer.add().expandX();
+        card.add(footer).padTop(20).row();
         actionButtons = new TextButton[] {createPublic, createPrivate, joinCode};
 
-        Table createRow = new Table();
-        createRow.add(new Label("Create a race:", normalStyle)).padRight(10);
-        createRow.add(createPublic).width(150).height(54).pad(5);
-        createRow.add(createPrivate).width(150).height(54).pad(5);
-
-        Table joinRow = new Table();
-        joinRow.add(new Label("Room code:", normalStyle)).padRight(10);
-        joinRow.add(codeField).width(110).height(44);
-        joinRow.add(joinCode).width(100).height(48).padLeft(10);
-
-        mainTable.add(new Label("Multiplayer", titleStyle)).pad(15).row();
-        mainTable.add(statusLabel).pad(5).row();
-        mainTable.add(new Label("Public races", normalStyle)).padTop(15).row();
-        mainTable.add(roomsTable).width(420).height(150).top().row();
-        mainTable.add(createRow).pad(10).row();
-        mainTable.add(joinRow).pad(10).row();
-        mainTable.add(back).width(150).height(50).padTop(15).row();
-
-        Table panel = new Table();
-        panel.setFillParent(true);
-        mainTable.setFillParent(false);
-        mainTable.setBackground(Ui.panel());
-        mainTable.pad(20, 40, 25, 40);
-        panel.add(mainTable);
-        stage.addActor(panel);
+        stage.addActor(Cards.center(card));
         rebuildRooms();
     }
 
     /**
-     * fills the public race list, each with a join button
+     * fills the open race list, each row with its code, player count and a Join button
      */
     private void rebuildRooms() {
         roomsTable.clear();
-        roomsTable.top();
-        Label.LabelStyle style = new Label.LabelStyle(Ui.font(13), Ui.CREAM);
-        List<String[]> rooms = networkClient.getPublicRooms();
-
         if (!networkClient.isConnected()) {
-            roomsTable.add(new Label("-", style));
+            roomsTable.add(Cards.emptyRow("...")).row();
             return;
         }
+        List<String[]> rooms = networkClient.getPublicRooms();
         if (rooms.isEmpty()) {
-            roomsTable.add(new Label("No public races right now - create one!", style));
+            roomsTable.add(Cards.emptyRow("No open races. Host one below!")).row();
             return;
         }
-        for (String[] room : rooms) {
-            final String code = room[0];
-            roomsTable.add(new Label("Race " + code + "   " + room[1] + "/" + MAX_PLAYERS
-                + " players", style)).left().expandX().pad(4);
-            TextButton join = new TextButton("Join", skin);
+        for (int i = 0; i < rooms.size() && i < MAX_ROWS; i++) {
+            final String code = rooms.get(i)[0];
+            Table row = Cards.row();
+            row.add(Cards.text(code, true)).left().width(90);
+            row.add(Cards.text(rooms.get(i)[1] + " / " + MAX_PLAYERS + " drivers", false)).left().expandX();
+            TextButton join = Cards.smallButton("Join", skin);
             join.addListener(new ClickListener() {
                 public void clicked(InputEvent e, float x, float y) {
                     networkClient.joinRoom(code, selectedCar);
                 }
             });
-            roomsTable.add(join).width(90).height(42).pad(4).row();
+            row.add(join).width(96).height(34);
+            roomsTable.add(row).row();
         }
     }
 
@@ -202,11 +200,14 @@ public class MultiplayerScreen implements Screen {
         }
 
         if (networkClient.getError() != null) {
-            statusLabel.setText(networkClient.getError());
-            statusLabel.setColor(Color.SALMON);
+            kicker.setText(networkClient.getError().toUpperCase());
+            kicker.setColor(Cards.ERROR);
         } else if (networkClient.isConnected()) {
-            statusLabel.setText("Join a public race, create one, or enter a friend's code");
-            statusLabel.setColor(Ui.CREAM);
+            kicker.setText("MULTIPLAYER");
+            kicker.setColor(Cards.LABEL);
+        } else {
+            connectingTime += delta;
+            kicker.setText(connectingTime > WAKE_HINT_TIME ? "WAKING UP THE SERVER... (UP TO A MINUTE)" : "CONNECTING...");
         }
         for (TextButton b : actionButtons) {
             b.setDisabled(!networkClient.isConnected());
@@ -229,16 +230,17 @@ public class MultiplayerScreen implements Screen {
 
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+        backdrop.render(delta);
         stage.act(delta);
+        stage.getViewport().apply();
         stage.draw();
     }
 
     /**
-     * resizes stage
-     * @param width new width
-     * @param height new height
+     * @param width new width   @param height new height
      */
     public void resize(int width, int height) {
+        backdrop.resize(width, height);
         stage.getViewport().update(width, height, true);
     }
 
@@ -253,9 +255,9 @@ public class MultiplayerScreen implements Screen {
      * clears memory (the network client lives on in LobbyScreen unless Back was pressed)
      */
     public void dispose() {
+        backdrop.dispose();
         stage.dispose();
         skin.dispose();
-        bgTexture.dispose();
         if (leaving) {
             networkClient.stop();
         }

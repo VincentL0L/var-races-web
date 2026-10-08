@@ -10,46 +10,48 @@ import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.MathUtils;
 
 /**
- * Phone and tablet controls, like Brawl Stars:
- *  - left half of the screen: a floating joystick. Put a thumb down anywhere and drag left
- *    or right to steer (the further, the sharper). Pull it down to reverse.
- *  - right half: the pedal. Touch and hold for gas, double tap and hold for boost (when the
- *    boost runs out it carries on as gas). Letting go brakes.
+ * Phone and tablet controls, laid out like a real car's:
+ *  - left half of the screen: a floating joystick (put a thumb down anywhere, drag left or
+ *    right to steer, the further the sharper), like Brawl Stars.
+ *  - bottom right: a brake pedal and a gas pedal, side by side like in a car's footwell.
+ *    Double tap and hold the gas for boost (when it runs out it carries on as gas).
+ *  - above the pedals: the gear selector, D (drive) or R (reverse). Like a real automatic
+ *    it only changes gear when the car is (almost) stopped.
+ * The car behaves like an automatic gas car (see Player): it creeps at idle, lifting off the
+ * gas coasts with engine braking, and the brake stops it without rolling backwards.
  */
 public class TouchControls {
-    /** how far the joystick knob can move from its base, in points */
     private static final float STICK_RADIUS = 64f;
-    /** small movements around the middle don't steer */
     private static final float DEAD_ZONE = 0.12f;
-    /** pulling the stick down this far (of its radius) reverses */
-    private static final float REVERSE_PULL = 0.6f;
-    /** a double tap: the first tap is shorter than this... */
     private static final float TAP_TIME = 0.3f;
-    /** ...and the second touch comes within this long of it */
     private static final float DOUBLE_TAP_GAP = 0.3f;
     /** touches this close to the top are for the HUD menu, not driving */
     private static final float TOP_ZONE = 0.3f;
-    private static final float HINT_TIME = 9f;
+    /** gear changes only below this speed (map pixels per second, about 4 mph) */
+    private static final float SHIFT_SPEED = 10f;
 
     private static final Color GOLD = new Color(1f, 0.8f, 0.28f, 1f);
     private static final Color GOLD_DARK = new Color(0.55f, 0.32f, 0.08f, 1f);
     private static final Color FACE = new Color(0.17f, 0.1f, 0.06f, 1f);
     private static final Color BOOST = new Color(0.25f, 0.68f, 1f, 1f);
+    private static final Color BRAKE = new Color(1f, 0.36f, 0.24f, 1f);
 
     private final SpriteBatch batch = new SpriteBatch();
     private final ShapeRenderer shapes = new ShapeRenderer();
     private final BitmapFont font = Ui.display(15);
-    private final BitmapFont hintFont = Ui.font(11);
     private final GlyphLayout layout = new GlyphLayout();
     private final boolean[] wasTouched = new boolean[10];
 
-    // joystick: which finger, where its base is and where the thumb is now
+    // joystick
     private int stickPointer = -1;
     private float baseX, baseY, knobX, knobY;
-    // pedal: which finger, and when the last touch started and ended (for double taps)
-    private int pedalPointer = -1;
-    private boolean boosting = false;
-    private float pedalDownAt = -10f;
+    // pedals and gear selector, in points: x, y, width, height
+    private final float[] gas = new float[4];
+    private final float[] brake = new float[4];
+    private final float[] gear = new float[4];
+    private boolean gasDown, brakeDown, boosting, reverseGear;
+    private int gasPointer = -1;
+    private float gasDownAt = -10f;
     private float lastTapEnd = -10f;
     private boolean lastWasTap = false;
     private float clock = 0f;
@@ -63,62 +65,64 @@ public class TouchControls {
         clock += Gdx.graphics.getDeltaTime();
         float width = Ui.width();
         float height = Ui.height();
+        layout(width);
         if (!enabled) {
             stickPointer = -1;
-            pedalPointer = -1;
-            boosting = false;
-            player.setTouchInput(true, 0f, false, false, false);
+            gasPointer = -1;
+            gasDown = brakeDown = boosting = false;
+            player.setTouchInput(true, 0f, false, false, false, reverseGear);
             for (int p = 0; p < wasTouched.length; p++) {
                 wasTouched[p] = Gdx.input.isTouched(p);
             }
             return;
         }
-        readFingers(width, height);
+        readFingers(player, width, height);
 
-        // steering from how far the knob is pushed sideways
         float steer = 0f;
-        boolean reverse = false;
         if (stickPointer >= 0) {
             float dx = (knobX - baseX) / STICK_RADIUS;
-            float dy = (knobY - baseY) / STICK_RADIUS;
             if (Math.abs(dx) > DEAD_ZONE) {
                 steer = -Math.signum(dx) * (Math.abs(dx) - DEAD_ZONE) / (1f - DEAD_ZONE);
             }
-            reverse = dy < -REVERSE_PULL && pedalPointer < 0;
         }
-        boolean gas = pedalPointer >= 0;
         // once the boost runs dry, the held pedal is just gas until the finger lifts
         if (boosting && player.getMana() <= 0.5f) {
             boosting = false;
         }
-        player.setTouchInput(true, steer, gas, gas && boosting, reverse);
-        draw(width, height, gas, reverse);
+        player.setTouchInput(true, steer, gasDown, gasDown && boosting && !reverseGear, brakeDown, reverseGear);
+        draw(width, height);
     }
 
-    /**
-     * new fingers on the left grab the joystick, on the right the pedal; lifted fingers let go
-     */
-    private void readFingers(float width, float height) {
+    /** pedals in the bottom right corner (brake wider, gas taller, like real ones), gear above */
+    private void layout(float width) {
+        float pad = 26f;
+        gas[2] = 74f;
+        gas[3] = 128f;
+        gas[0] = width - pad - gas[2];
+        gas[1] = pad;
+        brake[2] = 112f;
+        brake[3] = 92f;
+        brake[0] = gas[0] - 18f - brake[2];
+        brake[1] = pad;
+        gear[2] = 112f;
+        gear[3] = 38f;
+        gear[0] = brake[0];
+        gear[1] = brake[1] + brake[3] + 18f;
+    }
+
+    private void readFingers(Player player, float width, float height) {
+        boolean anyGas = false, anyBrake = false;
+        // the line between the two pedals: right of it is gas, left of it (on the right half) brake
+        float split = (brake[0] + brake[2] + gas[0]) / 2f;
         for (int p = 0; p < wasTouched.length; p++) {
             boolean touched = Gdx.input.isTouched(p);
             float x = Gdx.input.getX(p) / Ui.density;
             float y = height - Gdx.input.getY(p) / Ui.density;
-            if (touched && !wasTouched[p] && y < height * (1f - TOP_ZONE)) {
-                if (x < width / 2f && stickPointer < 0) {
-                    stickPointer = p;
-                    // the stick appears under the thumb (kept fully on screen)
-                    baseX = MathUtils.clamp(x, STICK_RADIUS + 10f, width / 2f - STICK_RADIUS);
-                    baseY = MathUtils.clamp(y, STICK_RADIUS + 10f, height * (1f - TOP_ZONE));
-                } else if (x >= width / 2f && pedalPointer < 0) {
-                    pedalPointer = p;
-                    // a quick tap just before this touch makes it a boost
-                    boosting = lastWasTap && clock - lastTapEnd < DOUBLE_TAP_GAP;
-                    pedalDownAt = clock;
-                }
-            }
+            boolean justDown = touched && !wasTouched[p];
+            wasTouched[p] = touched;
+
             if (p == stickPointer) {
                 if (touched) {
-                    // the knob follows the thumb but stays inside the ring
                     float dx = x - baseX, dy = y - baseY;
                     float len = (float) Math.hypot(dx, dy);
                     float scale = len > STICK_RADIUS ? STICK_RADIUS / len : 1f;
@@ -127,88 +131,146 @@ public class TouchControls {
                 } else {
                     stickPointer = -1;
                 }
+                continue;
             }
-            if (p == pedalPointer && !touched) {
-                pedalPointer = -1;
-                lastWasTap = clock - pedalDownAt < TAP_TIME && !boosting;
+            if (p == gasPointer && !touched) {
+                gasPointer = -1;
+                lastWasTap = clock - gasDownAt < TAP_TIME && !boosting;
                 lastTapEnd = clock;
                 boosting = false;
             }
-            wasTouched[p] = touched;
+            if (!touched) {
+                continue;
+            }
+            if (justDown && y > height * (1f - TOP_ZONE)) {
+                continue;   // a tap on the HUD menu
+            }
+            if (justDown && x < width / 2f) {
+                if (stickPointer < 0) {
+                    stickPointer = p;
+                    baseX = MathUtils.clamp(x, STICK_RADIUS + 10f, width / 2f - STICK_RADIUS);
+                    baseY = MathUtils.clamp(y, STICK_RADIUS + 10f, height * (1f - TOP_ZONE));
+                    knobX = baseX;
+                    knobY = baseY;
+                }
+                continue;
+            }
+            if (x < width / 2f) {
+                continue;
+            }
+            if (justDown && inside(gear, x, y, 10f)) {
+                // like a real automatic: change gear only when stopped
+                if (player.getVelocity().len() < SHIFT_SPEED) {
+                    reverseGear = !reverseGear;
+                }
+                continue;
+            }
+            if (inside(gear, x, y, 10f)) {
+                continue;
+            }
+            // fingers can slide from one pedal to the other, like a foot
+            if (x >= split) {
+                anyGas = true;
+                if (justDown) {
+                    gasPointer = p;
+                    boosting = lastWasTap && clock - lastTapEnd < DOUBLE_TAP_GAP;
+                    gasDownAt = clock;
+                }
+            } else {
+                anyBrake = true;
+            }
+        }
+        gasDown = anyGas;
+        brakeDown = anyBrake;
+        if (!gasDown) {
+            boosting = false;
         }
     }
 
-    private void draw(float width, float height, boolean gas, boolean reverse) {
+    private static boolean inside(float[] r, float x, float y, float margin) {
+        return x >= r[0] - margin && x <= r[0] + r[2] + margin && y >= r[1] - margin && y <= r[1] + r[3] + margin;
+    }
+
+    private void draw(float width, float height) {
         shapes.getProjectionMatrix().setToOrtho2D(0, 0, width, height);
         batch.getProjectionMatrix().setToOrtho2D(0, 0, width, height);
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
-        // joystick: faint in its resting spot until a thumb picks it up
         boolean held = stickPointer >= 0;
         float sx = held ? baseX : 40f + STICK_RADIUS;
         float sy = held ? baseY : 40f + STICK_RADIUS;
         float kx = held ? knobX : sx;
         float ky = held ? knobY : sy;
         float alpha = held ? 0.9f : 0.45f;
-        // pedal: bottom right, gold for gas, blue while boosting
-        float px = width - 40f - STICK_RADIUS;
-        float py = 40f + STICK_RADIUS;
-        Color pedal = boosting && gas ? BOOST : GOLD;
 
         shapes.begin(ShapeRenderer.ShapeType.Filled);
-        ring(sx, sy, STICK_RADIUS + 8f, GOLD, alpha * 0.8f);
+        // joystick
+        shapes.setColor(GOLD_DARK.r, GOLD_DARK.g, GOLD_DARK.b, alpha * 0.8f);
+        shapes.circle(sx, sy - 3f, STICK_RADIUS + 8f, 48);
+        shapes.setColor(GOLD.r, GOLD.g, GOLD.b, alpha * 0.8f);
+        shapes.circle(sx, sy, STICK_RADIUS + 8f, 48);
         shapes.setColor(FACE.r, FACE.g, FACE.b, alpha * 0.55f);
         shapes.circle(sx, sy, STICK_RADIUS + 2f, 48);
-        // left / right arrows on the ring
         shapes.setColor(GOLD.r, GOLD.g, GOLD.b, alpha);
         float a = 9f, edge = STICK_RADIUS - 12f;
         shapes.triangle(sx - edge - a, sy, sx - edge + a * 0.6f, sy + a, sx - edge + a * 0.6f, sy - a);
         shapes.triangle(sx + edge + a, sy, sx + edge - a * 0.6f, sy + a, sx + edge - a * 0.6f, sy - a);
-        // the knob
         shapes.setColor(GOLD_DARK.r, GOLD_DARK.g, GOLD_DARK.b, alpha);
         shapes.circle(kx, ky - 3f, 28f, 32);
-        shapes.setColor(reverse ? Color.WHITE : GOLD);
-        shapes.getColor().a = alpha;
+        shapes.setColor(GOLD.r, GOLD.g, GOLD.b, alpha);
         shapes.circle(kx, ky, 28f, 32);
 
-        ring(px, py, STICK_RADIUS, pedal, gas ? 0.95f : 0.45f);
-        shapes.setColor(gas ? pedal.r * 0.45f : FACE.r, gas ? pedal.g * 0.45f : FACE.g, gas ? pedal.b * 0.45f : FACE.b, gas ? 0.85f : 0.5f);
-        shapes.circle(px, py, STICK_RADIUS - 7f, 48);
+        // pedals: a gold frame, a dark face with grip ridges that light up when pressed
+        pedal(brake, brakeDown, BRAKE);
+        pedal(gas, gasDown, boosting && gasDown ? BOOST : GOLD);
+
+        // gear selector: D and R halves, the chosen one lit
+        float half = gear[2] / 2f;
+        frame(gear[0], gear[1], gear[2], gear[3], 0.85f);
+        shapes.setColor(GOLD.r, GOLD.g, GOLD.b, 0.95f);
+        float litX = reverseGear ? gear[0] + half : gear[0];
+        shapes.rect(litX + 4f, gear[1] + 4f, half - 8f, gear[3] - 8f);
         shapes.end();
 
         batch.begin();
-        String label = gas ? (boosting ? "BOOST" : "GAS") : reverse ? "REVERSE" : "GAS";
-        font.setColor(gas && boosting ? BOOST : GOLD);
-        font.getColor().a = gas ? 1f : 0.6f;
-        layout.setText(font, label);
-        font.draw(batch, label, px - layout.width / 2f, py + layout.height / 2f);
-        if (clock < HINT_TIME) {
-            // how-to for the first few seconds
-            float fade = MathUtils.clamp(HINT_TIME - clock, 0f, 1f);
-            hintFont.setColor(1f, 0.95f, 0.84f, fade);
-            String left = "Drag to steer";
-            layout.setText(hintFont, left);
-            hintFont.draw(batch, left, 40f + STICK_RADIUS - layout.width / 2f, 30f);
-            String right = "Hold = gas   Double tap + hold = boost";
-            layout.setText(hintFont, right);
-            hintFont.draw(batch, right, Math.min(px - layout.width / 2f, width - layout.width - 12f), 30f);
-        }
+        label("D", gear[0] + half / 2f, gear[1] + gear[3] / 2f, reverseGear ? GOLD : Ui.TEXT_DARK);
+        label("R", gear[0] + half * 1.5f, gear[1] + gear[3] / 2f, reverseGear ? Ui.TEXT_DARK : GOLD);
+        label("BRAKE", brake[0] + brake[2] / 2f, brake[1] + 18f, brakeDown ? BRAKE : GOLD);
+        label(boosting && gasDown ? "BOOST" : "GAS", gas[0] + gas[2] / 2f, gas[1] + 18f,
+            boosting && gasDown ? BOOST : GOLD);
         batch.end();
     }
 
-    /** a gold ring with a darker lower edge, like the gilded buttons */
-    private void ring(float x, float y, float r, Color color, float alpha) {
-        shapes.setColor(color.r * 0.55f, color.g * 0.45f, color.b * 0.3f, alpha);
-        shapes.circle(x, y - 3f, r, 48);
-        shapes.setColor(color.r, color.g, color.b, alpha);
-        shapes.circle(x, y, r, 48);
+    /** the gilded frame (gold with a darker lower edge) and a dark face inside it */
+    private void frame(float x, float y, float w, float h, float alpha) {
+        shapes.setColor(GOLD_DARK.r, GOLD_DARK.g, GOLD_DARK.b, alpha);
+        shapes.rect(x, y - 3f, w, h);
+        shapes.setColor(GOLD.r, GOLD.g, GOLD.b, alpha);
+        shapes.rect(x, y, w, h);
+        shapes.setColor(FACE.r, FACE.g, FACE.b, alpha);
+        shapes.rect(x + 4f, y + 4f, w - 8f, h - 8f);
+    }
+
+    private void pedal(float[] r, boolean down, Color color) {
+        // a pressed pedal sinks a little, like it's being pushed
+        float sink = down ? 3f : 0f;
+        frame(r[0], r[1] - sink, r[2], r[3], down ? 0.95f : 0.6f);
+        shapes.setColor(color.r, color.g, color.b, down ? 0.95f : 0.35f);
+        for (float ry = r[1] + 34f; ry < r[1] + r[3] - 12f; ry += 12f) {
+            shapes.rect(r[0] + 12f, ry - sink, r[2] - 24f, 4f);
+        }
+    }
+
+    private void label(String text, float cx, float cy, Color color) {
+        font.setColor(color);
+        layout.setText(font, text);
+        font.draw(batch, text, cx - layout.width / 2f, cy + layout.height / 2f);
     }
 
     public void dispose() {
         batch.dispose();
         shapes.dispose();
         font.dispose();
-        hintFont.dispose();
     }
 }

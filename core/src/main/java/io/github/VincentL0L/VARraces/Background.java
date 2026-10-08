@@ -66,6 +66,8 @@ public class Background {
         }
         
         batch.draw(backgroundTexture, 0, 0);
+        // the barriers that stop cars cutting across the grass
+        batch.draw(Barriers.texture(), 0, 0);
         batch.end();
     }
     /**

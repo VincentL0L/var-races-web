@@ -1,13 +1,13 @@
 package io.github.VincentL0L.VARraces;
 
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Screen;
-import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
-import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
@@ -17,116 +17,74 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.ui.Table;
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
-import com.badlogic.gdx.utils.viewport.ExtendViewport;
 
 import io.github.VincentL0L.VARraces.Multiplayer.client.NetworkClient;
 
 /**
- * Screen called by MenuScreen that calls GameScreen once every player
- * in the lobby readys up
+ * The lobby before a race: one gilded card over the drifting, frosted track. It lists the
+ * drivers (with their cars and whether they're ready) and has just two buttons, Leave and
+ * Ready. Once everyone is ready the red start flag waves and the race screen takes over.
  */
 public class LobbyScreen implements Screen {
-    private Stage stage;
-    private Stage uiStage;
-    private Game game;
-    private Skin skin;
-    private int selectedCar;
-    private NetworkClient networkClient;
-    private Label statusLabel;
-    private Label playersLabel;
+    private static final int CPU_COUNT = 3;
+
+    private final Game game;
+    private final int selectedCar;
+    private final NetworkClient networkClient;
+    private final Stage uiStage;
+    private final Skin skin;
+    private final TrackBackdrop backdrop = new TrackBackdrop();
+    private final Texture[] cars = new Texture[6];
+    private Label kicker;
+    private Table drivers;
     private TextButton readyButton;
-    private boolean isReady = false;
-    private OrthographicCamera camera;
-    private Background background;
-    private final FrostedBackdrop frost = new FrostedBackdrop();
-    // the track behind the lobby drifts like the old DVD logo, bouncing off the map's edges
-    private static final float MAP_WIDTH = 1920f;
-    private static final float MAP_HEIGHT = 1080f;
-    private float driftX = MathUtils.randomSign() * 70f;
-    private float driftY = MathUtils.randomSign() * 45f;
+    private String shownDrivers = null;
     private StartFlag startFlag;
 
     /**
-     * creates lobby screen passing on the current game and car selected,
-     * intializes a networkclient and other fields
-     * @param game
-     * @param selectedCar
+     * @param game game
+     * @param selectedCar car skin 1-3
      * @param client online client already in a room, or null for single player
      */
     public LobbyScreen(Game game, int selectedCar, NetworkClient client) {
         this.game = game;
         this.selectedCar = selectedCar;
-        
-        camera = new OrthographicCamera(675, 360);
-        camera.position.set(1000, 500, 0);
-        camera.update();
-
-        stage = new Stage(new ExtendViewport(675, 360, camera));
-        stage.getViewport().update(Gdx.graphics.getWidth(), Gdx.graphics.getHeight(), true);
         uiStage = new Stage(Ui.viewport());
-        
         skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
-        
+        for (int i = 0; i < cars.length; i++) {
+            cars[i] = new Texture(Gdx.files.internal("ui/car" + (i + 1) + ".png"));
+        }
+
         if (client != null) {
             networkClient = client;
         } else {
             networkClient = new NetworkClient(null);
             networkClient.start("localhost");
         }
-        
+
         createUI();
-        background = new Background(stage);
-        
         Gdx.input.setInputProcessor(uiStage);
     }
 
     /**
-     * Creates GUI elements of the lobby
+     * the card: kicker, title, driver list, Leave + Ready
      */
     private void createUI() {
-        Table mainTable = new Table();
-        mainTable.setFillParent(true);
+        Table card = Cards.card();
+        boolean online = networkClient.isOnline();
 
-        Label.LabelStyle titleStyle = new Label.LabelStyle(Ui.display(36), Ui.GOLD);
-        String title = "Race Lobby";
-        if (networkClient.isOnline()) {
-            title = (networkClient.isRoomPublic() ? "Public Race " : "Private Race ") + networkClient.getRoomCode();
-        }
-        Label titleLabel = new Label(title, titleStyle);
+        kicker = Cards.kicker(online ? (networkClient.isRoomPublic() ? "PUBLIC ROOM" : "PRIVATE ROOM  /  SHARE THIS CODE")
+            : "SINGLE PLAYER  /  " + lapsText());
+        card.add(kicker).left().row();
+        card.add(Cards.title(online ? networkClient.getRoomCode() : "QUICK RACE", 44)).left().padTop(2).padBottom(16).row();
 
-        Label.LabelStyle normalStyle = new Label.LabelStyle(Ui.font(13), Ui.CREAM);
-        statusLabel = new Label("Press Ready to race", normalStyle);
-        playersLabel = new Label("Connected Players: 1", normalStyle);
+        card.add(Cards.kicker("DRIVERS")).left().padBottom(6).row();
+        drivers = new Table();
+        drivers.defaults().width(Cards.CARD_WIDTH).height(Cards.ROW_HEIGHT).padBottom(6);
+        card.add(drivers).row();
 
-        readyButton = new TextButton("Ready", skin);
-        readyButton.addListener(new ClickListener() {
-            @Override
-            public void clicked(InputEvent event, float x, float y) {
-                if (!isReady) {
-                    isReady = true;
-                    readyButton.setText("Waiting...");
-                    readyButton.setDisabled(true);
-                    networkClient.setReady(true);
-                }
-            }
-        });
-
-        mainTable.add(titleLabel).pad(20).row();
-        mainTable.add(statusLabel).pad(10).row();
-        mainTable.add(playersLabel).pad(10).row();
-        mainTable.add(readyButton).pad(20).width(200).height(60).row();
-
-        String instructions = "Race 3 CPU cars - click Ready to start";
-        if (networkClient.isOnline()) {
-            instructions = "Share code " + networkClient.getRoomCode()
-                + " with friends. The race starts when everyone is Ready";
-        }
-        Label instructionsLabel = new Label(instructions, normalStyle);
-        mainTable.add(instructionsLabel).pad(20).row();
-
-        TextButton leaveButton = new TextButton("Leave", skin);
-        leaveButton.addListener(new ClickListener() {
-            @Override
+        TextButton leave = Cards.smallButton("Leave", skin);
+        leave.addListener(new ClickListener() {
             public void clicked(InputEvent event, float x, float y) {
                 if (!networkClient.isFlagShown()) {
                     networkClient.stop();
@@ -134,62 +92,107 @@ public class LobbyScreen implements Screen {
                 }
             }
         });
-        mainTable.add(leaveButton).width(140).height(45).row();
+        readyButton = new TextButton("Ready", skin);
+        readyButton.addListener(new ClickListener() {
+            public void clicked(InputEvent event, float x, float y) {
+                if (!networkClient.isReady() && networkClient.isConnected()) {
+                    networkClient.setReady(true);
+                }
+            }
+        });
+        Table buttons = new Table();
+        buttons.add(leave).width(130).height(52);
+        buttons.add().expandX();
+        buttons.add(readyButton).width(220).height(60);
+        card.add(buttons).padTop(14).row();
 
-        // gilded panel behind the text so it reads over the track
-        Table panel = new Table();
-        panel.setFillParent(true);
-        mainTable.setFillParent(false);
-        mainTable.setBackground(Ui.panel());
-        mainTable.pad(20, 40, 30, 40);
-        panel.add(mainTable);
-        uiStage.addActor(panel);
+        uiStage.addActor(Cards.center(card));
+    }
+
+    private static String lapsText() {
+        int laps = io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager.LAPS;
+        return laps + (laps == 1 ? " LAP" : " LAPS");
     }
 
     /**
-     * 
+     * rebuilds the driver rows when someone joins, leaves or readies up
+     */
+    private void refreshDrivers() {
+        String me = networkClient.getPlayerId();
+        List<String> ids = new ArrayList<>(networkClient.getPlayerReadyStates().keySet());
+        StringBuilder key = new StringBuilder();
+        for (String id : ids) {
+            key.append(id).append(networkClient.isPlayerReady(id)).append(networkClient.getOpponentCar(id)).append(';');
+        }
+        if (key.toString().equals(shownDrivers)) {
+            return;
+        }
+        shownDrivers = key.toString();
+        drivers.clear();
+
+        // you first, then everyone else, then the CPUs
+        drivers.add(driverRow(cars[selectedCar - 1], "YOU", true, networkClient.isReady() ? "READY" : null)).row();
+        for (String id : ids) {
+            if (!id.equals(me)) {
+                int car = MathUtils.clamp(networkClient.getOpponentCar(id), 1, 3);
+                drivers.add(driverRow(cars[car - 1], id.toUpperCase(), false,
+                    networkClient.isPlayerReady(id) ? "READY" : null)).row();
+            }
+        }
+        if (networkClient.isOnline()) {
+            // online the list can get long, so the CPUs share one row
+            Table row = Cards.row();
+            for (int i = 0; i < CPU_COUNT; i++) {
+                row.add(Cards.carIcon(cars[3 + i])).size(13, 26).padRight(6);
+            }
+            row.add(Cards.text("+ " + CPU_COUNT + " CPU RACERS", false)).left().expandX().padLeft(8);
+            row.add(Cards.pill("CPU", Cards.CPU, true));
+            drivers.add(row).row();
+        } else {
+            for (int i = 0; i < CPU_COUNT; i++) {
+                drivers.add(driverRow(cars[3 + i], "CPU " + (i + 1), false, "CPU")).row();
+            }
+        }
+    }
+
+    /**
+     * one recessed row: car, name, status pill
+     * @param status "READY", "CPU", or null for not ready yet
+     */
+    private Table driverRow(Texture car, String name, boolean you, String status) {
+        Table row = Cards.row();
+        row.add(Cards.carIcon(car)).size(13, 26).padRight(14);
+        row.add(Cards.text(name, you)).left().expandX();
+        if ("CPU".equals(status)) {
+            row.add(Cards.pill("CPU", Cards.CPU, true));
+        } else if (status != null) {
+            row.add(Cards.pill("READY", Cards.READY, false));
+        } else {
+            row.add(Cards.pill("NOT READY", Cards.WAITING, false));
+        }
+        return row;
+    }
+
+    /**
      * @param delta time since last frame
      */
     public void render(float delta) {
-        Gdx.gl.glClearColor(0.2f, 0.2f, 0.2f, 1);
+        Gdx.gl.glClearColor(0f, 0f, 0f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
-
         networkClient.update(delta);
 
-        driftCamera(delta);
-
-        StringBuilder playerList = new StringBuilder();
-        playerList.append("Connected Players:\n");
-        
-        String readyText = networkClient.isReady() ? " [READY]" : " [NOT READY]";
-        String localPlayerId = networkClient.getPlayerId();
-        playerList.append(localPlayerId).append(readyText).append(" (You)\n");
-        
-        Map<String, Boolean> readyStates = networkClient.getPlayerReadyStates();
-        for (String id : readyStates.keySet()) {
-            if (!id.equals(localPlayerId)) {
-                readyText = networkClient.isPlayerReady(id) ? " [READY]" : " [NOT READY]";
-                playerList.append(id).append(readyText).append("\n");
-            }
-        }
-        
-        playersLabel.setText(playerList.toString());
-
+        refreshDrivers();
         if (!networkClient.isConnected()) {
-            statusLabel.setText(networkClient.getError() != null ? networkClient.getError() : "Waiting for server connection...");
+            String error = networkClient.getError();
+            kicker.setText(error != null ? error.toUpperCase() : "CONNECTING...");
+            kicker.setColor(error != null ? Cards.ERROR : Cards.LABEL);
             readyButton.setDisabled(true);
         } else if (networkClient.isReady()) {
-            statusLabel.setText(networkClient.isOnline() ? "Waiting for other players..." : "Get ready...");
-            readyButton.setText("Waiting...");
+            readyButton.setText(networkClient.isOnline() && !networkClient.isFlagShown() ? "Waiting" : "Ready");
             readyButton.setDisabled(true);
         }
-        // the track behind the lobby panel is frosted
-        frost.begin();
-        background.render(stage.getCamera());
-        stage.act(delta);
-        stage.draw();
-        frost.end();
-        frost.draw(1f);
+
+        backdrop.render(delta);
         uiStage.act(delta);
         uiStage.getViewport().apply();
         uiStage.draw();
@@ -198,7 +201,6 @@ public class LobbyScreen implements Screen {
         // covers the screen the race screen takes over behind it, with the cars on the grid
         if (networkClient.isFlagShown() && startFlag == null) {
             startFlag = new StartFlag();
-            statusLabel.setText("Get ready...");
         }
         if (startFlag != null) {
             startFlag.render(delta);
@@ -212,38 +214,10 @@ public class LobbyScreen implements Screen {
     }
 
     /**
-     * moves the camera at a steady speed, bouncing whenever the view reaches an edge of the map
-     */
-    private void driftCamera(float delta) {
-        float halfW = Math.min(camera.viewportWidth * camera.zoom / 2f, MAP_WIDTH / 2f);
-        float halfH = Math.min(camera.viewportHeight * camera.zoom / 2f, MAP_HEIGHT / 2f);
-        float x = camera.position.x + driftX * delta;
-        float y = camera.position.y + driftY * delta;
-        if (x < halfW) {
-            x = halfW;
-            driftX = Math.abs(driftX);
-        } else if (x > MAP_WIDTH - halfW) {
-            x = MAP_WIDTH - halfW;
-            driftX = -Math.abs(driftX);
-        }
-        if (y < halfH) {
-            y = halfH;
-            driftY = Math.abs(driftY);
-        } else if (y > MAP_HEIGHT - halfH) {
-            y = MAP_HEIGHT - halfH;
-            driftY = -Math.abs(driftY);
-        }
-        camera.position.set(x, y, 0);
-        camera.update();
-    }
-
-    /**
-     * resizes stage and uiStage
-     * @param width new width
-     * @param height new height
+     * @param width new width   @param height new height
      */
     public void resize(int width, int height) {
-        stage.getViewport().update(width, height, true);
+        backdrop.resize(width, height);
         uiStage.getViewport().update(width, height, true);
     }
 
@@ -253,25 +227,25 @@ public class LobbyScreen implements Screen {
     public void hide() {
         dispose();
     }
-    
+
     /**
-     * removes memory
+     * frees memory
      */
     public void dispose() {
-        frost.dispose();
+        backdrop.dispose();
         if (startFlag != null) {
             startFlag.dispose();
         }
-        stage.dispose();
+        for (Texture t : cars) {
+            t.dispose();
+        }
         uiStage.dispose();
         skin.dispose();
     }
 
-    //abstract classes that arent used
     public void show() {}
 
     public void pause() {}
 
     public void resume() {}
-
-} 
+}

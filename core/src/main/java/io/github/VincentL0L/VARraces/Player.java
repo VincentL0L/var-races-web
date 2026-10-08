@@ -84,11 +84,12 @@ public class Player {
 
     private Vector2 prevPos = null;
     private boolean inputEnabled = false;
-    // phone controls (TouchControls): joystick steering amount and the pedal
-    private boolean touchActive, touchGas, touchBoost, touchReverse;
+    // phone controls (TouchControls): joystick steering, the two pedals and the gear (D / R)
+    private boolean touchActive, touchGas, touchBoost, touchBrake, touchReverseGear;
     private float touchSteer;
-    /** on phones, lifting off the pedal brakes this hard (but never reverses) */
-    private static final float LIFT_BRAKE = 300f;
+    /** an automatic car creeps along at idle with no pedal pressed (about 5 mph) */
+    private static final float IDLE_CREEP = 12f;
+    private static final float CREEP_ACCEL = 30f;
 
     /**
      * Creates a player class and initializes textures, sounds, and other fields
@@ -109,6 +110,7 @@ public class Player {
         velocity = new Vector2();
 
         roadMask = new Pixmap(Gdx.files.internal("ui/road_mask.png"));
+        Barriers.build(roadMask);
 
         sound = Gdx.audio.newMusic(Gdx.files.internal("accelerate.mp3"));
         sound.setLooping(true);
@@ -128,10 +130,9 @@ public class Player {
             prevPos = new Vector2(getX(), getY());
         }
 
-        // WASD or the arrow keys, or the on-screen buttons on phones and tablets
-        // WASD or the arrow keys, or the joystick and pedal on phones and tablets
+        // WASD or the arrow keys, or the joystick and pedals on phones and tablets
         boolean gas = inputEnabled && (touchGas || Gdx.input.isKeyPressed(Input.Keys.W) || Gdx.input.isKeyPressed(Input.Keys.UP));
-        boolean brake = inputEnabled && (touchReverse || Gdx.input.isKeyPressed(Input.Keys.S) || Gdx.input.isKeyPressed(Input.Keys.DOWN));
+        boolean brake = inputEnabled && (touchBrake || Gdx.input.isKeyPressed(Input.Keys.S) || Gdx.input.isKeyPressed(Input.Keys.DOWN));
         boolean left = inputEnabled && (Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT));
         boolean right = inputEnabled && (Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT));
         boolean boost = inputEnabled && (touchBoost || Gdx.input.isKeyPressed(Input.Keys.SPACE));
@@ -140,7 +141,9 @@ public class Player {
         if (inputEnabled && touchSteer != 0f) {
             steerInput = MathUtils.clamp(touchSteer, -1f, 1f);
         }
-        boolean liftBrake = inputEnabled && touchActive && !gas && !brake;
+        // the pedals drive like a real automatic; the keyboard keeps arcade style
+        // (S brakes, then reverses once stopped)
+        boolean automatic = inputEnabled && touchActive;
 
         if (gas) {
             sound.play();
@@ -155,7 +158,7 @@ public class Player {
         int steps = Math.max(1, (int) Math.ceil(time / MAX_STEP - 1e-4f));
         float dt = time / steps;
         for (int n = 0; n < steps; n++) {
-            step(dt, gas, brake, steerInput, boost, liftBrake);
+            step(dt, gas, brake, steerInput, boost, automatic);
         }
 
         prevPos.set(getX(), getY());
@@ -164,7 +167,7 @@ public class Player {
     /**
      * one fixed physics step: engine, brakes, drag, steering, tire grip and walls
      */
-    private void step(float dt, boolean gas, boolean brake, float steerInput, boolean boost, boolean liftBrake) {
+    private void step(float dt, boolean gas, boolean brake, float steerInput, boolean boost, boolean automatic) {
         // split velocity into "along the car" and "sideways" parts
         float heading = (i.getRotation() + 90) * MathUtils.degreesToRadians;
         float fx = MathUtils.cos(heading);
@@ -179,7 +182,11 @@ public class Player {
             mana = Math.min(100f, mana + manaRegenRate * dt);
         }
 
-        if (brake) {
+        boolean creeping = false;
+        if (automatic) {
+            creeping = automaticGearbox(dt, gas, brake, forward);
+            forward = automaticForward;
+        } else if (brake) {
             if (forward > 5f) {
                 forward = Math.max(0f, forward - BRAKE_DECEL * dt);
             } else {
@@ -194,8 +201,6 @@ public class Player {
                 float power = ENGINE_POWER * (isBoosting ? BOOST_POWER_MULT : 1f);
                 forward += Math.min(traction, power / Math.max(forward, 1f)) * dt;
             }
-        } else if (liftBrake) {
-            forward = approachZero(forward, LIFT_BRAKE * dt);
         } else {
             forward = approachZero(forward, ENGINE_BRAKING * dt);
         }
@@ -222,11 +227,53 @@ public class Player {
         float speedFactor = MathUtils.clamp(speed / 70f, 0f, 1f) / (1f + speed / 550f);
         float direction = forward >= 0 ? 1f : -1f;  // steering flips when reversing, like a real car
         i.rotateBy(steer * MAX_YAW_RATE * speedFactor * direction * dt);
-        if (speed < 1f && !gas && !brake) {
+        if (speed < 1f && !gas && !creeping) {
             velocity.setZero();
         }
 
         moveWithWalls(dt);
+    }
+
+    /** result of automaticGearbox: the new forward speed */
+    private float automaticForward;
+
+    /**
+     * How a real automatic gas car responds to its pedals (phone controls):
+     *  - gas in D: the engine pulls forward (in R it pulls backwards, slowly)
+     *  - brake: slows the car to a stop and holds it there; it never reverses
+     *  - no pedal: the engine idles, so the car coasts down with engine braking
+     *    and creeps along at walking pace once it's slow, in whichever gear it's in
+     * @return true while the car is creeping at idle
+     */
+    private boolean automaticGearbox(float dt, boolean gas, boolean brake, float forward) {
+        float direction = touchReverseGear ? -1f : 1f;
+        boolean creeping = false;
+        if (brake) {
+            forward = approachZero(forward, BRAKE_DECEL * dt);
+        } else if (gas && touchReverseGear) {
+            if (forward > 0f) {
+                forward = approachZero(forward, BRAKE_DECEL * dt);   // still rolling forward: the gearbox fights it
+            } else {
+                forward = Math.max(-REVERSE_TOP_SPEED, forward - REVERSE_ACCEL * dt);
+            }
+        } else if (gas) {
+            if (forward < 0f) {
+                forward = approachZero(forward, BRAKE_DECEL * dt);
+            } else {
+                float traction = isBoosting ? BOOST_TRACTION : TRACTION;
+                float power = ENGINE_POWER * (isBoosting ? BOOST_POWER_MULT : 1f);
+                forward += Math.min(traction, power / Math.max(forward, 1f)) * dt;
+            }
+        } else if (forward * direction < IDLE_CREEP) {
+            // idle creep: ease toward walking pace in the selected gear
+            creeping = true;
+            float target = IDLE_CREEP * direction;
+            forward += MathUtils.clamp(target - forward, -CREEP_ACCEL * dt, CREEP_ACCEL * dt);
+        } else {
+            forward = approachZero(forward, ENGINE_BRAKING * dt);
+        }
+        automaticForward = forward;
+        return creeping;
     }
 
     /**
@@ -323,13 +370,15 @@ public class Player {
      * @return true if car is on the road; false if not
      */
     /**
-     * The edge of the map is a wall; everywhere inside it (road or grass) can be driven on.
-     * @return true if a car at (x, y) is inside the map
+     * The road and a strip of grass beside it can be driven on; past that are the barriers
+     * (see Barriers), so nobody can cut across the grass to skip part of the track.
+     * @return true if a car at (x, y) is inside the barriers
      */
     public static boolean inBounds(float x, float y, float width, float height) {
         float cx = x + width / 2, cy = y + height / 2;
         return cx >= MAP_MARGIN && cy >= MAP_MARGIN
-            && cx < roadMask.getWidth() - MAP_MARGIN && cy < roadMask.getHeight() - MAP_MARGIN;
+            && cx < roadMask.getWidth() - MAP_MARGIN && cy < roadMask.getHeight() - MAP_MARGIN
+            && Barriers.drivable(cx, cy);
     }
 
     /**
@@ -414,16 +463,17 @@ public class Player {
 
     /**
      * the phone controls this frame
-     * @param active true when the phone controls are in use (letting go of the pedal brakes)
+     * @param active true when the phone controls are in use (the car then drives like an automatic)
      * @param steer joystick: -1 full right .. 1 full left, 0 straight
-     * @param gas pedal held   @param boost pedal held after a double tap
-     * @param reverse joystick pulled down (brake, then reverse)
+     * @param gas gas pedal held   @param boost gas held after a double tap
+     * @param brake brake pedal held   @param reverseGear true in R, false in D
      */
-    public void setTouchInput(boolean active, float steer, boolean gas, boolean boost, boolean reverse) {
+    public void setTouchInput(boolean active, float steer, boolean gas, boolean boost, boolean brake, boolean reverseGear) {
         touchActive = active;
         touchSteer = steer;
         touchGas = gas;
         touchBoost = boost;
-        touchReverse = reverse;
+        touchBrake = brake;
+        touchReverseGear = reverseGear;
     }
 }
