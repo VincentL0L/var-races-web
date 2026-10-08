@@ -49,11 +49,13 @@ public class GameScreen implements Screen {
     private Game game;
     private int car;
     public NetworkClient nc;
-    private Label cd;
+    private final StartLights lights = new StartLights();
+    private final TouchControls touch = Ui.touchScreen ? new TouchControls() : null;
+    /** the red VAR RACES flag from the lobby, still waving off when the race screen opens */
+    private StartFlag startFlag;
     private Label finish;
     private boolean start = false;
     private boolean done = false;
-    private float goTime = 0f;
     private Texture[] oppSkins;
     private final float[] pose = new float[3];
     private Background bg;
@@ -82,6 +84,14 @@ public class GameScreen implements Screen {
      * @param y start position y
      */
     public GameScreen(Game g, int c, NetworkClient n, float x, float y) {
+        this(g, c, n, x, y, null);
+    }
+
+    /**
+     * @param flag the start flag still waving off the screen, drawn on top until it's gone (or null)
+     */
+    public GameScreen(Game g, int c, NetworkClient n, float x, float y, StartFlag flag) {
+        startFlag = flag;
         game = g;
         car = c;
         nc = n;
@@ -91,8 +101,8 @@ public class GameScreen implements Screen {
         OrthographicCamera cam = new OrthographicCamera();
         camControl = new CameraController(cam);
         stage = new Stage(new ExtendViewport(675, 360, cam));
-        Gdx.input.setInputProcessor(uiStage);
         uiStage = new Stage(Ui.viewport());
+        Gdx.input.setInputProcessor(uiStage);
 
         bgm = Gdx.audio.newMusic(Gdx.files.internal("idle.mp3"));
         bgm.setLooping(true);
@@ -101,14 +111,12 @@ public class GameScreen implements Screen {
         player = new Player(stage, car);
         player.setInputEnabled(false);
         player.getImage().setPosition(x, y);
+        // start with the camera already on our car in its grid slot
+        cam.position.set(x + player.getWidth() / 2f, y + player.getHeight() / 2f, 0);
+        cam.update();
 
         BitmapFont font = Ui.displayOutlined(15);
         
-        cd = new Label("", new LabelStyle(font, Color.RED));
-        cd.setFontScale(Ui.fontScale(3f));
-        cd.setAlignment(Align.center);
-        cd.setPosition(Ui.width() / 2f, Ui.height() / 2f, Align.center);
-
         finish = new Label("FINISH!", new LabelStyle(font, Color.YELLOW));
         finish.setFontScale(Ui.fontScale(4f));
         finish.setAlignment(Align.center);
@@ -116,7 +124,6 @@ public class GameScreen implements Screen {
         finish.setVisible(false);
 
         uiStage.addActor(finish);
-        uiStage.addActor(cd);
 
 
         bg = new Background(stage);
@@ -155,33 +162,14 @@ public class GameScreen implements Screen {
         }
         String cdtxt = nc.getCountdownText();
 
-        if (!start) {
-            if (!cdtxt.equals("GO!")) {
-                cd.setText(cdtxt);
-                cd.setColor(Color.RED);
-                cd.setFontScale(Ui.fontScale(5f));
-                cd.pack();
-                cd.setPosition(Ui.width() / 2f, Ui.height() / 2f, Align.center);
-            } else {
-                bgm.stop();
-                bgm.dispose();
-                bgm = Gdx.audio.newMusic(Gdx.files.internal("background.mp3"));
-                bgm.setLooping(true);
-                bgm.play();
-                cd.setText("GO!");
-                cd.setColor(Color.YELLOW);
-                cd.setFontScale(Ui.fontScale(5f));
-                cd.pack();
-                cd.setPosition(Ui.width() / 2f, Ui.height() / 2f, Align.center);
-                start = true;
-                player.getImage().setPosition(200, 300);
-            }
-        }
-        else {
-            goTime += dt;
-            if (goTime >= 1f) {
-                cd.remove();
-            }
+        // everyone waits on the grid until GO!, then the racing music starts
+        if (!start && cdtxt.equals("GO!")) {
+            bgm.stop();
+            bgm.dispose();
+            bgm = Gdx.audio.newMusic(Gdx.files.internal("background.mp3"));
+            bgm.setLooping(true);
+            bgm.play();
+            start = true;
         }
 
         if (!done && rm.isFinished(nc.getPlayerId())) {
@@ -210,6 +198,9 @@ public class GameScreen implements Screen {
 
         // controls work while racing and not paused
         player.setInputEnabled(start && !done && !paused);
+        if (touch == null) {
+            player.setTouchInput(false, false, false, false, false);
+        }
         if (!frozen) {
             player.render(delta);
         }
@@ -284,11 +275,23 @@ public class GameScreen implements Screen {
         over.setOffTrack(start && !done && trackWatch.distanceFromTrack(nc.getPlayerId()) > OFF_TRACK_DISTANCE);
         over.setPaused(paused);
         over.render(player);
+        lights.render(cdtxt, frozen ? 0f : delta);
+        if (touch != null) {
+            touch.update(player, !paused && !done);
+        }
 
         // countdown / FINISH! / pause panel on top of everything
         uiStage.act(delta);
         uiStage.getViewport().apply();
         uiStage.draw();
+
+        if (startFlag != null) {
+            startFlag.render(delta);
+            if (startFlag.isDone()) {
+                startFlag.dispose();
+                startFlag = null;
+            }
+        }
     }
 
     /**
@@ -411,7 +414,10 @@ public class GameScreen implements Screen {
      * @param height new screen height
      */
     public void resize(int width, int height) {
-        stage.getViewport().update(width, height, true);
+        // false: keep the camera on the car instead of jumping to the middle of the map
+        stage.getViewport().update(width, height, false);
+        uiStage.getViewport().update(width, height, true);
+        finish.setPosition(Ui.width() / 2f, Ui.height() / 2f, Align.center);
     }
 
     /**
@@ -428,6 +434,13 @@ public class GameScreen implements Screen {
      */
     public void dispose() {
         frost.dispose();
+        lights.dispose();
+        if (touch != null) {
+            touch.dispose();
+        }
+        if (startFlag != null) {
+            startFlag.dispose();
+        }
         pauseSkin.dispose();
         over.dispose();
         stage.dispose();

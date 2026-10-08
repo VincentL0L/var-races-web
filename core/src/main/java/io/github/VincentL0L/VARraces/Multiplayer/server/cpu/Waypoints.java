@@ -17,10 +17,36 @@ public class Waypoints {
      */
     public static List<Vector2> getCpuGrid() {
         List<Vector2> grid = new ArrayList<>();
-        grid.add(new Vector2(165, 262));
-        grid.add(new Vector2(235, 262));
-        grid.add(new Vector2(200, 226));
+        for (int i = 0; i < 3; i++) {
+            grid.add(getGridSlot(i));
+        }
         return grid;
+    }
+
+    /** grid slots players take, in join order: middle of row 2 first, then its sides, then row 3 */
+    private static final int[] PLAYER_SLOTS = {4, 3, 5, 7, 6, 8, 10, 9, 11};
+
+    /**
+     * @param index 0 for the first player, 1 for the second...
+     * @return where that player's car starts (image corner), behind the CPUs
+     */
+    public static Vector2 getPlayerStart(int index) {
+        return getGridSlot(PLAYER_SLOTS[Math.max(0, index) % PLAYER_SLOTS.length]);
+    }
+
+    /**
+     * The starting grid behind the checkered line (y 300): 3 columns across the road,
+     * 4 rows back, with the middle column set back a little like a real staggered grid.
+     * The CPUs take the front row (slots 0-2).
+     * @param slot 0-11, front row first, left to right
+     * @return bottom left corner of the car's image in that slot
+     */
+    public static Vector2 getGridSlot(int slot) {
+        int row = slot / 3;
+        int column = slot % 3;
+        float x = 165f + column * 36f;
+        float y = 276f - row * 30f - (column == 1 ? 12f : 0f);
+        return new Vector2(x, y);
     }
 
     /**

@@ -9,6 +9,7 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.math.MathUtils;
+import com.badlogic.gdx.math.Vector2;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.scenes.scene2d.Stage;
 import com.badlogic.gdx.scenes.scene2d.ui.Label;
@@ -35,20 +36,14 @@ public class LobbyScreen implements Screen {
     private Label playersLabel;
     private TextButton readyButton;
     private boolean isReady = false;
-    private float cameraPanTimer = 0f;
-    private boolean isPanning = false;
     private OrthographicCamera camera;
     private Background background;
-    private float panDuration = 8f;
     private final FrostedBackdrop frost = new FrostedBackdrop();
-    private float frostAmount = 1f;
     // the track behind the lobby drifts like the old DVD logo, bouncing off the map's edges
     private static final float MAP_WIDTH = 1920f;
     private static final float MAP_HEIGHT = 1080f;
     private float driftX = MathUtils.randomSign() * 70f;
     private float driftY = MathUtils.randomSign() * 45f;
-    private float panFromX;
-    private float panFromY;
     private StartFlag startFlag;
 
     /**
@@ -161,9 +156,7 @@ public class LobbyScreen implements Screen {
 
         networkClient.update(delta);
 
-        if (!isPanning) {
-            driftCamera(delta);
-        }
+        driftCamera(delta);
 
         StringBuilder playerList = new StringBuilder();
         playerList.append("Connected Players:\n");
@@ -190,65 +183,31 @@ public class LobbyScreen implements Screen {
             readyButton.setText("Waiting...");
             readyButton.setDisabled(true);
         }
-        String countdownText = networkClient.getCountdownText();
-        if (countdownText != null && !countdownText.isEmpty()) {
-            if (countdownText.equals("3") && !isPanning) {
-                // sweep down to the start line from wherever the drifting camera is
-                isPanning = true;
-                cameraPanTimer = 0f;
-                panFromX = camera.position.x;
-                panFromY = camera.position.y;
-            } 
-            else if (countdownText.equals("GO!")) {
-                GameScreen gameScreen = new GameScreen(game, selectedCar, networkClient, 900, 500);
-                game.setScreen(gameScreen);
-                return;
-            }
-            statusLabel.setText(countdownText);
-        }
-
-        // the track behind the lobby panel is frosted; the frost melts away when the
-        // countdown starts so you can see the camera sweep down to the start line
-        frostAmount = isPanning ? Math.max(0f, frostAmount - delta * 2f) : 1f;
+        // the track behind the lobby panel is frosted
         frost.begin();
         background.render(stage.getCamera());
-
-        if (isPanning) {
-            cameraPanTimer += delta;
-            float progress = cameraPanTimer / panDuration;
-            progress = Math.min(1.5f, progress);
-
-            if (progress <= 1.5f) {
-                float startX = panFromX;
-                float startY = panFromY;
-                float endX = 200;
-                float endY = 300;
-                
-                float easedProgress = 1f - (1f - progress) * (1f - progress);
-                
-                float panX = startX + (endX - startX) * easedProgress;
-                float panY = startY + (endY - startY) * easedProgress;
-                
-                camera.position.x = panX;
-                camera.position.y = panY;
-                camera.update();
-            }
-        }
-        
         stage.act(delta);
         stage.draw();
         frost.end();
-        frost.draw(frostAmount);
+        frost.draw(1f);
         uiStage.act(delta);
         uiStage.getViewport().apply();
         uiStage.draw();
 
-        // once everyone is ready the red VAR RACES flag waves over everything
+        // once everyone is ready the red VAR RACES flag waves over everything; while it
+        // covers the screen the race screen takes over behind it, with the cars on the grid
         if (networkClient.isFlagShown() && startFlag == null) {
             startFlag = new StartFlag();
+            statusLabel.setText("Get ready...");
         }
-        if (startFlag != null && !startFlag.isDone()) {
+        if (startFlag != null) {
             startFlag.render(delta);
+            if (startFlag.isCovering()) {
+                Vector2 start = networkClient.getStartPosition();
+                StartFlag flag = startFlag;
+                startFlag = null;   // GameScreen owns it now
+                game.setScreen(new GameScreen(game, selectedCar, networkClient, start.x, start.y, flag));
+            }
         }
     }
 

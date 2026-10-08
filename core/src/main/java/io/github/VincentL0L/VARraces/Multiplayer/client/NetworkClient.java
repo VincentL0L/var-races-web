@@ -199,8 +199,10 @@ public class NetworkClient {
         if (gameStarted) {
             raceTime += delta;
         }
+        // the standings fill in once the cars are on the grid (the countdown has begun)
+        boolean onGrid = gameStarted || (countdownInProgress && countdownTimer >= 0f);
         for (Opponent cpu : cpuOpponents) {
-            if (gameStarted) {
+            if (onGrid) {
                 serverRaceManager.updateRacer(cpu.getName(), cpu.getPosition(), raceTime);
             }
             PositionPacket packet = opponents.get(cpu.getName());
@@ -208,7 +210,7 @@ public class NetworkClient {
             packet.y = cpu.getPosition().y;
             packet.rotation = cpu.getRotation();
         }
-        if (gameStarted) {
+        if (onGrid) {
             serverRaceManager.updateRacer(playerId, playerPos, raceTime);
             setLeaderboard(new LeaderboardPacket(serverRaceManager.toEntries()));
         }
@@ -401,6 +403,19 @@ public class NetworkClient {
      */
     public String getPlayerId() {
         return playerId;
+    }
+    /**
+     * Every player sorts the same list of names, so each one gets a different grid slot
+     * without the server having to hand them out.
+     * @return where this player's car lines up on the starting grid (image corner)
+     */
+    public Vector2 getStartPosition() {
+        List<String> ids = new ArrayList<>(playerReadyStates.keySet());
+        if (!ids.contains(playerId)) {
+            ids.add(playerId);
+        }
+        java.util.Collections.sort(ids);
+        return Waypoints.getPlayerStart(ids.indexOf(playerId));
     }
     /**
      * @return boolean connected status

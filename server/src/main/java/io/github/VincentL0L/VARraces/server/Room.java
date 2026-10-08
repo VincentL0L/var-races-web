@@ -153,8 +153,10 @@ public class Room {
         if (started) {
             raceTime += delta;
         }
+        // standings start once everyone is on the grid (the countdown has begun)
+        boolean onGrid = started || (countdownInProgress && countdownTimer >= 0f);
         for (Opponent cpu : cpuOpponents) {
-            if (started) {
+            if (onGrid) {
                 raceManager.updateRacer(cpu.getName(), cpu.getPosition(), raceTime);
             }
             broadcast("POS|" + cpu.getName() + "|" + cpu.getPosition().x + "|"
@@ -162,7 +164,7 @@ public class Room {
         }
 
         for (PlayerState p : players.values()) {
-            if (started) {
+            if (onGrid) {
                 raceManager.updateRacer(p.id, p.position, raceTime);
             }
             broadcast("POS|" + p.id + "|" + p.position.x + "|" + p.position.y + "|"
@@ -170,7 +172,7 @@ public class Room {
         }
 
         // leaderboard every tick: LEADER|name|laps|progress|finishTime|...
-        if (started) {
+        if (onGrid) {
             StringBuilder msg = new StringBuilder("LEADER");
             for (RacerInfo r : raceManager.getSortedLeaderboard()) {
                 msg.append('|').append(r.name).append('|').append(r.lapCount).append('|')

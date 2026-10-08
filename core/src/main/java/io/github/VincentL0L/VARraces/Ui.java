@@ -36,8 +36,41 @@ public class Ui {
     /** size of libGDX's old default font, which the screens were designed around */
     private static final float DEFAULT_FONT_SIZE = 15f;
 
-    /** screen pixels per layout point: 2 on a Retina browser, 1 on desktop */
+    /** the screen's real pixels per CSS pixel: 2 on a Retina browser, 3 on most phones */
+    public static float pixelRatio = 1f;
+    /** screen pixels per layout point: the pixel ratio, shrunk a bit on small screens */
     public static float density = 1f;
+    /** true on phones and tablets: shows the on-screen driving buttons */
+    public static boolean touchScreen = false;
+    /** menus are laid out for at least this many points; smaller screens (phones) scale it all down */
+    private static final float MIN_WIDTH = 900f;
+    private static final float MIN_HEIGHT = 620f;
+
+    /** asks the player to type something (the web version uses the browser's prompt box) */
+    public interface TextPrompt {
+        /**
+         * @param message question to show
+         * @param current text already typed
+         * @return what was typed, or null if cancelled
+         */
+        String ask(String message, String current);
+    }
+
+    /** set by the web launcher; null where a real keyboard is always available */
+    public static TextPrompt textPrompt;
+
+    /**
+     * works out the density for the current window size: on a phone the menus would not
+     * fit, so everything is drawn a little smaller there
+     */
+    public static void refreshDensity() {
+        float cssWidth = Gdx.graphics.getWidth() / pixelRatio;
+        float cssHeight = Gdx.graphics.getHeight() / pixelRatio;
+        if (cssWidth <= 0 || cssHeight <= 0) {
+            return;
+        }
+        density = pixelRatio * Math.min(1f, Math.min(cssWidth / MIN_WIDTH, cssHeight / MIN_HEIGHT));
+    }
 
     private static Texture bodyTexture;
     private static Texture displayTexture;
@@ -47,6 +80,7 @@ public class Ui {
      * @return screen width in layout points
      */
     public static float width() {
+        refreshDensity();
         return Gdx.graphics.getWidth() / density;
     }
 
@@ -54,6 +88,7 @@ public class Ui {
      * @return screen height in layout points
      */
     public static float height() {
+        refreshDensity();
         return Gdx.graphics.getHeight() / density;
     }
 
@@ -61,7 +96,16 @@ public class Ui {
      * @return a ScreenViewport that measures in points, used for menus and HUD stages
      */
     public static ScreenViewport viewport() {
-        ScreenViewport viewport = new ScreenViewport();
+        ScreenViewport viewport = new ScreenViewport() {
+            @Override
+            public void update(int screenWidth, int screenHeight, boolean centerCamera) {
+                // the density changes when a phone is turned or a window is resized
+                refreshDensity();
+                setUnitsPerPixel(1f / density);
+                super.update(screenWidth, screenHeight, centerCamera);
+            }
+        };
+        refreshDensity();
         viewport.setUnitsPerPixel(1f / density);
         return viewport;
     }

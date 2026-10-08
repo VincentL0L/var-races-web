@@ -25,7 +25,9 @@ public class TeaVMLauncher {
         // draw at the screen's real resolution so text is sharp on Retina screens,
         // while menus are laid out in points (see Ui)
         config.usePhysicalPixels = true;
-        Ui.density = (float) getDevicePixelRatio();
+        Ui.pixelRatio = (float) getDevicePixelRatio();
+        Ui.touchScreen = isTouchScreen();
+        Ui.textPrompt = TeaVMLauncher::prompt;
 
         // a page opened with ?server=wss://host uses that server instead
         String server = getServerParam();
@@ -37,6 +39,13 @@ public class TeaVMLauncher {
 
     @JSBody(script = "return new URLSearchParams(window.location.search).get('server');")
     private static native String getServerParam();
+
+    @JSBody(script = "return ('ontouchstart' in window) || navigator.maxTouchPoints > 0;")
+    private static native boolean isTouchScreen();
+
+    /** the browser's own text box, which brings up the phone keyboard */
+    @JSBody(params = {"message", "current"}, script = "return window.prompt(message, current);")
+    private static native String prompt(String message, String current);
 
     @JSBody(script = "return window.devicePixelRatio || 1;")
     private static native double getDevicePixelRatio();

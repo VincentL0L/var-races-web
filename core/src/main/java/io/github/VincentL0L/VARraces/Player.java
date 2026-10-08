@@ -84,6 +84,8 @@ public class Player {
 
     private Vector2 prevPos = null;
     private boolean inputEnabled = false;
+    // on-screen buttons (TouchControls), held down this frame
+    private boolean touchGas, touchBrake, touchLeft, touchRight, touchBoost;
 
     /**
      * Creates a player class and initializes textures, sounds, and other fields
@@ -123,11 +125,12 @@ public class Player {
             prevPos = new Vector2(getX(), getY());
         }
 
-        boolean gas = inputEnabled && Gdx.input.isKeyPressed(Input.Keys.W);
-        boolean brake = inputEnabled && Gdx.input.isKeyPressed(Input.Keys.S);
-        boolean left = inputEnabled && Gdx.input.isKeyPressed(Input.Keys.A);
-        boolean right = inputEnabled && Gdx.input.isKeyPressed(Input.Keys.D);
-        boolean boost = inputEnabled && Gdx.input.isKeyPressed(Input.Keys.SPACE);
+        // WASD or the arrow keys, or the on-screen buttons on phones and tablets
+        boolean gas = inputEnabled && (touchGas || Gdx.input.isKeyPressed(Input.Keys.W) || Gdx.input.isKeyPressed(Input.Keys.UP));
+        boolean brake = inputEnabled && (touchBrake || Gdx.input.isKeyPressed(Input.Keys.S) || Gdx.input.isKeyPressed(Input.Keys.DOWN));
+        boolean left = inputEnabled && (touchLeft || Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT));
+        boolean right = inputEnabled && (touchRight || Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT));
+        boolean boost = inputEnabled && (touchBoost || Gdx.input.isKeyPressed(Input.Keys.SPACE));
 
         if (gas) {
             sound.play();
@@ -395,5 +398,16 @@ public class Player {
 
     public void setInputEnabled(boolean enabled) {
         this.inputEnabled = enabled;
+    }
+
+    /**
+     * which on-screen buttons are held down (phones and tablets)
+     */
+    public void setTouchInput(boolean gas, boolean brake, boolean left, boolean right, boolean boost) {
+        touchGas = gas;
+        touchBrake = brake;
+        touchLeft = left;
+        touchRight = right;
+        touchBoost = boost;
     }
 }

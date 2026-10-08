@@ -15,7 +15,8 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
 
 /**
  * The red "VAR RACES" flag shown once everyone is ready: a white flash, the flag
- * rippling for a moment, then it is waved off to the left to show the track.
+ * rippling for a moment, then it is waved off to the left to show the cars on the grid.
+ * The lobby starts it and hands it to GameScreen while the screen is fully red.
  *
  * The flag is drawn once into a picture, then put on screen as thin vertical strips
  * that each bob up and down a little out of step, which makes it look like cloth.
@@ -42,6 +43,14 @@ public class StartFlag {
         pixel.fill();
         white = new Texture(pixel);
         pixel.dispose();
+    }
+
+    /**
+     * @return true while the flag fills the whole screen (after the flash, before the wave-off),
+     * the moment to swap the screen behind it
+     */
+    public boolean isCovering() {
+        return time >= FLASH + HOLD * 0.5f;
     }
 
     /**

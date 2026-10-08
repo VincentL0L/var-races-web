@@ -87,6 +87,18 @@ public class MultiplayerScreen implements Screen {
         codeField = new TextField("", skin);
         codeField.setMessageText("CODE");
         codeField.setMaxLength(4);
+        // phones have no keyboard for the game itself, so ask with the browser's text box
+        codeField.addListener(new ClickListener() {
+            public void clicked(InputEvent e, float x, float y) {
+                if (Ui.touchScreen && Ui.textPrompt != null) {
+                    String code = Ui.textPrompt.ask("Room code", codeField.getText());
+                    if (code != null) {
+                        code = code.trim().toUpperCase();
+                        codeField.setText(code.length() > 4 ? code.substring(0, 4) : code);
+                    }
+                }
+            }
+        });
 
         createPublic.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {

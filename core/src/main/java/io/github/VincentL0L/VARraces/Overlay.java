@@ -72,6 +72,10 @@ public class Overlay {
     private BitmapFont labelFont;
     private BitmapFont warningFont;
     private NinePatch panel;
+    private NinePatch button;
+    private NinePatch buttonOver;
+    private NinePatch buttonDown;
+    private BitmapFont buttonFont;
     private NinePatch screen;
     private GlyphLayout layout = new GlyphLayout();
     private ShapeRenderer render;
@@ -105,6 +109,10 @@ public class Overlay {
         labelFont = Ui.font(9);
         warningFont = Ui.displayOutlined(26);
         panel = Ui.patch("panel", 6, 6, 6, 6);
+        button = Ui.patch("button", 3, 3, 3, 5);
+        buttonOver = Ui.patch("button_over", 3, 3, 3, 5);
+        buttonDown = Ui.patch("button_down", 3, 3, 3, 5);
+        buttonFont = Ui.display(15);
         screen = Ui.patch("field", 3, 3, 3, 3);
         render = new ShapeRenderer();
         gauge = new Texture(Gdx.files.internal("ui/speedometer.png"));
@@ -137,7 +145,7 @@ public class Overlay {
         Gdx.gl.glEnable(GL20.GL_BLEND);
         List<RacerInfo> standings = raceManager.getSortedLeaderboard();
         // both side panels share one size so the top row is symmetrical
-        int rows = Math.max(standings.size(), 3);
+        int rows = Math.max(standings.size(), 4);
         float sideWidth = sidePanelWidth(standings);
         float sideHeight = BEZEL * 2 + TITLE_HEIGHT + ROW_HEIGHT * rows;
         renderStandings(standings, sideWidth, sideHeight);
@@ -221,8 +229,23 @@ public class Overlay {
 
     // ---------------------------------------------------------------- menu panel
 
+    // 7x7 pixel-art icons for the menu buttons ('#' = a pixel)
+    private static final String[] ICON_PAUSE = {
+        ".##.##.", ".##.##.", ".##.##.", ".##.##.", ".##.##.", ".##.##.", ".##.##."};
+    private static final String[] ICON_RESUME = {
+        ".#.....", ".##....", ".###...", ".####..", ".###...", ".##....", ".#....."};
+    private static final String[] ICON_RESTART = {
+        "..###.#", ".#...##", "#...###", "#......", "#.....#", ".#...#.", "..###.."};
+    private static final String[] ICON_LEAVE = {
+        "####...", "#...#..", "#....#.", "#.#####", "#....#.", "#...#..", "####..."};
+    private static final String[] ICON_QUIT = {
+        "##...##", ".##.##.", "..###..", "...#...", "..###..", ".##.##.", "##...##"};
+    private static final float BUTTON_GAP = 7f;
+    private static final float MAX_BUTTON_HEIGHT = 36f;
+
     /**
-     * top right, mirroring the standings: PAUSE / RESTART / QUIT rows with key tabs
+     * top right, mirroring the standings: three gilded buttons (pause, restart, quit),
+     * each with a pixel-art icon and its keyboard key in a small inset on the right
      */
     private void renderMenu(float width, float height) {
         float x = vw - width - MARGIN;
@@ -237,38 +260,73 @@ public class Overlay {
         batch.end();
 
         String[] labels = {paused ? "RESUME" : "PAUSE", online ? "LEAVE" : "RESTART", "QUIT"};
+        String[][] icons = {paused ? ICON_RESUME : ICON_PAUSE, online ? ICON_LEAVE : ICON_RESTART, ICON_QUIT};
         String[] keys = {"ESC", "R", "Q"};
-        float rowsTop = y + height - BEZEL - TITLE_HEIGHT;
-        float keyWidth = TAB_SIZE * 1.8f;
-        for (int i = 0; i < labels.length; i++) {
-            float rowY = rowsTop - ROW_HEIGHT * (i + 1);
-            float middle = rowY + ROW_HEIGHT / 2f;
-            menuRows[i][0] = x + BEZEL;
-            menuRows[i][1] = rowY;
-            menuRows[i][2] = width - BEZEL * 2;
-            menuRows[i][3] = ROW_HEIGHT;
+        float areaTop = y + height - BEZEL - TITLE_HEIGHT;
+        float areaHeight = areaTop - (y + BEZEL);
+        float buttonHeight = Math.min(MAX_BUTTON_HEIGHT, (areaHeight - BUTTON_GAP * 2f - 4f) / 3f);
+        float buttonX = x + BEZEL + 2f;
+        float buttonWidth = width - BEZEL * 2f - 4f;
 
-            // key tab on the right edge (the standings put their tab on the left)
-            Gdx.gl.glEnable(GL20.GL_BLEND);
-            Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-            render.begin(ShapeRenderer.ShapeType.Filled);
-            if (i == 0 && paused) {
-                render.setColor(HIGHLIGHT);
-                render.rect(x + BEZEL - 3, rowY + 2, width - BEZEL * 2 + 6, ROW_HEIGHT - 4);
-            }
-            render.setColor(TAB);
-            render.rect(x + width - BEZEL - keyWidth, rowY + 4, keyWidth, ROW_HEIGHT - 8);
-            render.end();
+        // which button the mouse (or a finger) is over
+        float mx = Gdx.input.getX() / (float) Gdx.graphics.getWidth() * vw;
+        float my = (1f - Gdx.input.getY() / (float) Gdx.graphics.getHeight()) * vh;
+        boolean pointerHere = !Ui.touchScreen || Gdx.input.isTouched();
+
+        for (int i = 0; i < labels.length; i++) {
+            float by = areaTop - 2f - (buttonHeight + BUTTON_GAP) * i - buttonHeight;
+            menuRows[i][0] = buttonX;
+            menuRows[i][1] = by;
+            menuRows[i][2] = buttonWidth;
+            menuRows[i][3] = buttonHeight;
+            boolean hover = pointerHere && mx >= buttonX && mx <= buttonX + buttonWidth && my >= by && my <= by + buttonHeight;
+            boolean pressed = hover && Gdx.input.isTouched();
+            // the pressed face sits lower, so the icon and text move down with it
+            float sink = pressed ? Ui.PIXEL : 0f;
 
             batch.begin();
-            labelFont.setColor(Ui.TEXT_DARK);
-            layout.setText(labelFont, keys[i]);
-            labelFont.draw(batch, keys[i], x + width - BEZEL - keyWidth + (keyWidth - layout.width) / 2f,
-                middle + layout.height / 2f);
-            font.setColor(i == 0 && paused ? Ui.GOLD : Ui.CREAM);
-            layout.setText(font, labels[i]);
-            font.draw(batch, labels[i], x + BEZEL + 4, middle + layout.height / 2f);
+            NinePatch face = pressed ? buttonDown : (hover || (i == 0 && paused)) ? buttonOver : button;
+            face.draw(batch, buttonX, by, buttonWidth, buttonHeight);
+            float middle = by + buttonHeight / 2f + Ui.PIXEL - sink;
+            buttonFont.setColor(Ui.TEXT_DARK);
+            layout.setText(buttonFont, labels[i]);
+            float iconSize = Math.min(7f * Ui.PIXEL, buttonHeight - 14f);
+            float textX = buttonX + 12f + iconSize + 10f;
+            buttonFont.draw(batch, labels[i], textX, middle + layout.height / 2f);
             batch.end();
+
+            render.begin(ShapeRenderer.ShapeType.Filled);
+            drawIcon(icons[i], buttonX + 12f, middle - iconSize / 2f, iconSize / 7f, Ui.TEXT_DARK);
+            render.end();
+
+            if (!Ui.touchScreen) {
+                // the keyboard key in a small dark inset on the right
+                float keyWidth = TAB_SIZE * 1.6f;
+                float keyHeight = Math.min(buttonHeight - 12f, 20f);
+                float kx = buttonX + buttonWidth - 8f - keyWidth;
+                float ky = middle - keyHeight / 2f;
+                batch.begin();
+                screen.draw(batch, kx, ky, keyWidth, keyHeight);
+                labelFont.setColor(Ui.GOLD);
+                layout.setText(labelFont, keys[i]);
+                labelFont.draw(batch, keys[i], kx + (keyWidth - layout.width) / 2f, ky + keyHeight / 2f + layout.height / 2f);
+                batch.end();
+            }
+        }
+    }
+
+    /**
+     * draws a pixel-art icon, one square per '#'
+     * @param x left   @param y bottom   @param cell size of one pixel
+     */
+    private void drawIcon(String[] icon, float x, float y, float cell, Color color) {
+        render.setColor(color);
+        for (int row = 0; row < icon.length; row++) {
+            for (int col = 0; col < icon[row].length(); col++) {
+                if (icon[row].charAt(col) == '#') {
+                    render.rect(x + col * cell, y + (icon.length - 1 - row) * cell, cell, cell);
+                }
+            }
         }
     }
 
@@ -522,6 +580,7 @@ public class Overlay {
         tabFont.dispose();
         speedFont.dispose();
         titleFont.dispose();
+        buttonFont.dispose();
         labelFont.dispose();
         warningFont.dispose();
         render.dispose();
