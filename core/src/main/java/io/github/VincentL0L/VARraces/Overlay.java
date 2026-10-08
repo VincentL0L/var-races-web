@@ -152,6 +152,7 @@ public class Overlay {
         float sideWidth = sidePanelWidth(standings);
         float sideHeight = BEZEL * 2 + TITLE_HEIGHT + ROW_HEIGHT * rows;
         renderStandings(standings, sideWidth, sideHeight);
+        renderItem(sideHeight);
         renderMenu(sideWidth, sideHeight);
         renderCluster(player, standings);
         if (offTrack && !paused) {
@@ -504,6 +505,45 @@ public class Overlay {
         render.triangle(px - dirY * halfWidth, py + dirX * halfWidth,
             px + dirY * halfWidth, py - dirX * halfWidth,
             px + dirX * length, py + dirY * length);
+    }
+
+    private Texture itemIcon;
+    private String itemName;
+
+    /**
+     * @param icon the held item's icon, or null when not holding one
+     * @param name its name
+     */
+    public void setItem(Texture icon, String name) {
+        itemIcon = icon;
+        itemName = name;
+    }
+
+    /**
+     * the item slot under the standings: a gilded box with the item's icon, and its name
+     * (and the key to use it) beside it
+     */
+    private void renderItem(float sideHeight) {
+        float size = 80f;
+        float x = MARGIN, y = vh - MARGIN - sideHeight - 12f - size;
+        batch.begin();
+        panel.draw(batch, x, y, size, size);
+        if (itemIcon != null) {
+            // a little bounce, so a new item catches the eye
+            float bob = MathUtils.sin(clock * 5f) * 2f;
+            batch.draw(itemIcon, x + (size - 48f) / 2f, y + (size - 48f) / 2f + bob, 48f, 48f);
+            titleFont.setColor(Ui.GOLD);
+            titleFont.draw(batch, itemName.toUpperCase(), x + size + 12f, y + size / 2f + 14f);
+            if (!Ui.touchScreen) {
+                labelFont.setColor(LABEL);
+                labelFont.draw(batch, "PRESS E", x + size + 12f, y + size / 2f - 8f);
+            }
+        } else {
+            labelFont.setColor(LABEL);
+            layout.setText(labelFont, "ITEM");
+            labelFont.draw(batch, "ITEM", x + (size - layout.width) / 2f, y + size / 2f + layout.height / 2f);
+        }
+        batch.end();
     }
 
     /**

@@ -3,6 +3,7 @@ package io.github.VincentL0L.VARraces;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -16,6 +17,7 @@ import com.badlogic.gdx.math.MathUtils;
  *  - bottom right: a brake pedal and a gas pedal, side by side like in a car's footwell.
  *    Double tap and hold the gas for boost (when it runs out it carries on as gas).
  *  - to back up, pull the joystick down (backwards) and press the gas.
+ *  - above the gas: the ITEM button, showing the item you're holding (tap to use it).
  * The car behaves like an automatic gas car (see Player): it creeps at idle, lifting off the
  * gas coasts with engine braking, and the brake stops it without rolling backwards.
  */
@@ -48,6 +50,12 @@ public class TouchControls {
     private final float[] gas = new float[4];
     private final float[] brake = new float[4];
     private boolean gasDown, brakeDown, boosting;
+    // the item button
+    private static final float ITEM_RADIUS = 38f;
+    private float itemX, itemY;
+    private int itemPointer = -1;
+    private boolean itemTap = false;
+    private Texture itemIcon;
     private int gasPointer = -1;
     private float gasDownAt = -10f;
     private float lastTapEnd = -10f;
@@ -104,6 +112,8 @@ public class TouchControls {
         brake[3] = 92f;
         brake[0] = gas[0] - 18f - brake[2];
         brake[1] = pad;
+        itemX = gas[0] + gas[2] / 2f - 20f;
+        itemY = gas[1] + gas[3] + 30f + ITEM_RADIUS;
     }
 
     private void readFingers(float width, float height) {
@@ -127,6 +137,17 @@ public class TouchControls {
                 } else {
                     stickPointer = -1;
                 }
+                continue;
+            }
+            if (p == itemPointer) {
+                if (!touched) {
+                    itemPointer = -1;
+                }
+                continue;
+            }
+            if (justDown && Math.hypot(x - itemX, y - itemY) < ITEM_RADIUS * 1.25f) {
+                itemPointer = p;
+                itemTap = true;
                 continue;
             }
             if (p == gasPointer && !touched) {
@@ -210,9 +231,21 @@ public class TouchControls {
         // a little down arrow under the stick: pull back + gas to reverse
         shapes.setColor(GOLD.r, GOLD.g, GOLD.b, alpha);
         shapes.triangle(sx, sy - edge - a, sx - a, sy - edge + a * 0.6f, sx + a, sy - edge + a * 0.6f);
+        // the item button
+        shapes.setColor(GOLD_DARK.r, GOLD_DARK.g, GOLD_DARK.b, 0.9f);
+        shapes.circle(itemX, itemY - 3f, ITEM_RADIUS, 40);
+        shapes.setColor(GOLD.r, GOLD.g, GOLD.b, itemIcon != null ? 0.95f : 0.5f);
+        shapes.circle(itemX, itemY, ITEM_RADIUS, 40);
+        shapes.setColor(FACE.r, FACE.g, FACE.b, 0.85f);
+        shapes.circle(itemX, itemY, ITEM_RADIUS - 5f, 40);
         shapes.end();
 
         batch.begin();
+        if (itemIcon != null) {
+            batch.draw(itemIcon, itemX - 24f, itemY - 24f, 48f, 48f);
+        } else {
+            label("ITEM", itemX, itemY, new Color(GOLD.r, GOLD.g, GOLD.b, 0.5f));
+        }
         label("BRAKE", brake[0] + brake[2] / 2f, brake[1] + 18f, brakeDown ? BRAKE : GOLD);
         label(boosting && gasDown ? "BOOST" : "GAS", gas[0] + gas[2] / 2f, gas[1] + 18f,
             boosting && gasDown ? BOOST : GOLD);
@@ -243,6 +276,22 @@ public class TouchControls {
         font.setColor(color);
         layout.setText(font, text);
         font.draw(batch, text, cx - layout.width / 2f, cy + layout.height / 2f);
+    }
+
+    /**
+     * @param icon the held item's icon, or null
+     */
+    public void setItem(Texture icon) {
+        itemIcon = icon;
+    }
+
+    /**
+     * @return true once after the ITEM button was tapped
+     */
+    public boolean itemTapped() {
+        boolean tapped = itemTap;
+        itemTap = false;
+        return tapped;
     }
 
     public void dispose() {

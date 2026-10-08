@@ -73,6 +73,9 @@ public class GameScreen implements Screen {
     /** follows only our own car, for the RETURN TO TRACK warning */
     private final RaceManager trackWatch;
     private final TrackMap map;
+    private ItemRenderer itemArt;
+    private final com.badlogic.gdx.graphics.g2d.SpriteBatch worldBatch = new com.badlogic.gdx.graphics.g2d.SpriteBatch();
+    private final Map<String, Vector2> carCenters = new HashMap<>();
     /** how far from the track counts as off it (the road is about 125 wide) */
     private static final float OFF_TRACK_DISTANCE = 95f;
 
@@ -141,6 +144,7 @@ public class GameScreen implements Screen {
         }
 
         over = new Overlay(rm, map);
+        itemArt = new ItemRenderer(map);
         over.setOnline(nc.isOnline());
         pauseSkin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
         pausePanel = buildPausePanel();
@@ -201,8 +205,30 @@ public class GameScreen implements Screen {
             }
         }
 
+        // items: what happened to our car, and using the one we hold (E, or the ITEM button)
+        if (!frozen) {
+            for (String effect : nc.takeMyEffects()) {
+                if (effect.equals("BOOST")) {
+                    player.nitro();
+                } else if (effect.equals("SPIN")) {
+                    player.spinOut();
+                } else if (effect.equals("SLOW")) {
+                    player.slowDown(io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem.SLOW_TIME);
+                }
+            }
+        }
+        boolean useItem = Gdx.input.isKeyJustPressed(Input.Keys.E) || (touch != null && touch.itemTapped());
+        if (useItem && start && !done && !paused && !player.isSpinning()) {
+            nc.useItem();
+        }
+        over.setItem(nc.getHeldItem() == null ? null : itemArt.icon(nc.getHeldItem()),
+            nc.getHeldItem() == null ? null : nc.getHeldItem().label);
+        if (touch != null) {
+            touch.setItem(nc.getHeldItem() == null ? null : itemArt.icon(nc.getHeldItem()));
+        }
+
         // controls work while racing and not paused
-        player.setInputEnabled(start && !done && !paused);
+        player.setInputEnabled(start && !done && !paused && !player.isSpinning());
         if (touch == null) {
             player.setTouchInput(false, 0f, false, false, false, false);
         }
@@ -238,6 +264,13 @@ public class GameScreen implements Screen {
                 state = new OpponentState(actor, new Vector2(pose[0], pose[1]));
                 nwOpp.put(id, state);
             }
+            // how fast it's going (smoothed), so bumps know who's shoving whom
+            if (delta > 0f) {
+                float vx = (pose[0] - state.img.getX()) / delta, vy = (pose[1] - state.img.getY()) / delta;
+                if (Math.abs(vx) < 1500f && Math.abs(vy) < 1500f) {
+                    state.velocity.lerp(new Vector2(vx, vy), Math.min(1f, delta * 12f));
+                }
+            }
             // single player: exact positions every frame; online: smoothly interpolated
             state.img.setPosition(pose[0], pose[1]);
             // CPUs report their driving direction, players report their sprite rotation
@@ -247,7 +280,8 @@ public class GameScreen implements Screen {
         // bump into the other cars (they're drawn 10x20 like the player, so their image is their body)
         if (!frozen) {
             for (OpponentState other : nwOpp.values()) {
-                player.collideWith(other.img.getX(), other.img.getY(), other.img.getRotation() + 90f);
+                player.collideWith(other.img.getX(), other.img.getY(), other.img.getRotation() + 90f,
+                    other.velocity.x, other.velocity.y);
             }
         }
 
@@ -259,8 +293,22 @@ public class GameScreen implements Screen {
             frost.begin();
         }
         bg.render(stage.getCamera());
+        // item boxes and oil under the cars; rockets and shields over them
+        worldBatch.setProjectionMatrix(stage.getCamera().combined);
+        worldBatch.begin();
+        itemArt.drawGround(worldBatch, nc.getItemView(), dt);
+        worldBatch.end();
         stage.act(dt);
         stage.draw();
+        carCenters.clear();
+        carCenters.put(nc.getPlayerId(), new Vector2(player.getX() + player.getWidth() / 2f, player.getY() + player.getHeight() / 2f));
+        for (Map.Entry<String, OpponentState> e : nwOpp.entrySet()) {
+            Image img = e.getValue().img;
+            carCenters.put(e.getKey(), new Vector2(img.getX() + img.getWidth() / 2f, img.getY() + img.getHeight() / 2f));
+        }
+        worldBatch.begin();
+        itemArt.drawAir(worldBatch, nc.getItemView(), carCenters);
+        worldBatch.end();
         if (frosted) {
             frost.end();
             frost.draw(frostAmount);
@@ -440,6 +488,8 @@ public class GameScreen implements Screen {
     public void dispose() {
         frost.dispose();
         lights.dispose();
+        itemArt.dispose();
+        worldBatch.dispose();
         if (touch != null) {
             touch.dispose();
         }

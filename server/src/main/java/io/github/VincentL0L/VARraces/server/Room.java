@@ -9,6 +9,8 @@ import org.java_websocket.WebSocket;
 
 import com.badlogic.gdx.math.Vector2;
 
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarBody;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Opponent;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CpuTraffic;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
@@ -31,6 +33,7 @@ public class Room {
     private final TrackMap map;
     private final List<Vector2> waypoints;
     private final RaceManager raceManager;
+    private final ItemSystem items;
     private int nextPlayerNumber = 1;
     private boolean countdownInProgress = false;
     private boolean started = false;
@@ -50,6 +53,7 @@ public class Room {
         this.map = map;
         waypoints = map.waypoints;
         raceManager = new RaceManager(waypoints);
+        items = new ItemSystem(waypoints);
         List<Vector2> grid = Waypoints.getCpuGrid();
         for (int i = 0; i < grid.size(); i++) {
             cpuOpponents.add(new Opponent("CPU" + (i + 1), waypoints, grid.get(i)));
@@ -108,6 +112,14 @@ public class Room {
             } catch (NumberFormatException e) {
                 // ignore bad position
             }
+        } else if (parts[0].equals("USE") && started) {
+            List<ItemSystem.Racer> racers = racers();
+            for (ItemSystem.Racer r : racers) {
+                if (r.id.equals(state.id)) {
+                    items.use(r, racers, order());
+                }
+            }
+            sendItemEvents();
         }
     }
 
@@ -163,7 +175,7 @@ public class Room {
                 raceManager.updateRacer(cpu.getName(), cpu.getPosition(), raceTime);
             }
             broadcast("POS|" + cpu.getName() + "|" + cpu.getPosition().x + "|"
-                + cpu.getPosition().y + "|" + cpu.getRotation() + "|1");
+                + cpu.getPosition().y + "|" + cpu.getDisplayRotation() + "|1");
         }
 
         for (PlayerState p : players.values()) {
@@ -174,6 +186,17 @@ public class Room {
                 + p.rotation + "|" + p.car);
         }
 
+        // items: boxes, rockets, oil and shields, and what happened to whom
+        for (PlayerState p : players.values()) {
+            p.speed = delta > 0f ? p.lastPosition.dst(p.position) / delta : 0f;
+            p.lastPosition.set(p.position);
+        }
+        if (started) {
+            items.update(delta, racers(), order());
+            sendItemEvents();
+        }
+        broadcast("ITEMS|" + items.describe());
+
         // leaderboard every tick: LEADER|name|laps|progress|finishTime|...
         if (onGrid) {
             StringBuilder msg = new StringBuilder("LEADER");
@@ -182,6 +205,46 @@ public class Room {
                     .append(r.progress).append('|').append(r.finishTime);
             }
             broadcast(msg.toString());
+        }
+    }
+
+    /** every car in the room, for the items */
+    private List<ItemSystem.Racer> racers() {
+        List<ItemSystem.Racer> racers = new ArrayList<>();
+        for (Opponent cpu : cpuOpponents) {
+            ItemSystem.Racer r = new ItemSystem.Racer();
+            r.id = cpu.getName();
+            r.x = cpu.getPosition().x + CarBody.WIDTH / 2f;
+            r.y = cpu.getPosition().y + CarBody.LENGTH / 2f;
+            r.heading = cpu.getRotation();
+            r.speed = cpu.getSpeed();
+            r.cpu = cpu;
+            racers.add(r);
+        }
+        for (PlayerState p : players.values()) {
+            ItemSystem.Racer r = new ItemSystem.Racer();
+            r.id = p.id;
+            r.x = p.position.x + CarBody.WIDTH / 2f;
+            r.y = p.position.y + CarBody.LENGTH / 2f;
+            r.heading = p.rotation + 90f;
+            r.speed = p.speed;
+            racers.add(r);
+        }
+        return racers;
+    }
+
+    /** racer ids, leader first */
+    private List<String> order() {
+        List<String> order = new ArrayList<>();
+        for (RacerInfo r : raceManager.getSortedLeaderboard()) {
+            order.add(r.name);
+        }
+        return order;
+    }
+
+    private void sendItemEvents() {
+        for (String event : items.takeEvents()) {
+            broadcast(event);
         }
     }
 
@@ -236,11 +299,14 @@ public class Room {
         Vector2 position;
         float rotation = 0f;
         boolean ready = false;
+        final Vector2 lastPosition = new Vector2();
+        float speed = 0f;
 
         PlayerState(String id, int car, Vector2 spawn) {
             this.id = id;
             this.car = car;
             this.position = spawn.cpy();
+            this.lastPosition.set(spawn);
         }
     }
 }

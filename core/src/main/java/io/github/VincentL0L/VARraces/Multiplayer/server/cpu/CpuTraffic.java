@@ -169,7 +169,7 @@ public class CpuTraffic {
                         addClearance(push);
                         // the player's own game moves the player; here only the CPU moves
                         moveIfOnRoad(a, push.x, push.y);
-                        bumpSpeeds(a, push, p.speed);
+                        bump(a, push, p.speed * MathUtils.cosDeg(p.heading), p.speed * MathUtils.sinDeg(p.heading));
                     }
                 }
             }
@@ -201,29 +201,40 @@ public class CpuTraffic {
         } else if (bOk) {
             moveIfOnRoad(b, -pushA.x, -pushA.y);
         }
-        // the car that ran into the other one loses speed, the one hit gets a nudge
-        float aSpeed = a.getSpeed();
-        bumpSpeeds(a, pushA, b.getSpeed());
-        bumpSpeeds(b, new Vector2(-pushA.x, -pushA.y), aSpeed);
+        // trade momentum: the faster car shoves the slower one along
+        float avx = a.getSpeed() * MathUtils.cosDeg(a.getRotation()), avy = a.getSpeed() * MathUtils.sinDeg(a.getRotation());
+        float bvx = b.getSpeed() * MathUtils.cosDeg(b.getRotation()), bvy = b.getSpeed() * MathUtils.sinDeg(b.getRotation());
+        bump(a, pushA, bvx, bvy);
+        bump(b, new Vector2(-pushA.x, -pushA.y), avx, avy);
     }
 
+    /** a little bounce in every bump (0 = cars stick together, 1 = perfect bounce) */
+    private static final float BOUNCE = 0.25f;
+
     /**
-     * if this car was driving into the other one, it drops to the other car's speed
-     * @param car the car
+     * A bump between two cars of the same weight, along the line between them: each car
+     * takes half the speed they were closing at. So a fast car that rear-ends a slow one
+     * shoves it forward and only loses part of its own speed. The car keeps pointing the
+     * way it was going (the sideways part is just the positions being pushed apart).
+     * @param car this car
      * @param pushAway the direction it's being pushed (away from the other car)
-     * @param otherSpeed the other car's speed
+     * @param otherVx other car's velocity x   @param otherVy other car's velocity y
      */
-    private void bumpSpeeds(Opponent car, Vector2 pushAway, float otherSpeed) {
-        float fx = MathUtils.cosDeg(car.getRotation()), fy = MathUtils.sinDeg(car.getRotation());
+    static void bump(Opponent car, Vector2 pushAway, float otherVx, float otherVy) {
         float len = pushAway.len();
         if (len < 1e-4f) {
             return;
         }
-        // pushed backwards = we hit the car in front
-        float facing = -(pushAway.x * fx + pushAway.y * fy) / len;
-        if (facing > 0.5f && car.getSpeed() > otherSpeed) {
-            car.setSpeed(MathUtils.lerp(car.getSpeed(), otherSpeed, 0.6f) * 0.97f);
+        float nx = pushAway.x / len, ny = pushAway.y / len;
+        float fx = MathUtils.cosDeg(car.getRotation()), fy = MathUtils.sinDeg(car.getRotation());
+        float vx = car.getSpeed() * fx, vy = car.getSpeed() * fy;
+        float closing = (vx - otherVx) * nx + (vy - otherVy) * ny;   // negative = moving toward each other
+        if (closing >= 0f) {
+            return;
         }
+        vx -= nx * closing * 0.5f * (1f + BOUNCE);
+        vy -= ny * closing * 0.5f * (1f + BOUNCE);
+        car.setSpeed(Math.max(0f, vx * fx + vy * fy));
     }
 
     /**

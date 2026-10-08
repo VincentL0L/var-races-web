@@ -83,20 +83,12 @@ public class TitleBackdrop {
      */
     public void render(float delta, boolean showTitle) {
         clock += delta;
-        // the race is on from the first frame; the camera follows the leader
+        // the race is on from the first frame; the camera smoothly follows one car
         traffic.update(delta, true);
-        {
-            Vector2 leader = cars.get(0).getPosition();
-            for (Opponent car : cars) {
-                if (car.getLapCount() * 100000 + car.getCurrentWaypointIndex() * 1000
-                    > cars.get(0).getLapCount() * 100000 + cars.get(0).getCurrentWaypointIndex() * 1000) {
-                    leader = car.getPosition();
-                }
-            }
-            float smooth = 1f - (float) Math.exp(-FOLLOW * delta);
-            camX += (leader.x + CarBody.WIDTH / 2f - camX) * smooth;
-            camY += (leader.y + CarBody.LENGTH / 2f - camY) * smooth;
-        }
+        Vector2 followed = cars.get(0).getPosition();
+        float smooth = 1f - (float) Math.exp(-FOLLOW * delta);
+        camX += (followed.x + CarBody.WIDTH / 2f - camX) * smooth;
+        camY += (followed.y + CarBody.LENGTH / 2f - camY) * smooth;
         // keep the view inside the map
         float halfW = camera.viewportWidth / 2f, halfH = camera.viewportHeight / 2f;
         camera.position.set(MathUtils.clamp(camX, halfW, 1920f - halfW), MathUtils.clamp(camY, halfH, 1080f - halfH), 0);

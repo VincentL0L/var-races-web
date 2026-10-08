@@ -131,6 +131,27 @@ public class Opponent {
             return;
         }
 
+        // spun out by an item: skid to a halt while spinning round twice
+        if (spinTimer > 0f) {
+            spinTimer -= dt;
+            spinAngle += 720f / SPIN_TIME * dt;
+            speed = Math.max(0f, speed - 700f * dt);
+            float nx = position.x + MathUtils.cosDeg(heading) * speed * dt;
+            float ny = position.y + MathUtils.sinDeg(heading) * speed * dt;
+            // skid along, but stop at the edge of the road rather than sliding off it
+            if (traffic == null || traffic.carOnRoad(nx, ny)) {
+                position.set(nx, ny);
+            } else {
+                speed = 0f;
+            }
+            if (spinTimer <= 0f) {
+                spinAngle = 0f;
+            }
+            return;
+        }
+        slowTimer -= dt;
+        nitroTimer -= dt;
+
         // reached the current waypoint: move on and pick a new line for the next one
         if (position.dst(target) < arriveRadius || position.dst(waypoints.get(currentWaypointIndex)) < arriveRadius
                 || passedCorner()) {
@@ -206,6 +227,12 @@ public class Opponent {
             }
         }
         desired = Math.min(desired, followSpeed);
+        if (nitroTimer > 0f && desired >= topSpeed * throttleNoise - 1f) {
+            desired = topSpeed * 1.3f;    // nitro: faster on the straights (still brakes for corners)
+        }
+        if (slowTimer > 0f) {
+            desired *= 0.55f;                               // hit by a Static Pulse
+        }
         if (nearEdge) {
             desired = Math.min(desired, speed * 0.85f);
         }
@@ -217,6 +244,9 @@ public class Opponent {
 
         if (speed < desired) {
             float pull = acceleration * Math.min(1f, 1.6f * (1f - speed / (topSpeed * 1.05f)));
+            if (nitroTimer > 0f) {
+                pull = acceleration * 3f;
+            }
             speed = Math.min(desired, speed + Math.max(pull, 8f) * dt);
         } else {
             speed = Math.max(desired, speed - braking * dt);
@@ -385,6 +415,36 @@ public class Opponent {
     public float getDistanceToNextWaypoint() {
         return distanceToNextWaypoint;
     }
+    private static final float SPIN_TIME = 1.0f;
+    private float spinTimer = 0f, spinAngle = 0f, slowTimer = 0f, nitroTimer = 0f;
+
+    /** hit by a Bottle Rocket or an Oil Slick: spin out and lose most of the speed */
+    public void spinOut() {
+        spinTimer = SPIN_TIME;
+        speed *= 0.6f;
+    }
+
+    /**
+     * hit by a Static Pulse
+     * @param seconds how long to drive slower
+     */
+    public void slowDown(float seconds) {
+        slowTimer = seconds;
+    }
+
+    /** used a Nitro: a burst of speed */
+    public void nitro() {
+        nitroTimer = 1.3f;
+        speed = Math.min(topSpeed * 1.35f, speed + 120f);
+    }
+
+    /**
+     * @return the direction to draw the car (spinning while spun out), degrees
+     */
+    public float getDisplayRotation() {
+        return heading + spinAngle;
+    }
+
     /** true: keeps lapping forever (the title screen's demo race) */
     private boolean endless = false;
 

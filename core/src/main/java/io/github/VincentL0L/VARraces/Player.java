@@ -88,6 +88,48 @@ public class Player {
 
     private Vector2 prevPos = null;
     private boolean inputEnabled = false;
+    // item effects (see ItemSystem)
+    private static final float SPIN_TIME = 1.0f;
+    private float spinTimer = 0f, spinStartRotation = 0f, slowTimer = 0f, nitroTimer = 0f;
+
+    /** engine power with items: doubled on nitro, cut while slowed by a pulse */
+    private float itemPower() {
+        return (nitroTimer > 0f ? 2.2f : 1f) * (slowTimer > 0f ? 0.35f : 1f);
+    }
+
+    /** hit by a Bottle Rocket or an Oil Slick */
+    public void spinOut() {
+        if (spinTimer > 0f) {
+            return;
+        }
+        spinTimer = SPIN_TIME;
+        spinStartRotation = i.getRotation();
+        velocity.scl(0.6f);
+        bump();
+    }
+
+    /**
+     * hit by a Static Pulse: the engine loses power for a while
+     * @param seconds how long
+     */
+    public void slowDown(float seconds) {
+        slowTimer = seconds;
+    }
+
+    /** used a Nitro: a kick of speed and extra power for a moment */
+    public void nitro() {
+        nitroTimer = 1.3f;
+        float heading = (i.getRotation() + 90) * MathUtils.degreesToRadians;
+        velocity.add(MathUtils.cos(heading) * 150f, MathUtils.sin(heading) * 150f);
+    }
+
+    /**
+     * @return true while spun out
+     */
+    public boolean isSpinning() {
+        return spinTimer > 0f;
+    }
+
     // phone controls (TouchControls): joystick steering (pulled back = reverse) and the two pedals
     private boolean touchActive, touchGas, touchBoost, touchBrake, touchBackwards;
     private float touchSteer;
@@ -159,6 +201,20 @@ public class Player {
         }
 
         bumpCooldown -= delta;
+        slowTimer -= delta;
+        nitroTimer -= delta;
+        // spun out by an item: skid, spin round twice, no control until it's over
+        if (spinTimer > 0f) {
+            spinTimer -= delta;
+            i.rotateBy(720f / SPIN_TIME * delta);
+            velocity.scl((float) Math.exp(-2.5f * delta));
+            moveWithWalls(delta);
+            if (spinTimer <= 0f) {
+                i.setRotation(spinStartRotation);
+            }
+            prevPos.set(getX(), getY());
+            return;
+        }
         // split the frame into equal small steps (at most 1/120 s each): the car moves the
         // same distance every frame, so it looks smooth, and handles the same at any frame rate
         float time = Math.min(delta, 0.1f);
@@ -205,8 +261,8 @@ public class Player {
                 forward = Math.min(0f, forward + BRAKE_DECEL * dt);  // going backwards: gas acts as a brake first
             } else {
                 float traction = isBoosting ? BOOST_TRACTION : TRACTION;
-                float power = ENGINE_POWER * (isBoosting ? BOOST_POWER_MULT : 1f);
-                forward += Math.min(traction, power / Math.max(forward, 1f)) * dt;
+                float power = ENGINE_POWER * (isBoosting ? BOOST_POWER_MULT : 1f) * itemPower();
+                forward += Math.min(traction * (nitroTimer > 0f ? 1.8f : 1f), power / Math.max(forward, 1f)) * dt;
             }
         } else {
             forward = approachZero(forward, ENGINE_BRAKING * dt);
@@ -267,8 +323,8 @@ public class Player {
                 forward = approachZero(forward, BRAKE_DECEL * dt);
             } else {
                 float traction = isBoosting ? BOOST_TRACTION : TRACTION;
-                float power = ENGINE_POWER * (isBoosting ? BOOST_POWER_MULT : 1f);
-                forward += Math.min(traction, power / Math.max(forward, 1f)) * dt;
+                float power = ENGINE_POWER * (isBoosting ? BOOST_POWER_MULT : 1f) * itemPower();
+                forward += Math.min(traction * (nitroTimer > 0f ? 1.8f : 1f), power / Math.max(forward, 1f)) * dt;
             }
         } else if (!touchBackwards && forward >= 0f && forward < IDLE_CREEP) {
             // idle creep: ease up to walking pace
@@ -324,8 +380,9 @@ public class Player {
      * carrying into that car (with a little bounce).
      * @param ox other car image x   @param oy other car image y
      * @param oHeading other car's heading in degrees (90 = up)
+     * @param oVx other car's velocity x   @param oVy other car's velocity y
      */
-    public void collideWith(float ox, float oy, float oHeading) {
+    public void collideWith(float ox, float oy, float oHeading, float oVx, float oVy) {
         if (!CarBody.separation(getX(), getY(), getRotation() + 90f, ox, oy, oHeading, push)) {
             return;
         }
@@ -338,11 +395,13 @@ public class Player {
         }
         float len = push.len();
         float dirX = push.x / len, dirY = push.y / len;
-        float into = velocity.x * dirX + velocity.y * dirY;   // negative = moving into the other car
+        // both cars weigh the same: each takes half the speed they were closing at, so
+        // rear-ending a slower car shoves it along instead of stopping us dead
+        float into = (velocity.x - oVx) * dirX + (velocity.y - oVy) * dirY;   // negative = closing
         if (into < 0f) {
-            velocity.x -= dirX * into * (1f + CAR_BOUNCE);
-            velocity.y -= dirY * into * (1f + CAR_BOUNCE);
-            if (-into > 50f) {
+            velocity.x -= dirX * into * 0.5f * (1f + CAR_BOUNCE);
+            velocity.y -= dirY * into * 0.5f * (1f + CAR_BOUNCE);
+            if (-into > 60f) {
                 bump();
             }
         }

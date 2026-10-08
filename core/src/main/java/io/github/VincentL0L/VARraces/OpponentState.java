@@ -12,6 +12,8 @@ public class OpponentState {
     public Vector2 lastPos;
     public Vector2 targetPos;
     public float interp;
+    /** how fast it's moving (worked out from frame to frame), for bumps */
+    public final Vector2 velocity = new Vector2();
 
     /**
      * creates a new OpponentState with an image and an initial position

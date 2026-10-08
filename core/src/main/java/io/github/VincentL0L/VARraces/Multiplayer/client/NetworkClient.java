@@ -11,7 +11,9 @@ import com.badlogic.gdx.math.Vector2;
 import io.github.VincentL0L.VARraces.Multiplayer.packets.Entry;
 import io.github.VincentL0L.VARraces.Multiplayer.packets.LeaderboardPacket;
 import io.github.VincentL0L.VARraces.Multiplayer.packets.PositionPacket;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarBody;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CpuTraffic;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Opponent;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
@@ -56,6 +58,16 @@ public class NetworkClient {
     private String error;
     private final List<String[]> publicRooms = new ArrayList<>();
     private float sendTimer = 0f;
+
+    // items (see ItemSystem): single player runs them here, online the server does
+    private ItemSystem items;
+    private ItemSystem.Item heldItem;
+    /** what's on the track, as ItemSystem.describe() text */
+    private String itemView = "";
+    /** things that happened to our own car: BOOST, SPIN, SLOW, BLOCK */
+    private final List<String> myEffects = new ArrayList<>();
+    private final Vector2 lastPlayerPos = new Vector2(200, 300);
+    private float playerSpeed = 0f;
 
     /** the map being raced: picked for single player, sent by the server online */
     private TrackMap map = TrackMap.get(TrackMap.CLASSIC);
@@ -115,6 +127,7 @@ public class NetworkClient {
             opponents.put(packet.playerId, packet);
         }
         track = new PixmapTrack(map.roadMask);
+        items = new ItemSystem(map.waypoints);
         traffic = new CpuTraffic(cpuOpponents, track);
         connected = true;
     }
@@ -214,12 +227,21 @@ public class NetworkClient {
             PositionPacket packet = opponents.get(cpu.getName());
             packet.x = cpu.getPosition().x;
             packet.y = cpu.getPosition().y;
-            packet.rotation = cpu.getRotation();
+            packet.rotation = cpu.getDisplayRotation();
         }
         if (onGrid) {
             serverRaceManager.updateRacer(playerId, playerPos, raceTime);
             setLeaderboard(new LeaderboardPacket(serverRaceManager.toEntries()));
         }
+        playerSpeed = delta > 0f ? lastPlayerPos.dst(playerPos) / delta : 0f;
+        lastPlayerPos.set(playerPos);
+        if (gameStarted) {
+            items.update(delta, localRacers(), raceOrder());
+            for (String event : items.takeEvents()) {
+                handleMessage(event.split("\\|", -1));
+            }
+        }
+        itemView = items.describe();
     }
 
     /**
@@ -266,6 +288,20 @@ public class NetworkClient {
         } else if (type.equals("LEFT")) {
             playerReadyStates.remove(parts[1]);
             opponents.remove(parts[1]);
+        } else if (type.equals("ITEMS")) {
+            itemView = parts[1] + "|" + parts[2] + "|" + parts[3] + "|" + parts[4];
+        } else if (type.equals("GOT")) {
+            if (parts[1].equals(playerId)) {
+                heldItem = ItemSystem.Item.valueOf(parts[2]);
+            }
+        } else if (type.equals("BOOST") || type.equals("BLOCK")) {
+            if (parts[1].equals(playerId)) {
+                myEffects.add(type);
+            }
+        } else if (type.equals("HIT")) {
+            if (parts[1].equals(playerId)) {
+                myEffects.add(parts[2]);
+            }
         } else if (type.equals("FLAG")) {
             flagShown = true;
         } else if (type.equals("COUNTDOWN")) {
@@ -412,6 +448,80 @@ public class NetworkClient {
     public String getPlayerId() {
         return playerId;
     }
+    /** every car in the single player race, for the items */
+    private List<ItemSystem.Racer> localRacers() {
+        List<ItemSystem.Racer> racers = new ArrayList<>();
+        for (Opponent cpu : cpuOpponents) {
+            ItemSystem.Racer r = new ItemSystem.Racer();
+            r.id = cpu.getName();
+            r.x = cpu.getPosition().x + CarBody.WIDTH / 2f;
+            r.y = cpu.getPosition().y + CarBody.LENGTH / 2f;
+            r.heading = cpu.getRotation();
+            r.speed = cpu.getSpeed();
+            r.cpu = cpu;
+            racers.add(r);
+        }
+        ItemSystem.Racer me = new ItemSystem.Racer();
+        me.id = playerId;
+        me.x = playerPos.x + CarBody.WIDTH / 2f;
+        me.y = playerPos.y + CarBody.LENGTH / 2f;
+        me.heading = playerHeading;
+        me.speed = playerSpeed;
+        racers.add(me);
+        return racers;
+    }
+
+    /** racer ids, leader first */
+    private List<String> raceOrder() {
+        List<String> order = new ArrayList<>();
+        for (io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RacerInfo r : serverRaceManager.getSortedLeaderboard()) {
+            order.add(r.name);
+        }
+        return order;
+    }
+
+    /**
+     * uses the item we're holding (online the server does it)
+     */
+    public void useItem() {
+        if (heldItem == null) {
+            return;
+        }
+        heldItem = null;
+        if (isOnline()) {
+            send("USE");
+        } else if (gameStarted) {
+            List<ItemSystem.Racer> racers = localRacers();
+            items.use(racers.get(racers.size() - 1), racers, raceOrder());
+            for (String event : items.takeEvents()) {
+                handleMessage(event.split("\\|", -1));
+            }
+        }
+    }
+
+    /**
+     * @return the item we're holding, or null
+     */
+    public ItemSystem.Item getHeldItem() {
+        return heldItem;
+    }
+
+    /**
+     * @return what's on the track (boxes|rockets|slicks|shielded ids), see ItemSystem.describe()
+     */
+    public String getItemView() {
+        return itemView;
+    }
+
+    /**
+     * @return what happened to our car since the last call (BOOST, SPIN, SLOW, BLOCK), cleared
+     */
+    public List<String> takeMyEffects() {
+        List<String> out = new ArrayList<>(myEffects);
+        myEffects.clear();
+        return out;
+    }
+
     /**
      * @return the map this race is on
      */
