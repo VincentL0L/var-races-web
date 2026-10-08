@@ -15,8 +15,7 @@ import com.badlogic.gdx.math.MathUtils;
  *    right to steer, the further the sharper), like Brawl Stars.
  *  - bottom right: a brake pedal and a gas pedal, side by side like in a car's footwell.
  *    Double tap and hold the gas for boost (when it runs out it carries on as gas).
- *  - above the pedals: the gear selector, D (drive) or R (reverse). Like a real automatic
- *    it only changes gear when the car is (almost) stopped.
+ *  - to back up, pull the joystick down (backwards) and press the gas.
  * The car behaves like an automatic gas car (see Player): it creeps at idle, lifting off the
  * gas coasts with engine braking, and the brake stops it without rolling backwards.
  */
@@ -27,8 +26,8 @@ public class TouchControls {
     private static final float DOUBLE_TAP_GAP = 0.3f;
     /** touches this close to the top are for the HUD menu, not driving */
     private static final float TOP_ZONE = 0.3f;
-    /** gear changes only below this speed (map pixels per second, about 4 mph) */
-    private static final float SHIFT_SPEED = 10f;
+    /** pulling the stick down this far (of its radius) means "backwards" */
+    private static final float BACK_PULL = 0.45f;
 
     private static final Color GOLD = new Color(1f, 0.8f, 0.28f, 1f);
     private static final Color GOLD_DARK = new Color(0.55f, 0.32f, 0.08f, 1f);
@@ -45,11 +44,10 @@ public class TouchControls {
     // joystick
     private int stickPointer = -1;
     private float baseX, baseY, knobX, knobY;
-    // pedals and gear selector, in points: x, y, width, height
+    // pedals, in points: x, y, width, height
     private final float[] gas = new float[4];
     private final float[] brake = new float[4];
-    private final float[] gear = new float[4];
-    private boolean gasDown, brakeDown, boosting, reverseGear;
+    private boolean gasDown, brakeDown, boosting;
     private int gasPointer = -1;
     private float gasDownAt = -10f;
     private float lastTapEnd = -10f;
@@ -70,30 +68,32 @@ public class TouchControls {
             stickPointer = -1;
             gasPointer = -1;
             gasDown = brakeDown = boosting = false;
-            player.setTouchInput(true, 0f, false, false, false, reverseGear);
+            player.setTouchInput(true, 0f, false, false, false, false);
             for (int p = 0; p < wasTouched.length; p++) {
                 wasTouched[p] = Gdx.input.isTouched(p);
             }
             return;
         }
-        readFingers(player, width, height);
+        readFingers(width, height);
 
         float steer = 0f;
+        boolean backwards = false;
         if (stickPointer >= 0) {
             float dx = (knobX - baseX) / STICK_RADIUS;
             if (Math.abs(dx) > DEAD_ZONE) {
                 steer = -Math.signum(dx) * (Math.abs(dx) - DEAD_ZONE) / (1f - DEAD_ZONE);
             }
+            backwards = (knobY - baseY) / STICK_RADIUS < -BACK_PULL;
         }
         // once the boost runs dry, the held pedal is just gas until the finger lifts
         if (boosting && player.getMana() <= 0.5f) {
             boosting = false;
         }
-        player.setTouchInput(true, steer, gasDown, gasDown && boosting && !reverseGear, brakeDown, reverseGear);
+        player.setTouchInput(true, steer, gasDown, gasDown && boosting && !backwards, brakeDown, backwards);
         draw(width, height);
     }
 
-    /** pedals in the bottom right corner (brake wider, gas taller, like real ones), gear above */
+    /** pedals in the bottom right corner (brake wider, gas taller, like real ones) */
     private void layout(float width) {
         float pad = 26f;
         gas[2] = 74f;
@@ -104,13 +104,9 @@ public class TouchControls {
         brake[3] = 92f;
         brake[0] = gas[0] - 18f - brake[2];
         brake[1] = pad;
-        gear[2] = 112f;
-        gear[3] = 38f;
-        gear[0] = brake[0];
-        gear[1] = brake[1] + brake[3] + 18f;
     }
 
-    private void readFingers(Player player, float width, float height) {
+    private void readFingers(float width, float height) {
         boolean anyGas = false, anyBrake = false;
         // the line between the two pedals: right of it is gas, left of it (on the right half) brake
         float split = (brake[0] + brake[2] + gas[0]) / 2f;
@@ -158,16 +154,6 @@ public class TouchControls {
             if (x < width / 2f) {
                 continue;
             }
-            if (justDown && inside(gear, x, y, 10f)) {
-                // like a real automatic: change gear only when stopped
-                if (player.getVelocity().len() < SHIFT_SPEED) {
-                    reverseGear = !reverseGear;
-                }
-                continue;
-            }
-            if (inside(gear, x, y, 10f)) {
-                continue;
-            }
             // fingers can slide from one pedal to the other, like a foot
             if (x >= split) {
                 anyGas = true;
@@ -185,10 +171,6 @@ public class TouchControls {
         if (!gasDown) {
             boosting = false;
         }
-    }
-
-    private static boolean inside(float[] r, float x, float y, float margin) {
-        return x >= r[0] - margin && x <= r[0] + r[2] + margin && y >= r[1] - margin && y <= r[1] + r[3] + margin;
     }
 
     private void draw(float width, float height) {
@@ -225,17 +207,12 @@ public class TouchControls {
         pedal(brake, brakeDown, BRAKE);
         pedal(gas, gasDown, boosting && gasDown ? BOOST : GOLD);
 
-        // gear selector: D and R halves, the chosen one lit
-        float half = gear[2] / 2f;
-        frame(gear[0], gear[1], gear[2], gear[3], 0.85f);
-        shapes.setColor(GOLD.r, GOLD.g, GOLD.b, 0.95f);
-        float litX = reverseGear ? gear[0] + half : gear[0];
-        shapes.rect(litX + 4f, gear[1] + 4f, half - 8f, gear[3] - 8f);
+        // a little down arrow under the stick: pull back + gas to reverse
+        shapes.setColor(GOLD.r, GOLD.g, GOLD.b, alpha);
+        shapes.triangle(sx, sy - edge - a, sx - a, sy - edge + a * 0.6f, sx + a, sy - edge + a * 0.6f);
         shapes.end();
 
         batch.begin();
-        label("D", gear[0] + half / 2f, gear[1] + gear[3] / 2f, reverseGear ? GOLD : Ui.TEXT_DARK);
-        label("R", gear[0] + half * 1.5f, gear[1] + gear[3] / 2f, reverseGear ? Ui.TEXT_DARK : GOLD);
         label("BRAKE", brake[0] + brake[2] / 2f, brake[1] + 18f, brakeDown ? BRAKE : GOLD);
         label(boosting && gasDown ? "BOOST" : "GAS", gas[0] + gas[2] / 2f, gas[1] + 18f,
             boosting && gasDown ? BOOST : GOLD);

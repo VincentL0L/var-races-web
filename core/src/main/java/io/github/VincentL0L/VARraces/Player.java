@@ -84,8 +84,8 @@ public class Player {
 
     private Vector2 prevPos = null;
     private boolean inputEnabled = false;
-    // phone controls (TouchControls): joystick steering, the two pedals and the gear (D / R)
-    private boolean touchActive, touchGas, touchBoost, touchBrake, touchReverseGear;
+    // phone controls (TouchControls): joystick steering (pulled back = reverse) and the two pedals
+    private boolean touchActive, touchGas, touchBoost, touchBrake, touchBackwards;
     private float touchSteer;
     /** an automatic car creeps along at idle with no pedal pressed (about 5 mph) */
     private static final float IDLE_CREEP = 12f;
@@ -239,18 +239,17 @@ public class Player {
 
     /**
      * How a real automatic gas car responds to its pedals (phone controls):
-     *  - gas in D: the engine pulls forward (in R it pulls backwards, slowly)
+     *  - gas: the engine pulls forward; with the joystick pulled back it reverses (slowly)
      *  - brake: slows the car to a stop and holds it there; it never reverses
      *  - no pedal: the engine idles, so the car coasts down with engine braking
-     *    and creeps along at walking pace once it's slow, in whichever gear it's in
+     *    and creeps forward at walking pace once it's slow
      * @return true while the car is creeping at idle
      */
     private boolean automaticGearbox(float dt, boolean gas, boolean brake, float forward) {
-        float direction = touchReverseGear ? -1f : 1f;
         boolean creeping = false;
         if (brake) {
             forward = approachZero(forward, BRAKE_DECEL * dt);
-        } else if (gas && touchReverseGear) {
+        } else if (gas && touchBackwards) {
             if (forward > 0f) {
                 forward = approachZero(forward, BRAKE_DECEL * dt);   // still rolling forward: the gearbox fights it
             } else {
@@ -264,11 +263,10 @@ public class Player {
                 float power = ENGINE_POWER * (isBoosting ? BOOST_POWER_MULT : 1f);
                 forward += Math.min(traction, power / Math.max(forward, 1f)) * dt;
             }
-        } else if (forward * direction < IDLE_CREEP) {
-            // idle creep: ease toward walking pace in the selected gear
+        } else if (!touchBackwards && forward >= 0f && forward < IDLE_CREEP) {
+            // idle creep: ease up to walking pace
             creeping = true;
-            float target = IDLE_CREEP * direction;
-            forward += MathUtils.clamp(target - forward, -CREEP_ACCEL * dt, CREEP_ACCEL * dt);
+            forward += Math.min(IDLE_CREEP - forward, CREEP_ACCEL * dt);
         } else {
             forward = approachZero(forward, ENGINE_BRAKING * dt);
         }
@@ -466,14 +464,14 @@ public class Player {
      * @param active true when the phone controls are in use (the car then drives like an automatic)
      * @param steer joystick: -1 full right .. 1 full left, 0 straight
      * @param gas gas pedal held   @param boost gas held after a double tap
-     * @param brake brake pedal held   @param reverseGear true in R, false in D
+     * @param brake brake pedal held   @param backwards joystick pulled back (gas then reverses)
      */
-    public void setTouchInput(boolean active, float steer, boolean gas, boolean boost, boolean brake, boolean reverseGear) {
+    public void setTouchInput(boolean active, float steer, boolean gas, boolean boost, boolean brake, boolean backwards) {
         touchActive = active;
         touchSteer = steer;
         touchGas = gas;
         touchBoost = boost;
         touchBrake = brake;
-        touchReverseGear = reverseGear;
+        touchBackwards = backwards;
     }
 }
