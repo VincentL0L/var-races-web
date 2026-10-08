@@ -40,6 +40,7 @@ public class NetworkClient {
     private final Map<String, Boolean> playerReadyStates = new LinkedHashMap<>();
     private boolean connected = false;
     private String countdownText = "";
+    private boolean flagShown = false;
     private LeaderboardPacket latestLeaderboard;
     public RaceManager raceManager;
     private boolean isReady = false;
@@ -185,6 +186,8 @@ public class NetworkClient {
                 countdownText = "GO!";
                 gameStarted = true;
                 countdownInProgress = false;
+            } else if (countdownTimer < 0f) {
+                countdownText = "";   // the flag is still waving
             } else {
                 countdownText = String.valueOf(3 - (int) countdownTimer);
             }
@@ -253,6 +256,8 @@ public class NetworkClient {
         } else if (type.equals("LEFT")) {
             playerReadyStates.remove(parts[1]);
             opponents.remove(parts[1]);
+        } else if (type.equals("FLAG")) {
+            flagShown = true;
         } else if (type.equals("COUNTDOWN")) {
             countdownText = parts[1];
         } else if (type.equals("POS")) {
@@ -316,6 +321,7 @@ public class NetworkClient {
         connected = false;
         opponents.clear();
         countdownText = "";
+        flagShown = false;
         latestLeaderboard = null;
     }
     /**
@@ -331,6 +337,12 @@ public class NetworkClient {
      */
     public String getCountdownText() {
         return countdownText;
+    }
+    /**
+     * @return true once everyone is ready and the red start flag should wave
+     */
+    public boolean isFlagShown() {
+        return flagShown;
     }
     /**
      * Sends the position and rotation of the player (20 times a second online)
@@ -438,9 +450,11 @@ public class NetworkClient {
         if (isOnline()) {
             send("READY|" + ready);
         } else if (ready && !gameStarted && !countdownInProgress) {
+            // the flag waves first, then the countdown starts
             countdownInProgress = true;
-            countdownTimer = 0f;
-            countdownText = "3";
+            countdownTimer = -RaceManager.FLAG_TIME;
+            countdownText = "";
+            flagShown = true;
         }
     }
     /**

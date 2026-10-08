@@ -49,6 +49,7 @@ public class LobbyScreen implements Screen {
     private float driftY = MathUtils.randomSign() * 45f;
     private float panFromX;
     private float panFromY;
+    private StartFlag startFlag;
 
     /**
      * creates lobby screen passing on the current game and car selected,
@@ -132,7 +133,7 @@ public class LobbyScreen implements Screen {
         leaveButton.addListener(new ClickListener() {
             @Override
             public void clicked(InputEvent event, float x, float y) {
-                if (networkClient.getCountdownText().isEmpty()) {
+                if (!networkClient.isFlagShown()) {
                     networkClient.stop();
                     game.setScreen(new MenuScreen(game, selectedCar));
                 }
@@ -241,6 +242,14 @@ public class LobbyScreen implements Screen {
         uiStage.act(delta);
         uiStage.getViewport().apply();
         uiStage.draw();
+
+        // once everyone is ready the red VAR RACES flag waves over everything
+        if (networkClient.isFlagShown() && startFlag == null) {
+            startFlag = new StartFlag();
+        }
+        if (startFlag != null && !startFlag.isDone()) {
+            startFlag.render(delta);
+        }
     }
 
     /**
@@ -291,6 +300,9 @@ public class LobbyScreen implements Screen {
      */
     public void dispose() {
         frost.dispose();
+        if (startFlag != null) {
+            startFlag.dispose();
+        }
         stage.dispose();
         uiStage.dispose();
         skin.dispose();

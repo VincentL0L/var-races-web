@@ -26,6 +26,8 @@ public class RaceManager {
 
     /** laps in a race; change this one number to make races longer */
     public static final int LAPS = 1;
+    /** seconds the red VAR RACES flag waves after everyone is ready, before the 3 2 1 countdown */
+    public static final float FLAG_TIME = 2.15f;
 
     public final List<RacerInfo> racers = new ArrayList<>();
 

@@ -116,8 +116,10 @@ public class Room {
         for (PlayerState p : players.values()) {
             if (!p.ready) return;
         }
+        // everyone sees the red flag wave at the same time, then the countdown starts
         countdownInProgress = true;
-        countdownTimer = 0f;
+        countdownTimer = -RaceManager.FLAG_TIME;
+        broadcast("FLAG");
     }
 
     /**
@@ -132,10 +134,12 @@ public class Room {
                 text = "GO!";
                 started = true;
                 countdownInProgress = false;
+            } else if (countdownTimer < 0f) {
+                text = "";
             } else {
                 text = String.valueOf(3 - (int) countdownTimer);
             }
-            if (!text.equals(lastCountdown)) {
+            if (!text.isEmpty() && !text.equals(lastCountdown)) {
                 lastCountdown = text;
                 broadcast("COUNTDOWN|" + text);
             }
