@@ -78,13 +78,13 @@ public class MenuScreen implements Screen {
 
         play.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {
-                game.setScreen(new MapSelectScreen(game, car, false));
+                game.setScreen(new MapSelectScreen(game, car));
             }
         });
 
         online.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {
-                game.setScreen(new MapSelectScreen(game, car, true));
+                game.setScreen(new MultiplayerScreen(game, car));
             }
         });
 

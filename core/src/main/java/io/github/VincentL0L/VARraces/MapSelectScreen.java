@@ -21,11 +21,13 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 import com.badlogic.gdx.scenes.scene2d.utils.NinePatchDrawable;
 
+import io.github.VincentL0L.VARraces.Multiplayer.client.NetworkClient;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 
 /**
- * Picking the map, after Single Player or Multiplayer: one card per map with a preview,
- * its name and a line about it. The frosted track drifting behind is the highlighted map.
+ * Picking the map, after Single Player or when hosting an online race: one card per map
+ * with a preview, its name and a line about it. The frosted track drifting behind is the
+ * highlighted map.
  */
 public class MapSelectScreen implements Screen {
     private static final float TILE_WIDTH = 230f;
@@ -34,7 +36,11 @@ public class MapSelectScreen implements Screen {
 
     private final Game game;
     private final int selectedCar;
-    private final boolean online;
+    /** hosting online: the open connection and whether the race is public (null = single player) */
+    private final NetworkClient host;
+    private final boolean hostPublic;
+    private Label kicker;
+    private boolean creating = false;
     private final Stage stage;
     private final Skin skin;
     private final List<TrackMap> maps = TrackMap.all();
@@ -45,14 +51,24 @@ public class MapSelectScreen implements Screen {
     private int selected = 0;
 
     /**
+     * single player: pick a map, then the lobby
      * @param game game
      * @param selectedCar car skin 1-3
-     * @param online true after Multiplayer, false after Single Player
      */
-    public MapSelectScreen(Game game, int selectedCar, boolean online) {
+    public MapSelectScreen(Game game, int selectedCar) {
+        this(game, selectedCar, null, false);
+    }
+
+    /**
+     * hosting online: pick a map, then the room is created on it
+     * @param client the open connection to the race server (null for single player)
+     * @param isPublic true to list the race for everyone
+     */
+    public MapSelectScreen(Game game, int selectedCar, NetworkClient client, boolean isPublic) {
         this.game = game;
         this.selectedCar = selectedCar;
-        this.online = online;
+        this.host = client;
+        this.hostPublic = isPublic;
         stage = new Stage(Ui.viewport());
         skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
         backdrops = new TrackBackdrop[maps.size()];
@@ -69,7 +85,8 @@ public class MapSelectScreen implements Screen {
     private void createUI() {
         Table card = Cards.card();
         card.defaults().width(TILE_WIDTH * maps.size() + 16f * (maps.size() - 1));
-        card.add(Cards.kicker(online ? "MULTIPLAYER" : "SINGLE PLAYER")).left().row();
+        kicker = Cards.kicker(host == null ? "SINGLE PLAYER" : hostPublic ? "HOST A PUBLIC RACE" : "HOST A PRIVATE RACE");
+        card.add(kicker).left().row();
         card.add(Cards.title("CHOOSE A TRACK", 40)).left().padTop(2).padBottom(16).row();
 
         Table row = new Table();
@@ -81,10 +98,14 @@ public class MapSelectScreen implements Screen {
         TextButton back = Cards.smallButton("Back", skin);
         back.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {
-                game.setScreen(new MenuScreen(game, selectedCar));
+                if (host != null) {
+                    game.setScreen(new MultiplayerScreen(game, selectedCar, host));
+                } else {
+                    game.setScreen(new MenuScreen(game, selectedCar));
+                }
             }
         });
-        TextButton next = new TextButton("Next", skin);
+        TextButton next = new TextButton(host != null ? "Create" : "Next", skin);
         next.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {
                 go();
@@ -146,14 +167,31 @@ public class MapSelectScreen implements Screen {
     private void go() {
         TrackMap map = maps.get(selected);
         lastMap = map.id;
-        if (online) {
-            game.setScreen(new MultiplayerScreen(game, selectedCar, map));
+        if (host != null) {
+            // the server makes the room; render() moves on to the lobby once we're in it
+            if (!creating && host.isConnected()) {
+                creating = true;
+                host.createRoom(hostPublic, selectedCar, map);
+                kicker.setText("CREATING THE RACE...");
+            }
         } else {
             game.setScreen(new LobbyScreen(game, selectedCar, null, map));
         }
     }
 
     public void render(float delta) {
+        if (host != null) {
+            host.update(delta);
+            if (host.isInRoom()) {
+                game.setScreen(new LobbyScreen(game, selectedCar, host, null));
+                return;
+            }
+            if (host.getError() != null) {
+                kicker.setText(host.getError().toUpperCase());
+                kicker.setColor(Cards.ERROR);
+                creating = false;
+            }
+        }
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         if (backdrops[selected] == null) {

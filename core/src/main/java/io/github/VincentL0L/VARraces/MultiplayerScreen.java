@@ -20,7 +20,8 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 
 /**
  * Online races: one gilded card over the drifting, frosted track with three sections:
- * open public races to join, hosting a public or private race, and joining with a code.
+ * every open public race (on any map) to join, hosting a public or private race (the map
+ * is picked next, on MapSelectScreen), and joining with a code.
  * Moves to LobbyScreen once the server puts the player in a room.
  */
 public class MultiplayerScreen implements Screen {
@@ -28,14 +29,13 @@ public class MultiplayerScreen implements Screen {
     private static final int MAX_PLAYERS = 6;
     /** the free server sleeps when nobody plays; after this long it's probably waking up */
     private static final float WAKE_HINT_TIME = 3f;
-    private static final int MAX_ROWS = 3;
+    private static final int MAX_ROWS = 4;
 
     private final Game game;
     private final int selectedCar;
     private final Stage stage;
     private final Skin skin;
-    private final TrackBackdrop backdrop;
-    private final TrackMap map;
+    private final TrackBackdrop backdrop = new TrackBackdrop(TrackMap.get(TrackMap.CLASSIC));
     private final NetworkClient networkClient;
     private Label kicker;
     private Table roomsTable;
@@ -50,18 +50,26 @@ public class MultiplayerScreen implements Screen {
      * connects to the race server and builds the menu
      * @param game game
      * @param selectedCar car skin the player picked
-     * @param map the map picked: new races use it and the list shows its open races
      */
-    public MultiplayerScreen(Game game, int selectedCar, TrackMap map) {
+    public MultiplayerScreen(Game game, int selectedCar) {
+        this(game, selectedCar, null);
+    }
+
+    /**
+     * @param client a connection that's already open (coming back from the map picker), or null
+     */
+    public MultiplayerScreen(Game game, int selectedCar, NetworkClient client) {
         this.game = game;
         this.selectedCar = selectedCar;
-        this.map = map;
-        backdrop = new TrackBackdrop(map);
         stage = new Stage(Ui.viewport());
         skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
 
-        networkClient = new NetworkClient(null);
-        networkClient.connect(Main.socketFactory, Main.serverUrl);
+        if (client != null) {
+            networkClient = client;
+        } else {
+            networkClient = new NetworkClient(null);
+            networkClient.connect(Main.socketFactory, Main.serverUrl);
+        }
 
         createUI();
         Gdx.input.setInputProcessor(stage);
@@ -75,7 +83,7 @@ public class MultiplayerScreen implements Screen {
 
         kicker = Cards.kicker("CONNECTING...");
         card.add(kicker).left().row();
-        card.add(Cards.title(map.name.toUpperCase(), 44)).left().padTop(2).padBottom(16).row();
+        card.add(Cards.title("ONLINE RACE", 44)).left().padTop(2).padBottom(16).row();
 
         // open public races
         card.add(Cards.kicker("OPEN RACES")).left().padBottom(6).row();
@@ -90,16 +98,12 @@ public class MultiplayerScreen implements Screen {
         TextButton createPrivate = new TextButton("Private", skin);
         createPublic.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {
-                if (networkClient.isConnected()) {
-                    networkClient.createRoom(true, selectedCar, map);
-                }
+                host(true);
             }
         });
         createPrivate.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {
-                if (networkClient.isConnected()) {
-                    networkClient.createRoom(false, selectedCar, map);
-                }
+                host(false);
             }
         });
         Table host = new Table();
@@ -149,7 +153,7 @@ public class MultiplayerScreen implements Screen {
             public void clicked(InputEvent e, float x, float y) {
                 leaving = true;
                 networkClient.stop();
-                game.setScreen(new MapSelectScreen(game, selectedCar, true));
+                game.setScreen(new MenuScreen(game, selectedCar));
             }
         });
         Table footer = new Table();
@@ -163,7 +167,18 @@ public class MultiplayerScreen implements Screen {
     }
 
     /**
-     * fills the open race list, each row with its code, player count and a Join button
+     * hosting: pick the map first (the connection stays open while you choose)
+     * @param isPublic true to list the race for everyone
+     */
+    private void host(boolean isPublic) {
+        if (networkClient.isConnected()) {
+            game.setScreen(new MapSelectScreen(game, selectedCar, networkClient, isPublic));
+        }
+    }
+
+    /**
+     * fills the open race list: every map's races, each row with its code, map, player
+     * count and a Join button
      */
     private void rebuildRooms() {
         roomsTable.clear();
@@ -171,13 +186,7 @@ public class MultiplayerScreen implements Screen {
             roomsTable.add(Cards.emptyRow("...")).row();
             return;
         }
-        // only races on this map
-        List<String[]> rooms = new java.util.ArrayList<>();
-        for (String[] room : networkClient.getPublicRooms()) {
-            if (room[2].equals(map.id)) {
-                rooms.add(room);
-            }
-        }
+        List<String[]> rooms = networkClient.getPublicRooms();
         if (rooms.isEmpty()) {
             roomsTable.add(Cards.emptyRow("No open races. Host one below!")).row();
             return;
@@ -185,8 +194,9 @@ public class MultiplayerScreen implements Screen {
         for (int i = 0; i < rooms.size() && i < MAX_ROWS; i++) {
             final String code = rooms.get(i)[0];
             Table row = Cards.row();
-            row.add(Cards.text(code, true)).left().width(90);
-            row.add(Cards.text(rooms.get(i)[1] + " / " + MAX_PLAYERS + " drivers", false)).left().expandX();
+            row.add(Cards.text(code, true)).left().width(70);
+            row.add(Cards.text(TrackMap.get(rooms.get(i)[2]).name.toUpperCase(), false)).left().expandX();
+            row.add(Cards.text(rooms.get(i)[1] + "/" + MAX_PLAYERS, false)).right().padRight(12);
             TextButton join = Cards.smallButton("Join", skin);
             join.addListener(new ClickListener() {
                 public void clicked(InputEvent e, float x, float y) {
