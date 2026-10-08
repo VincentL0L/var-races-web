@@ -152,8 +152,8 @@ public class Overlay {
         float sideWidth = sidePanelWidth(standings);
         float sideHeight = BEZEL * 2 + TITLE_HEIGHT + ROW_HEIGHT * rows;
         renderStandings(standings, sideWidth, sideHeight);
-        renderItem(sideHeight);
-        renderMenu(sideWidth, sideHeight);
+        renderItemPanel(sideWidth, sideHeight);
+        renderPauseButton(sideHeight);
         renderCluster(player, standings);
         if (offTrack && !paused) {
             renderWarning("RETURN TO TRACK");
@@ -238,85 +238,65 @@ public class Overlay {
         ".##.##.", ".##.##.", ".##.##.", ".##.##.", ".##.##.", ".##.##.", ".##.##."};
     private static final String[] ICON_RESUME = {
         ".#.....", ".##....", ".###...", ".####..", ".###...", ".##....", ".#....."};
-    private static final String[] ICON_RESTART = {
-        "..###.#", ".#...##", "#...###", "#......", "#.....#", ".#...#.", "..###.."};
-    private static final String[] ICON_LEAVE = {
-        "####...", "#...#..", "#....#.", "#.#####", "#....#.", "#...#..", "####..."};
-    private static final String[] ICON_QUIT = {
-        "##...##", ".##.##.", "..###..", "...#...", "..###..", ".##.##.", "##...##"};
-    private static final float BUTTON_GAP = 7f;
-    private static final float MAX_BUTTON_HEIGHT = 36f;
 
     /**
-     * top right, mirroring the standings: three gilded buttons (pause, restart, quit),
-     * each with a pixel-art icon and its keyboard key in a small inset on the right
+     * top right, mirroring the standings: the item you're holding, big, with its name
+     * (tap it on a phone to use it)
      */
-    private void renderMenu(float width, float height) {
+    private void renderItemPanel(float width, float height) {
         float x = vw - width - MARGIN;
         float y = vh - height - MARGIN;
+        menuRows[1][0] = x;
+        menuRows[1][1] = y;
+        menuRows[1][2] = width;
+        menuRows[1][3] = height;
         batch.begin();
         panel.draw(batch, x, y, width, height);
         titleFont.setColor(Ui.GOLD);
-        layout.setText(titleFont, "MENU");
-        // title right-aligned, mirroring STANDINGS on the left
-        titleFont.draw(batch, "MENU", x + width - BEZEL - layout.width,
+        layout.setText(titleFont, "ITEM");
+        titleFont.draw(batch, "ITEM", x + width - BEZEL - layout.width,
             y + height - BEZEL - (TITLE_HEIGHT - layout.height) / 2f + 2f);
-        batch.end();
-
-        String[] labels = {paused ? "RESUME" : "PAUSE", online ? "LEAVE" : "RESTART", "QUIT"};
-        String[][] icons = {paused ? ICON_RESUME : ICON_PAUSE, online ? ICON_LEAVE : ICON_RESTART, ICON_QUIT};
-        String[] keys = {"ESC", "R", "Q"};
         float areaTop = y + height - BEZEL - TITLE_HEIGHT;
-        float areaHeight = areaTop - (y + BEZEL);
-        float buttonHeight = Math.min(MAX_BUTTON_HEIGHT, (areaHeight - BUTTON_GAP * 2f - 4f) / 3f);
-        float buttonX = x + BEZEL + 2f;
-        float buttonWidth = width - BEZEL * 2f - 4f;
+        float areaBottom = y + BEZEL;
+        float cx = x + width / 2f;
+        if (itemIcon != null) {
+            float size = Math.min(64f, areaTop - areaBottom - 30f);
+            float bob = MathUtils.sin(clock * 5f) * 2f;
+            batch.draw(itemIcon, cx - size / 2f, areaBottom + 26f + bob, size, size);
+            String name = itemName.toUpperCase() + (Ui.touchScreen ? "" : "   [E]");
+            buttonFont.setColor(Ui.GOLD);
+            layout.setText(buttonFont, name);
+            buttonFont.draw(batch, name, cx - layout.width / 2f, areaBottom + 18f);
+        } else {
+            // an empty slot: a dim box outline with a question mark
+            screen.draw(batch, cx - 28f, areaBottom + (areaTop - areaBottom) / 2f - 28f, 56f, 56f);
+            labelFont.setColor(LABEL);
+            layout.setText(labelFont, "?");
+            labelFont.draw(batch, "?", cx - layout.width / 2f, areaBottom + (areaTop - areaBottom) / 2f + layout.height / 2f);
+        }
+        batch.end();
+    }
 
-        // which button the mouse (or a finger) is over
+    /**
+     * a small pause button tucked under the item panel; it opens the pause menu
+     */
+    private void renderPauseButton(float sideHeight) {
+        float size = 38f;
+        float x = vw - MARGIN - size;
+        float y = vh - MARGIN - sideHeight - 8f - size;
+        menuRows[0][0] = x;
+        menuRows[0][1] = y;
+        menuRows[0][2] = size;
+        menuRows[0][3] = size;
         float mx = Gdx.input.getX() / (float) Gdx.graphics.getWidth() * vw;
         float my = (1f - Gdx.input.getY() / (float) Gdx.graphics.getHeight()) * vh;
-        boolean pointerHere = !Ui.touchScreen || Gdx.input.isTouched();
-
-        for (int i = 0; i < labels.length; i++) {
-            float by = areaTop - 2f - (buttonHeight + BUTTON_GAP) * i - buttonHeight;
-            menuRows[i][0] = buttonX;
-            menuRows[i][1] = by;
-            menuRows[i][2] = buttonWidth;
-            menuRows[i][3] = buttonHeight;
-            boolean hover = pointerHere && mx >= buttonX && mx <= buttonX + buttonWidth && my >= by && my <= by + buttonHeight;
-            boolean pressed = hover && Gdx.input.isTouched();
-            // the pressed face sits lower, so the icon and text move down with it
-            float sink = pressed ? Ui.PIXEL : 0f;
-
-            batch.begin();
-            NinePatch face = pressed ? buttonDown : (hover || (i == 0 && paused)) ? buttonOver : button;
-            face.draw(batch, buttonX, by, buttonWidth, buttonHeight);
-            float middle = by + buttonHeight / 2f + Ui.PIXEL - sink;
-            buttonFont.setColor(Ui.TEXT_DARK);
-            layout.setText(buttonFont, labels[i]);
-            float iconSize = Math.min(7f * Ui.PIXEL, buttonHeight - 14f);
-            float textX = buttonX + 12f + iconSize + 10f;
-            buttonFont.draw(batch, labels[i], textX, middle + layout.height / 2f);
-            batch.end();
-
-            render.begin(ShapeRenderer.ShapeType.Filled);
-            drawIcon(icons[i], buttonX + 12f, middle - iconSize / 2f, iconSize / 7f, Ui.TEXT_DARK);
-            render.end();
-
-            if (!Ui.touchScreen) {
-                // the keyboard key in a small dark inset on the right
-                float keyWidth = TAB_SIZE * 1.6f;
-                float keyHeight = Math.min(buttonHeight - 12f, 20f);
-                float kx = buttonX + buttonWidth - 8f - keyWidth;
-                float ky = middle - keyHeight / 2f;
-                batch.begin();
-                screen.draw(batch, kx, ky, keyWidth, keyHeight);
-                labelFont.setColor(Ui.GOLD);
-                layout.setText(labelFont, keys[i]);
-                labelFont.draw(batch, keys[i], kx + (keyWidth - layout.width) / 2f, ky + keyHeight / 2f + layout.height / 2f);
-                batch.end();
-            }
-        }
+        boolean hover = !Ui.touchScreen && mx >= x && mx <= x + size && my >= y && my <= y + size;
+        batch.begin();
+        (hover ? buttonOver : button).draw(batch, x, y, size, size);
+        batch.end();
+        render.begin(ShapeRenderer.ShapeType.Filled);
+        drawIcon(paused ? ICON_RESUME : ICON_PAUSE, x + (size - 14f) / 2f, y + (size - 14f) / 2f + 2f, 2f, Ui.TEXT_DARK);
+        render.end();
     }
 
     /**
@@ -336,7 +316,7 @@ public class Overlay {
 
     /**
      * @param screenX touch x from Gdx.input   @param screenY touch y from Gdx.input (top = 0)
-     * @return which menu row was hit: 0 pause, 1 restart/leave, 2 quit, or -1
+     * @return what was hit: 0 the pause button, 1 the item panel, or -1
      */
     public int menuRowAt(int screenX, int screenY) {
         float x = screenX / (float) Gdx.graphics.getWidth() * vw;
@@ -517,33 +497,6 @@ public class Overlay {
     public void setItem(Texture icon, String name) {
         itemIcon = icon;
         itemName = name;
-    }
-
-    /**
-     * the item slot under the standings: a gilded box with the item's icon, and its name
-     * (and the key to use it) beside it
-     */
-    private void renderItem(float sideHeight) {
-        float size = 80f;
-        float x = MARGIN, y = vh - MARGIN - sideHeight - 12f - size;
-        batch.begin();
-        panel.draw(batch, x, y, size, size);
-        if (itemIcon != null) {
-            // a little bounce, so a new item catches the eye
-            float bob = MathUtils.sin(clock * 5f) * 2f;
-            batch.draw(itemIcon, x + (size - 48f) / 2f, y + (size - 48f) / 2f + bob, 48f, 48f);
-            titleFont.setColor(Ui.GOLD);
-            titleFont.draw(batch, itemName.toUpperCase(), x + size + 12f, y + size / 2f + 14f);
-            if (!Ui.touchScreen) {
-                labelFont.setColor(LABEL);
-                labelFont.draw(batch, "PRESS E", x + size + 12f, y + size / 2f - 8f);
-            }
-        } else {
-            labelFont.setColor(LABEL);
-            layout.setText(labelFont, "ITEM");
-            labelFont.draw(batch, "ITEM", x + (size - layout.width) / 2f, y + size / 2f + layout.height / 2f);
-        }
-        batch.end();
     }
 
     /**

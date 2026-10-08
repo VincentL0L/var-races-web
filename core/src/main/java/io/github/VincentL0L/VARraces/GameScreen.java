@@ -360,11 +360,9 @@ public class GameScreen implements Screen {
         } else if (Gdx.input.justTouched()) {
             int row = over.menuRowAt(Gdx.input.getX(), Gdx.input.getY());
             if (row == 0) {
-                setPaused(!paused);
-            } else if (row == 1) {
-                restart();
-            } else if (row == 2) {
-                quit();
+                setPaused(!paused);        // the little pause button opens the pause menu
+            } else if (row == 1 && start && !done && !paused && !player.isSpinning()) {
+                nc.useItem();              // tapping the item panel uses the item
             }
         }
     }
