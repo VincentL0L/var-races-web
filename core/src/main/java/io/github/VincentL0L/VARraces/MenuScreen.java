@@ -13,13 +13,16 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 
 /**
- * The menu screen of the game, calls game screen when play button is pressed
+ * The title screen: the 16-bit attract-mode scene (TitleBackdrop) with the VAR RACES sign,
+ * and the Single Player / Multiplayer / Skin / Exit buttons
  */
 public class MenuScreen implements Screen {
 
     private Stage stage;
     private Skin button;
-    private Image bgImg;
+    private final TitleBackdrop backdrop = new TitleBackdrop();
+    /** true on the car picker, which has its own heading instead of the sign */
+    private boolean pickingCar = false;
     private Game game;
     private int car;
 
@@ -31,8 +34,6 @@ public class MenuScreen implements Screen {
     public MenuScreen(Game g) {
         game = g;
         button = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
-        bgImg = new Image( new Texture("ui/menu.png"));
-        bgImg.setFillParent(true);
         car = 1;
     }
 
@@ -51,6 +52,7 @@ public class MenuScreen implements Screen {
      */
     public void show() {
         clearStage();
+        pickingCar = false;
 
         TextButton play = new TextButton("Single Player", button);
         TextButton online = new TextButton("Multiplayer", button);
@@ -64,13 +66,15 @@ public class MenuScreen implements Screen {
         exit.setSize(buttonWidth, buttonHeight);
         skin.setSize(buttonWidth, buttonHeight);
 
+        // a column of buttons under the sign
         float x = Ui.width() * 0.5f - buttonWidth * 0.5f;
-        play.setPosition(x, 330);
-        online.setPosition(x, 250);
-        skin.setPosition(x, 170);
-        exit.setPosition(x, 90);
+        float top = Math.min(Ui.height() - 250f, 380f);
+        float gap = Math.min(76f, (top - 30f) / 3f);
+        play.setPosition(x, top);
+        online.setPosition(x, top - gap);
+        skin.setPosition(x, top - gap * 2);
+        exit.setPosition(x, top - gap * 3);
 
-        stage.addActor(bgImg);
         stage.addActor(play);
         stage.addActor(online);
         stage.addActor(exit);
@@ -107,6 +111,11 @@ public class MenuScreen implements Screen {
      */
     private void selectCar(){
         clearStage();
+        pickingCar = true;
+        com.badlogic.gdx.scenes.scene2d.ui.Label heading = Cards.title("CHOOSE YOUR CAR", 40);
+        heading.pack();
+        heading.setPosition(Ui.width() * 0.5f - heading.getWidth() * 0.5f, Ui.height() - 120f);
+        stage.addActor(heading);
 
         Image Car1img = new Image(new Texture("ui/car1.png"));
         Image Car2img = new Image(new Texture("ui/car2.png"));
@@ -130,7 +139,6 @@ public class MenuScreen implements Screen {
         Car2.setPosition(Ui.width() * 0.50f - Car2.getWidth() * 0.5f, 200);
         Car3.setPosition(Ui.width() * 0.75f - Car3.getWidth() * 0.5f, 200);
 
-        stage.addActor(bgImg);
         stage.addActor(Car1img);
         stage.addActor(Car2img);
         stage.addActor(Car3img);
@@ -175,6 +183,8 @@ public class MenuScreen implements Screen {
     public void render(float delta) {
         Gdx.gl.glClearColor(0, 0, 0, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+        backdrop.render(delta, !pickingCar);
+        stage.getViewport().apply();
         stage.act(delta);
         stage.draw();
     }
@@ -185,6 +195,7 @@ public class MenuScreen implements Screen {
      * @param height new height
      */
     public void resize(int width, int height) {
+        backdrop.resize(width, height);
         stage.getViewport().update(width, height, true);
     }
 
@@ -202,6 +213,7 @@ public class MenuScreen implements Screen {
     public void dispose() {
         stage.dispose();
         button.dispose();
+        backdrop.dispose();
     }
 
     // abstract methods we need to declare but arent used

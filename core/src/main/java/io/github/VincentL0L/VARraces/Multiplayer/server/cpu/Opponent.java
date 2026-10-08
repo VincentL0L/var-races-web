@@ -138,7 +138,7 @@ public class Opponent {
             if (currentWaypointIndex == waypoints.size()) {
                 currentWaypointIndex = 0;
                 lapCount++;
-                if (lapCount >= RaceManager.LAPS) {
+                if (lapCount >= RaceManager.LAPS && !endless) {
                     shouldStopAtNextWaypoint = true;
                 }
             }
@@ -385,6 +385,16 @@ public class Opponent {
     public float getDistanceToNextWaypoint() {
         return distanceToNextWaypoint;
     }
+    /** true: keeps lapping forever (the title screen's demo race) */
+    private boolean endless = false;
+
+    /**
+     * @param value true to never finish, just keep lapping
+     */
+    public void setEndless(boolean value) {
+        endless = value;
+    }
+
     /**
      * @return boolean status if race is finished
      */

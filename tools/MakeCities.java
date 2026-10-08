@@ -26,6 +26,18 @@ public class MakeCities {
     static final int[][] TOKYO = {
         {200, 860}, {700, 860}, {700, 620}, {1200, 620}, {1200, 900}, {1760, 900}, {1760, 200},
         {1000, 200}, {1000, 420}, {520, 420}, {520, 230}, {200, 230}, {200, 300}};
+    static final int[][] CHICAGO = {
+        {200, 900}, {900, 900}, {900, 700}, {1500, 700}, {1500, 160}, {1100, 160}, {1100, 430},
+        {640, 430}, {640, 230}, {200, 230}, {200, 300}};
+    static final int[][] LONDON = {
+        {200, 860}, {1000, 860}, {1000, 960}, {1760, 960}, {1760, 520}, {1300, 520}, {1300, 180},
+        {760, 180}, {760, 420}, {480, 420}, {480, 230}, {200, 230}, {200, 300}};
+    static final int[][] PARIS = {
+        {200, 700}, {700, 700}, {700, 940}, {1500, 940}, {1500, 700}, {1760, 700}, {1760, 180},
+        {1100, 180}, {1100, 420}, {560, 420}, {560, 230}, {200, 230}, {200, 300}};
+    static final int[][] TAIPEI = {
+        {200, 900}, {1300, 900}, {1300, 640}, {1760, 640}, {1760, 180}, {1240, 180}, {1240, 420},
+        {800, 420}, {800, 230}, {200, 230}, {200, 300}};
     static final int[][] NEW_YORK = {
         {200, 700}, {560, 700}, {560, 900}, {1760, 900}, {1760, 200}, {1240, 200}, {1240, 520},
         {860, 520}, {860, 230}, {200, 230}, {200, 300}};
@@ -54,12 +66,26 @@ public class MakeCities {
         save("tokyo");
         paintNewYork();
         save("nyc");
+        paintChicago();
+        save("chicago");
+        paintLondon();
+        save("london");
+        paintParis();
+        save("paris");
+        paintTaipei();
+        save("taipei");
+        ImageIO.write(sprite(COP, COP_LETTERS, COP_COLORS), "png", new File("assets/ui/cop.png"));
+        ImageIO.write(sprite(BUS, BUS_LETTERS, BUS_COLORS), "png", new File("assets/ui/bus.png"));
+        ImageIO.write(sprite(DEUX, DEUX_LETTERS, DEUX_COLORS), "png", new File("assets/ui/2cv.png"));
+        ImageIO.write(sprite(MOTO, MOTO_LETTERS, MOTO_COLORS), "png", new File("assets/ui/moto.png"));
         ImageIO.write(sprite(KEI, KEI_LETTERS, KEI_COLORS), "png", new File("assets/ui/kei.png"));
         ImageIO.write(sprite(CAB, CAB_LETTERS, CAB_COLORS), "png", new File("assets/ui/cab.png"));
-        System.out.println("Tokyo and New York painted");
+        System.out.println("Tokyo, New York, Chicago, London, Paris and Taipei painted");
     }
 
     static void begin(int[][] p, Area w, long seed) {
+        waterColor = WATER;
+        waterDark = WATER_DARK;
         path = p;
         water = w;
         art = new int[AW * AH];
@@ -186,6 +212,777 @@ public class MakeCities {
         startLine();
     }
 
+    // ================================================================== CHICAGO
+
+    static void paintChicago() {
+        // the Chicago River across the middle (two bridges), Lake Michigan down the right
+        begin(CHICAGO, (x, y) -> (y > 548 + 3 * Math.sin(x / 41.0) && y < 606 + 3 * Math.sin(x / 41.0) && x < 1640)
+            || x > 1680 + 8 * Math.sin(y / 47.0), 1871);
+        waterColor = rgb(0x3f9a9c);
+        waterDark = rgb(0x337f84);
+        ground(rgb(0x76bb57), rgb(0x62a748));
+
+        millenniumPark(1190, 250, 1410, 520);
+        reserve(1190, 250, 1410, 520);
+        reserve(270, 300, 560, 530);                  // Willis Tower's plaza
+        district(270, 300, 560, 530, "chi-towers");
+        district(580, 290, 1030, 360, "chi-towers");
+        district(270, 630, 830, 830, "chi-towers");
+        district(970, 770, 1630, 1080, "chi-towers");
+        district(270, 970, 960, 1080, "chi-houses");
+        district(0, 0, 130, 1080, "chi-houses");
+        district(0, 0, 1040, 160, "chi-houses");
+        district(1170, 0, 1640, 90, "chi-houses");
+        district(970, 630, 1430, 640, "chi-towers");
+        district(1570, 0, 1640, 1080, "chi-towers");
+        district(730, 160, 1010, 290, "chi-houses");
+        train(980, 800, 1620, rgb(0x8a4a2a), rgb(0x3f6fbf));   // the L on its elevated tracks
+        reserve(970, 780, 1630, 830);
+        willisTower(420, 320);
+        roads(rgb(0xf6d24a), false);
+        crosswalks();
+        bridges(rgb(0xc0453a), rgb(0x7a2a24), false);
+        navyPier(1700, 820);
+        boat(700, 575, rgb(0xe9e2d2), false);      // an architecture tour boat
+        boat(1780, 400, rgb(0xd9433b), false);
+        people(240);
+        startLine();
+    }
+
+    // ================================================================== LONDON
+
+    static void paintLondon() {
+        // the Thames through the middle: Westminster Bridge on the left, Tower Bridge on the right
+        begin(LONDON, (x, y) -> y > 630 + 10 * Math.sin(x / 90.0) && y < 752 + 8 * Math.sin(x / 70.0 + 1), 1666);
+        waterColor = rgb(0x4f86a8);
+        waterDark = rgb(0x416f8f);
+        ground(rgb(0x72b755), rgb(0x5ea246));
+
+        park(0, 0, 130, 1080, true, false);           // Hyde Park
+        park(830, 250, 1230, 620, true, false);       // St James's Park
+        forest(1070, 770, 1690, 930, 0, 1400);       // the South Bank
+        reserve(270, 500, 930, 625);                  // Parliament and Big Ben
+        district(270, 300, 420, 400, "london-terraces");
+        district(270, 940, 930, 1080, "london-terraces");
+        district(1370, 250, 1690, 450, "london-city");
+        district(1370, 0, 1920, 120, "london-terraces");
+        district(700, 0, 1240, 110, "london-terraces");
+        district(0, 0, 690, 160, "london-terraces");
+        district(1840, 0, 1920, 1080, "london-terraces");
+        district(1070, 1040, 1700, 1080, "london-terraces");
+        district(560, 280, 690, 380, "london-terraces");
+        district(1380, 120, 1830, 250, "london-terraces");
+        parliament(360, 520);
+        bigBen(330, 515);
+        buckingham(1030, 400);
+        reserve(830, 250, 1230, 620);
+        londonEye(1380, 830);
+        reserve(1300, 760, 1470, 930);
+        stPauls(1450, 380);
+        gherkin(1610, 300);
+        roads(rgb(0xf2f0ea), false);
+        crosswalks();
+        bridges(rgb(0x3f7f5a), rgb(0x2a5a40), false);
+        towerBridge(1760, 690);
+        boat(800, 700, rgb(0xe9e2d2), false);
+        boat(1400, 690, rgb(0xd9433b), false);
+        phoneBoxes();
+        people(240);
+        startLine();
+    }
+
+    // ================================================================== PARIS
+
+    static void paintParis() {
+        // the Seine across the middle, with stone bridges on both crossings
+        begin(PARIS, (x, y) -> y > 512 + 5 * Math.sin(x / 70.0) && y < 604 + 5 * Math.sin(x / 70.0 + 2), 1889);
+        waterColor = rgb(0x4d8db8);
+        waterDark = rgb(0x3f769e);
+        ground(rgb(0x7abb5c), rgb(0x66a74c));
+
+        champDeMars(780, 620, 1420, 850);
+        reserve(780, 620, 1420, 860);
+        arcDeTriomphe(1430, 370);
+        reserve(1300, 240, 1560, 500);
+        louvre(830, 300);
+        reserve(620, 250, 1040, 350);
+        notreDame(380, 400);
+        reserve(310, 390, 450, 510);
+        sacreCoeur(465, 900);
+        reserve(300, 820, 630, 1000);
+        district(1180, 250, 1690, 500, "paris-haussmann");
+        district(270, 300, 490, 495, "paris-cafes");
+        district(140, 790, 650, 1080, "paris-haussmann");
+        district(0, 0, 130, 1080, "paris-haussmann");
+        district(0, 0, 1030, 160, "paris-cafes");
+        district(1170, 0, 1920, 110, "paris-haussmann");
+        district(770, 1000, 1920, 1080, "paris-haussmann");
+        district(1570, 770, 1690, 1080, "paris-haussmann");
+        district(1830, 0, 1920, 1080, "paris-haussmann");
+        district(620, 350, 1040, 360, "paris-cafes");
+        eiffel(1100, 650);
+        roads(rgb(0xf2f0ea), true);
+        crosswalks();
+        bridges(rgb(0xd8ceb6), rgb(0xa89c82), false);
+        boat(800, 560, rgb(0xe9e2d2), false);       // bateaux mouches
+        boat(1450, 555, rgb(0xe9e2d2), false);
+        people(260);
+        startLine();
+    }
+
+    // ================================================================== TAIPEI
+
+    static void paintTaipei() {
+        // the Keelung river across the left and up to the top, crossed twice
+        begin(TAIPEI, (x, y) -> (y > 726 + 4 * Math.sin(x / 37.0) && y < 788 + 4 * Math.sin(x / 37.0) && x < 1150)
+            || (x > 1080 + 4 * Math.sin(y / 29.0) && x < 1150 + 4 * Math.sin(y / 29.0) && y > 726), 1949);
+        waterColor = rgb(0x4a93b8);
+        waterDark = rgb(0x3e7d9e);
+        ground(rgb(0x6fb653), rgb(0x5aa044));
+
+        hills(0, 960, 1060, 1080);                    // Yangmingshan behind the city
+        park(0, 0, 130, 960, true, false);
+        reserve(270, 300, 740, 650);                  // Chiang Kai-shek Memorial Hall
+        reserve(1310, 250, 1690, 570);                // Longshan Temple
+        reserve(870, 250, 1170, 360);                 // Shilin Night Market
+        taipei101(1540, 760);
+        reserve(1480, 740, 1600, 1080);               // Taipei 101
+        district(1170, 960, 1920, 1080, "taipei-shops");
+        district(1380, 720, 1700, 1080, "taipei-towers");
+        district(0, 0, 1250, 160, "taipei-shops");
+        district(860, 490, 1700, 570, "taipei-shops");
+        district(1170, 720, 1240, 830, "taipei-shops");
+        district(270, 820, 1010, 830, "taipei-shops");
+        district(1830, 0, 1920, 1080, "taipei-shops");
+        district(270, 800, 1000, 840, "taipei-houses");
+        district(1250, 0, 1920, 110, "taipei-houses");
+        district(760, 590, 1210, 710, "taipei-shops");
+        district(290, 660, 760, 710, "taipei-houses");
+        district(880, 170, 1160, 250, "taipei-shops");
+        cksMemorial(500, 470);
+        longshan(1500, 420);
+        nightMarket(880, 260, 1160, 350);
+        roads(rgb(0xf2f0ea), true);
+        crosswalks();
+        bridges(rgb(0xd8423a), rgb(0xa52f2a), false);
+        scooters();
+        people(300);
+        startLine();
+    }
+
+    // ================================================================== Chicago landmarks
+
+    /** Willis Tower: black bundled tubes stepping up, two white antennas on top */
+    static void willisTower(int x, int y) {
+        int ax = x / S, base = (H - y) / S;
+        int[][] tubes = {{-12, -4, 40}, {-4, 4, 70}, {4, 12, 52}, {-12, -4, 56}, {4, 12, 34}};
+        for (int[] t : tubes) {
+            for (int dy = 0; dy < t[2]; dy++) {
+                for (int dx = t[0]; dx <= t[1]; dx++) {
+                    boolean edge = dx == t[0] || dx == t[1] || dy == t[2] - 1;
+                    int c = edge ? OUTLINE : (dx == t[0] + 1) ? rgb(0x5a5d66) : ((dy % 3 == 0) ? rgb(0x26282e) : rgb(0x34373f));
+                    if (!edge && rnd.nextInt(16) == 0) {
+                        c = LIT;
+                    }
+                    set(ax + dx, base - dy, c);
+                }
+            }
+        }
+        for (int dy = 70; dy < 84; dy++) {
+            set(ax - 2, base - dy, WHITE);
+            set(ax + 2, base - dy, WHITE);
+        }
+        for (int dx = -14; dx <= 14; dx++) {
+            shade(ax + dx + 3, base + 1, 0.6);
+        }
+    }
+
+    /** Millennium Park: lawns, the Bean (Cloud Gate) and Buckingham Fountain */
+    static void millenniumPark(int x0, int y0, int x1, int y1) {
+        forest(x0, y0, x1, y1, 0, 1800);
+        int bx = 1300 / S, by = (H - 440) / S;
+        for (int ay = by - 9; ay <= by + 9; ay++) {
+            for (int ax = bx - 14; ax <= bx + 14; ax++) {
+                set(ax, ay, ((ax + ay) % 6 == 0) ? rgb(0xc9c1b1) : rgb(0xdcd4c4));     // the plaza
+            }
+        }
+        for (int ay = by - 5; ay <= by + 4; ay++) {
+            for (int ax = bx - 9; ax <= bx + 9; ax++) {
+                double d = Math.pow((ax - bx) / 9.0, 2) + Math.pow((ay - by) / 5.0, 2);
+                if (d < 1) {
+                    int c = d > 0.8 ? OUTLINE : (ay < by - 2 && ax < bx) ? WHITE : (ay > by + 1) ? rgb(0x8f97a3)
+                        : ((ax + ay) % 5 == 0) ? rgb(0x7fc0ff) : rgb(0xc3cbd6);   // shiny steel, sky reflected
+                    set(ax, ay, c);
+                }
+            }
+        }
+        // Buckingham Fountain: pink stone basins in a pool
+        int fx = 1300 / S, fy = (H - 300) / S;
+        disc(fx, fy, 9, rgb(0xd9c3b5));
+        disc(fx, fy, 8, waterColor);
+        disc(fx, fy, 5, rgb(0xe8b9a8));
+        disc(fx, fy, 4, waterColor);
+        disc(fx, fy, 2, rgb(0xe8b9a8));
+        set(fx, fy - 3, SPARKLE);
+        set(fx, fy - 4, WHITE);
+    }
+
+    /** Navy Pier sticking out into the lake, with its Ferris wheel */
+    static void navyPier(int x, int y) {
+        int ax0 = x / S, ay = (H - y) / S;
+        for (int ax = ax0; ax < AW; ax++) {
+            for (int k = -6; k <= 6; k++) {
+                if (isWater(ax * S, H - (ay + k) * S)) {
+                    set(ax, ay + k, Math.abs(k) == 6 ? OUTLINE : (Math.abs(k) == 5 ? rgb(0x8a6a4a) : rgb(0xd8ceb6)));
+                }
+            }
+        }
+        int cx = ax0 + 30, cy = ay - 10;
+        for (int a = 0; a < 360; a += 4) {
+            double r = Math.toRadians(a);
+            set(cx + (int) Math.round(11 * Math.cos(r)), cy + (int) Math.round(11 * Math.sin(r)), OUTLINE);
+            if (a % 30 == 0) {
+                for (int k = 0; k < 11; k++) {
+                    set(cx + (int) Math.round(k * Math.cos(r)), cy + (int) Math.round(k * Math.sin(r)), rgb(0xd9433b));
+                }
+                set(cx + (int) Math.round(12 * Math.cos(r)), cy + (int) Math.round(12 * Math.sin(r)), NEON[(a / 30) % NEON.length]);
+            }
+        }
+        for (int k = 0; k < 12; k++) {
+            set(cx - k / 2, cy + k, OUTLINE);
+            set(cx + k / 2, cy + k, OUTLINE);
+        }
+    }
+
+    // ================================================================== London landmarks
+
+    static void parliament(int x, int y) {
+        int ax0 = x / S, base = (H - y) / S;
+        for (int dx = 0; dx < 170; dx++) {
+            int h = 16 + ((dx % 12 < 2) ? 4 : 0);
+            for (int dy = 0; dy < h; dy++) {
+                boolean edge = dy == h - 1 || dx == 0 || dx == 169;
+                int c = edge ? OUTLINE : (dy % 4 == 0) ? rgb(0xb79f6c) : (dx % 3 == 0 ? rgb(0xbfa874) : rgb(0xd8c48e));
+                if (!edge && dy > 3 && dy < 12 && dx % 3 == 1) {
+                    c = GLASS_DARK;
+                }
+                set(ax0 + dx, base - dy, c);
+            }
+        }
+        for (int dx = 0; dx < 170; dx++) {
+            shade(ax0 + dx + 1, base + 1, 0.65);
+        }
+        // Victoria Tower at the far end
+        for (int dy = 0; dy < 34; dy++) {
+            for (int dx = 156; dx < 168; dx++) {
+                boolean edge = dx == 156 || dx == 167 || dy == 33;
+                set(ax0 + dx, base - dy, edge ? OUTLINE : dx == 157 ? rgb(0xe8d8a8) : rgb(0xc9b27c));
+            }
+        }
+    }
+
+    /** Big Ben: the clock tower, with its clock face and spire */
+    static void bigBen(int x, int y) {
+        int ax = x / S, base = (H - y) / S;
+        for (int dy = 0; dy < 56; dy++) {
+            for (int dx = -5; dx <= 5; dx++) {
+                boolean edge = Math.abs(dx) == 5;
+                int c = edge ? OUTLINE : dx < -2 ? rgb(0xe9d9a6) : (dy % 4 == 0 ? rgb(0xb79f6c) : rgb(0xd2bd86));
+                set(ax + dx, base - dy, c);
+            }
+        }
+        disc(ax, base - 42, 4, OUTLINE);
+        disc(ax, base - 42, 3, WHITE);
+        set(ax, base - 42, OUTLINE);
+        set(ax, base - 43, OUTLINE);
+        set(ax + 1, base - 42, OUTLINE);
+        for (int dy = 56; dy < 70; dy++) {
+            int half = Math.max(0, 5 - (dy - 56) / 2);
+            for (int dx = -half; dx <= half; dx++) {
+                set(ax + dx, base - dy, Math.abs(dx) == half ? OUTLINE : rgb(0x4a5a5a));
+            }
+        }
+        set(ax, base - 71, rgb(0xd8b84a));
+    }
+
+    static void buckingham(int x, int y) {
+        int ax0 = x / S - 30, ay0 = (H - y) / S;
+        for (int dy = 0; dy < 16; dy++) {
+            for (int dx = 0; dx < 60; dx++) {
+                boolean edge = dy == 0 || dy == 15 || dx == 0 || dx == 59;
+                int c = edge ? OUTLINE : dy < 4 ? rgb(0xa8a296) : (dx % 4 == 1 && dy > 6 && dy < 12) ? GLASS_DARK : rgb(0xe8e2d0);
+                set(ax0 + dx, ay0 + dy, c);
+            }
+        }
+        // the flag, the gates and the Victoria Memorial in gold
+        set(ax0 + 30, ay0 - 3, OUTLINE);
+        set(ax0 + 30, ay0 - 2, OUTLINE);
+        set(ax0 + 31, ay0 - 3, rgb(0xd9433b));
+        set(ax0 + 32, ay0 - 3, rgb(0x3b4fbf));
+        for (int dx = 0; dx < 60; dx += 2) {
+            set(ax0 + dx, ay0 + 19, rgb(0x2a2a30));
+            set(ax0 + dx, ay0 + 18, rgb(0xd8b84a));
+        }
+        disc(ax0 + 30, ay0 + 28, 5, rgb(0xe8e2d0));
+        disc(ax0 + 30, ay0 + 28, 2, rgb(0xd8b84a));
+        // the guards in red with bearskins
+        for (int g = 0; g < 4; g++) {
+            set(ax0 + 14 + g * 10, ay0 + 16, OUTLINE);
+            set(ax0 + 14 + g * 10, ay0 + 17, rgb(0xd9433b));
+        }
+    }
+
+    static void londonEye(int x, int y) {
+        int cx = x / S, cy = (H - y) / S;
+        for (int a = 0; a < 360; a += 2) {
+            double r = Math.toRadians(a);
+            set(cx + (int) Math.round(22 * Math.cos(r)), cy + (int) Math.round(22 * Math.sin(r)), rgb(0xd9dde3));
+            set(cx + (int) Math.round(21 * Math.cos(r)), cy + (int) Math.round(21 * Math.sin(r)), OUTLINE);
+            if (a % 20 == 0) {
+                for (int k = 0; k < 21; k += 2) {
+                    set(cx + (int) Math.round(k * Math.cos(r)), cy + (int) Math.round(k * Math.sin(r)), rgb(0xb7bec8));
+                }
+                // a pod
+                int px = cx + (int) Math.round(23 * Math.cos(r)), py = cy + (int) Math.round(23 * Math.sin(r));
+                set(px, py, GLASS);
+                set(px + 1, py, GLASS_DARK);
+            }
+        }
+        disc(cx, cy, 2, OUTLINE);
+        for (int k = 0; k < 24; k++) {
+            set(cx - k / 3, cy + k, OUTLINE);       // the A-frame leg
+        }
+    }
+
+    static void stPauls(int x, int y) {
+        int ax = x / S, base = (H - y) / S;
+        for (int dy = 0; dy < 14; dy++) {
+            for (int dx = -14; dx <= 14; dx++) {
+                set(ax + dx, base - dy, Math.abs(dx) == 14 || dy == 13 ? OUTLINE : (dx % 3 == 0 ? rgb(0xc9c3b6) : rgb(0xe3ded2)));
+            }
+        }
+        for (int dy = 0; dy < 10; dy++) {
+            int half = (int) Math.round(Math.sqrt(Math.max(0, 81 - dy * dy)));
+            for (int dx = -half; dx <= half; dx++) {
+                set(ax + dx, base - 14 - dy, Math.abs(dx) == half ? OUTLINE : dx < -2 ? rgb(0xb7bfc0) : rgb(0x8d989a));
+            }
+        }
+        set(ax, base - 25, rgb(0xd8b84a));
+        set(ax, base - 26, rgb(0xd8b84a));
+    }
+
+    static void gherkin(int x, int y) {
+        int ax = x / S, base = (H - y) / S;
+        for (int dy = 0; dy < 40; dy++) {
+            int half = (int) Math.round(7 * Math.sin(Math.PI * Math.min(1.0, (dy + 6) / 46.0)));
+            for (int dx = -half; dx <= half; dx++) {
+                boolean edge = Math.abs(dx) == half;
+                int c = edge ? OUTLINE : ((dx + dy) % 4 == 0) ? rgb(0x2f5a6a) : (dx < 0 ? rgb(0x6fa3b8) : rgb(0x4f8197));
+                set(ax + dx, base - dy, c);
+            }
+        }
+    }
+
+    /** Tower Bridge on the vertical crossing: two stone towers with blue walkways between */
+    static void towerBridge(int x, int y) {
+        int ax = x / S;
+        int bankLow = (H - 640) / S, bankHigh = (H - 745) / S;
+        for (int ty : new int[] {bankLow - 4, bankHigh + 4}) {
+            for (int dy = -7; dy <= 7; dy++) {
+                for (int dx = -(ROAD + WALK) / S - 4; dx <= (ROAD + WALK) / S + 4; dx++) {
+                    boolean overRoad = Math.abs(dx) < (ROAD - 6) / S && Math.abs(dy) < 4;
+                    if (overRoad) {
+                        continue;    // the archway the road runs through
+                    }
+                    boolean edge = Math.abs(dy) == 7 || Math.abs(dx) == (ROAD + WALK) / S + 4;
+                    set(ax + dx, ty + dy, edge ? OUTLINE : (dy < -4 ? rgb(0x4f7fbf) : dx < 0 ? rgb(0xd6c6a3) : rgb(0xb9a481)));
+                }
+            }
+            // the turrets at the corners
+            for (int side : new int[] {-1, 1}) {
+                int tx = ax + side * ((ROAD + WALK) / S + 3);
+                set(tx, ty - 8, rgb(0x3f6fae));
+                set(tx, ty - 9, OUTLINE);
+            }
+        }
+        // the high walkways, pale blue, on both sides
+        for (int ay = bankHigh + 4; ay <= bankLow - 4; ay++) {
+            for (int side : new int[] {-1, 1}) {
+                set(ax + side * ((ROAD + WALK) / S + 2), ay, rgb(0x7fb2e0));
+                set(ax + side * ((ROAD + WALK) / S + 3), ay, OUTLINE);
+            }
+        }
+    }
+
+    /** red telephone boxes along the fence lines */
+    static void phoneBoxes() {
+        for (int i = 0; i < 40; i++) {
+            int ax = rnd.nextInt(AW), ay = 4 + rnd.nextInt(AH - 8);
+            int x = ax * S + 1, y = H - ay * S - 1;
+            int d = roadDistance(x, y);
+            if (d > ROAD + WALK + S + 3 && d < ROAD + WALK + 3 * S + 4 && freeArt(ax, ay) && !isTreeOrBuilding(ax, ay)) {
+                for (int dy = -4; dy <= 0; dy++) {
+                    for (int dx = 0; dx < 3; dx++) {
+                        set(ax + dx, ay + dy, dy == -4 ? rgb(0xa8241f) : (dx == 1 && dy > -4 && dy < -1) ? GLASS : rgb(0xd8342c));
+                    }
+                }
+                outline(ax, ay - 4, 3, 5);
+            }
+        }
+    }
+
+    // ================================================================== Paris landmarks
+
+    /** the Eiffel Tower: four arched legs, three levels, rising to a needle */
+    static void eiffel(int x, int y) {
+        int ax = x / S, base = (H - y) / S, height = 74;
+        int iron = rgb(0x7a6550), ironLight = rgb(0xa58b6e);
+        for (int dy = 0; dy < height; dy++) {
+            double t = dy / (double) height;
+            int half = (int) Math.round(20 * Math.pow(1 - t, 2.2)) + 1;
+            boolean arch = dy < 9 && Math.abs(Math.abs(0) - 0) == 0;
+            for (int dx = -half; dx <= half; dx++) {
+                boolean edge = Math.abs(dx) == half;
+                boolean lattice = ((dx + dy) % 3 == 0) || ((dx - dy) % 3 == 0);
+                boolean archHole = dy < 10 && Math.abs(dx) < half - 3 && (dx * dx) / (double) ((half - 3) * (half - 3) + 1) + dy / 10.0 < 1.0;
+                if (archHole) {
+                    continue;
+                }
+                if (edge || lattice || half < 4) {
+                    set(ax + dx, base - dy, edge ? OUTLINE : dx < 0 ? ironLight : iron);
+                }
+            }
+            if (dy == 12 || dy == 34 || dy == 56) {
+                for (int dx = -half - 2; dx <= half + 2; dx++) {
+                    set(ax + dx, base - dy, OUTLINE);
+                    set(ax + dx, base - dy - 1, ironLight);
+                    set(ax + dx, base - dy - 2, OUTLINE);
+                }
+            }
+        }
+        for (int dy = height; dy < height + 8; dy++) {
+            set(ax, base - dy, iron);
+        }
+        for (int dx = -22; dx <= 22; dx++) {
+            shade(ax + dx + 3, base + 1, 0.6);
+        }
+    }
+
+    /** the Champ de Mars: long lawns and paths stretching out from the tower */
+    static void champDeMars(int x0, int y0, int x1, int y1) {
+        for (int ay = (H - y1) / S; ay <= (H - y0) / S; ay++) {
+            for (int ax = x0 / S; ax <= x1 / S; ax++) {
+                if (!openArt(ax, ay)) {
+                    continue;
+                }
+                boolean path = (ay - (H - y1) / S) % 14 < 2;
+                set(ax, ay, path ? rgb(0xe5d8b8) : ((ax / 3 + ay / 3) % 2 == 0 ? rgb(0x7fc25e) : rgb(0x74b856)));
+            }
+        }
+        for (int x = x0 + 20; x < x1; x += 46) {
+            tree(x / S, (H - y1) / S + 6, false);
+            tree(x / S, (H - y0) / S - 2, false);
+        }
+    }
+
+    static void arcDeTriomphe(int x, int y) {
+        int cx = x / S, cy = (H - y) / S;
+        // the Place de l'Etoile: a round plaza with avenues like a star
+        for (int a = 0; a < 360; a += 30) {
+            double r = Math.toRadians(a);
+            for (int k = 0; k < 40; k++) {
+                for (int w = -1; w <= 1; w++) {
+                    int px = cx + (int) Math.round(k * Math.cos(r) - w * Math.sin(r));
+                    int py = cy + (int) Math.round(k * Math.sin(r) + w * Math.cos(r));
+                    if (openArt(px, py)) {
+                        set(px, py, rgb(0xcfc7b7));
+                    }
+                }
+            }
+        }
+        disc(cx, cy, 16, rgb(0xcfc7b7));
+        disc(cx, cy, 13, rgb(0xb9b2a4));
+        // the arch itself
+        for (int dy = -10; dy <= 10; dy++) {
+            for (int dx = -10; dx <= 10; dx++) {
+                boolean edge = Math.abs(dx) == 10 || dy == -10 || dy == 10;
+                boolean hole = Math.abs(dx) < 4 && dy > -2;
+                int c = edge ? OUTLINE : hole ? rgb(0x5a5246) : dy < -6 ? rgb(0xf3ead6) : (dx < -6 ? rgb(0xf1e7cf) : rgb(0xdccfb1));
+                set(cx + dx, cy + dy, c);
+            }
+        }
+        set(cx, cy - 12, rgb(0x3b4fbf));
+        set(cx + 1, cy - 12, WHITE);
+        set(cx + 2, cy - 12, rgb(0xd9433b));
+    }
+
+    static void louvre(int x, int y) {
+        int ax0 = x / S - 30, ay0 = (H - y) / S - 10;
+        for (int dy = 0; dy < 30; dy++) {
+            for (int dx = 0; dx < 64; dx++) {
+                boolean wing = dy < 8 || dx < 8 || dx >= 56;
+                if (!wing) {
+                    set(ax0 + dx, ay0 + dy, ((dx + dy) % 6 == 0) ? rgb(0xcfc7b7) : rgb(0xe0d8c8));   // the courtyard
+                    continue;
+                }
+                boolean edge = dy == 0 || dx == 0 || dx == 63 || (dy == 7 && dx >= 8 && dx < 56) || (dx == 7 && dy >= 8) || (dx == 56 && dy >= 8) || dy == 29;
+                int c = edge ? OUTLINE : (dy < 3 || (dx < 8 && dx > 4) || (dx >= 56 && dx < 59)) ? rgb(0x6f7f93) : (dx % 3 == 1 ? GLASS_DARK : rgb(0xefe3c8));
+                set(ax0 + dx, ay0 + dy, c);
+            }
+        }
+        // the glass pyramid
+        int px = ax0 + 32, py = ay0 + 20;
+        for (int dy = 0; dy < 8; dy++) {
+            for (int dx = -dy; dx <= dy; dx++) {
+                set(px + dx, py - 7 + dy, Math.abs(dx) == dy ? OUTLINE : (dx < 0 ? rgb(0xc8e6f6) : GLASS));
+            }
+        }
+    }
+
+    static void notreDame(int x, int y) {
+        int ax = x / S, base = (H - y) / S;
+        for (int dy = 0; dy < 20; dy++) {
+            for (int dx = -18; dx <= 18; dx++) {
+                boolean edge = Math.abs(dx) == 18 || dy == 19;
+                set(ax + dx, base - dy, edge ? OUTLINE : (dy % 4 == 0 ? rgb(0xbfb39a) : rgb(0xd8ceb6)));
+            }
+        }
+        for (int side : new int[] {-1, 1}) {
+            for (int dy = 20; dy < 34; dy++) {
+                for (int dx = 0; dx < 9; dx++) {
+                    int tx = ax + (side < 0 ? -18 + dx : 10 + dx);
+                    set(tx, base - dy, dx == 0 || dx == 8 || dy == 33 ? OUTLINE : (dx % 3 == 1 && dy > 24 ? rgb(0x4a4136) : rgb(0xd8ceb6)));
+                }
+            }
+        }
+        disc(ax, base - 12, 4, OUTLINE);
+        disc(ax, base - 12, 3, rgb(0x5f4fae));    // the rose window
+        set(ax, base - 12, rgb(0xd9433b));
+        for (int dy = 20; dy < 32; dy++) {
+            set(ax, base - dy, rgb(0x4a5a5a));    // the spire
+        }
+    }
+
+    static void sacreCoeur(int x, int y) {
+        int ax = x / S, base = (H - y) / S;
+        // Montmartre hill
+        for (int dy = -24; dy <= 20; dy++) {
+            for (int dx = -50; dx <= 50; dx++) {
+                double d = dx * dx / 2500.0 + dy * dy / 576.0;
+                if (d < 1 && openArt(ax + dx, base + dy)) {
+                    set(ax + dx, base + dy, d > 0.85 ? GRASS_DARK : ((dx + dy) % 7 == 0 ? GRASS_LIGHT : rgb(0x84c463)));
+                }
+            }
+        }
+        for (int i = 0; i < 20; i++) {
+            tree(ax - 44 + rnd.nextInt(88), base + 6 + rnd.nextInt(10), false);
+        }
+        // white domes
+        for (int dy = 0; dy < 12; dy++) {
+            for (int dx = -14; dx <= 14; dx++) {
+                set(ax + dx, base - dy, Math.abs(dx) == 14 || dy == 11 ? OUTLINE : rgb(0xf6f3ea));
+            }
+        }
+        int[][] domes = {{0, 9, 22}, {-9, 5, 15}, {9, 5, 15}};
+        for (int[] d : domes) {
+            for (int dy = 0; dy < d[1]; dy++) {
+                int half = (int) Math.round(d[1] * Math.sqrt(1 - Math.pow(dy / (double) d[1], 2)));
+                for (int dx = -half; dx <= half; dx++) {
+                    set(ax + d[0] + dx, base - 12 - dy - (d[2] - 15), Math.abs(dx) == half ? OUTLINE : dx < 0 ? WHITE : rgb(0xe3ded2));
+                }
+            }
+        }
+        set(ax, base - 12 - 9 - 7 - 1, rgb(0xd8b84a));
+    }
+
+    // ================================================================== Taipei landmarks
+
+    /** Taipei 101: eight flared green-glass sections stacked like bamboo, and a spire */
+    static void taipei101(int x, int y) {
+        int ax = x / S, base = (H - y) / S;
+        for (int dy = 0; dy < 16; dy++) {
+            for (int dx = -9; dx <= 9; dx++) {
+                set(ax + dx, base - dy, Math.abs(dx) == 9 || dy == 15 ? OUTLINE : (dx < -6 ? rgb(0x9fc7bd) : rgb(0x5f9a8e)));
+            }
+        }
+        int top = base - 16;
+        for (int seg = 0; seg < 8; seg++) {
+            for (int dy = 0; dy < 8; dy++) {
+                int half = 5 + dy / 2;          // each section flares out toward its top
+                for (int dx = -half; dx <= half; dx++) {
+                    boolean edge = Math.abs(dx) == half || dy == 7;
+                    int c = edge ? OUTLINE : dx < -half + 2 ? rgb(0xb7ddd2) : (dy % 2 == 0 ? rgb(0x4f8a7f) : rgb(0x6aa89a));
+                    if (!edge && rnd.nextInt(10) == 0) {
+                        c = LIT;
+                    }
+                    set(ax + dx, top - dy, c);
+                }
+            }
+            top -= 8;
+        }
+        for (int dy = 0; dy < 6; dy++) {
+            for (int dx = -3; dx <= 3; dx++) {
+                set(ax + dx, top - dy, Math.abs(dx) == 3 ? OUTLINE : rgb(0x6aa89a));
+            }
+        }
+        for (int dy = 6; dy < 18; dy++) {
+            set(ax, top - dy, rgb(0xc9ccd2));
+        }
+        for (int dx = -12; dx <= 12; dx++) {
+            shade(ax + dx + 3, base + 1, 0.6);
+        }
+    }
+
+    /** Chiang Kai-shek Memorial Hall: white hall with a blue octagonal roof, plaza and gate */
+    static void cksMemorial(int x, int y) {
+        int ax = x / S, base = (H - y) / S;
+        for (int ay = base - 38; ay <= base + 48; ay++) {
+            for (int dx = -66; dx <= 66; dx++) {
+                if (openArt(ax + dx, ay)) {
+                    set(ax + dx, ay, ((dx + ay) % 8 == 0) ? rgb(0xd4cdbf) : rgb(0xe6e0d4));
+                }
+            }
+        }
+        // the steps and the white hall
+        for (int dy = 0; dy < 14; dy++) {
+            int half = 20 - dy / 2;
+            for (int dx = -half; dx <= half; dx++) {
+                set(ax + dx, base - dy, Math.abs(dx) == half ? OUTLINE : dy < 5 && dy % 2 == 0 ? rgb(0xd9d3c6) : WHITE);
+            }
+        }
+        for (int dy = 14; dy < 24; dy++) {
+            for (int dx = -11; dx <= 11; dx++) {
+                set(ax + dx, base - dy, Math.abs(dx) == 11 ? OUTLINE : (Math.abs(dx) < 3 && dy < 20 ? rgb(0x4a4136) : WHITE));
+            }
+        }
+        // the double blue roof
+        for (int tier = 0; tier < 2; tier++) {
+            int y0 = base - 24 - tier * 7, half = 15 - tier * 5;
+            for (int dy = 0; dy < 6; dy++) {
+                int h2 = half - dy;
+                for (int dx = -h2; dx <= h2; dx++) {
+                    set(ax + dx, y0 - dy, Math.abs(dx) == h2 || dy == 5 ? OUTLINE : (dy % 2 == 0 ? rgb(0x2f5fb8) : rgb(0x3f72d0)));
+                }
+            }
+        }
+        set(ax, base - 39, rgb(0xd8b84a));
+        // the gate at the front of the plaza
+        int gy = base + 40;
+        for (int dx = -14; dx <= 14; dx++) {
+            set(ax + dx, gy - 6, rgb(0x2f5fb8));
+            set(ax + dx, gy - 7, OUTLINE);
+        }
+        for (int gx : new int[] {-12, -5, 4, 11}) {
+            for (int dy = -5; dy <= 0; dy++) {
+                set(ax + gx, gy + dy, WHITE);
+                set(ax + gx + 1, gy + dy, rgb(0xd9d3c6));
+            }
+        }
+        for (int i = 0; i < 6; i++) {
+            tree(ax - 60 + i * 24, base + 30, false);
+        }
+    }
+
+    /** Longshan Temple: red and orange roofs with upturned eaves and dragons on the ridges */
+    static void longshan(int x, int y) {
+        int ax = x / S, base = (H - y) / S;
+        for (int ay = base - 36; ay <= base + 16; ay++) {
+            for (int dx = -50; dx <= 50; dx++) {
+                if (openArt(ax + dx, ay)) {
+                    set(ax + dx, ay, ((dx + ay) % 5 == 0) ? rgb(0xc9b08a) : rgb(0xd8c29c));
+                }
+            }
+        }
+        for (int[] hall : new int[][] {{0, 0, 26}, {-30, 6, 14}, {30, 6, 14}}) {
+            int hx = ax + hall[0], hy = base - hall[1], half = hall[2];
+            for (int dy = 0; dy < 9; dy++) {
+                for (int dx = -half + 3; dx <= half - 3; dx++) {
+                    set(hx + dx, hy - dy, Math.abs(dx) == half - 3 ? OUTLINE : (dx % 4 == 0 ? rgb(0xb8322a) : rgb(0xd8b48a)));
+                }
+            }
+            for (int dy = 9; dy < 17; dy++) {
+                int h2 = half - (dy - 9) / 2;
+                for (int dx = -h2; dx <= h2; dx++) {
+                    set(hx + dx, hy - dy, Math.abs(dx) == h2 || dy == 16 ? OUTLINE : (dy % 2 == 0 ? rgb(0xe0602e) : rgb(0xf08a3e)));
+                }
+            }
+            set(hx - half - 1, hy - 10, rgb(0xe0602e));      // upturned eaves
+            set(hx + half + 1, hy - 10, rgb(0xe0602e));
+            for (int dx = -h2(half); dx <= h2(half); dx += 2) {
+                set(hx + dx, hy - 17, NEON[(dx + 40) % 3 == 0 ? 3 : 4]);   // the colorful dragons on the ridge
+            }
+        }
+        // incense burner
+        set(ax, base + 6, rgb(0x8a6a4a));
+        set(ax, base + 5, rgb(0xd8b84a));
+        set(ax, base + 3, rgb(0xd9d9d9));
+    }
+
+    static int h2(int half) {
+        return half - 4;
+    }
+
+    /** Shilin Night Market: rows of stalls with colored awnings, red lanterns and a crowd */
+    static void nightMarket(int x0, int y0, int x1, int y1) {
+        int ax0 = x0 / S, ax1 = x1 / S, ay0 = (H - y1) / S, ay1 = (H - y0) / S;
+        for (int ay = ay0; ay <= ay1; ay++) {
+            for (int ax = ax0; ax <= ax1; ax++) {
+                if (openArt(ax, ay)) {
+                    set(ax, ay, ((ax + ay) % 6 == 0) ? rgb(0x9a958c) : rgb(0xb3ada2));
+                }
+            }
+        }
+        for (int ay = ay0 + 2; ay < ay1 - 6; ay += 11) {
+            for (int ax = ax0 + 2; ax < ax1 - 8; ax += 9) {
+                int c = AWNINGS[rnd.nextInt(AWNINGS.length)];
+                for (int dy = 0; dy < 6; dy++) {
+                    for (int dx = 0; dx < 7; dx++) {
+                        int col = dy < 3 ? (dx % 2 == 0 ? c : WHITE) : dy == 3 ? blend(c, OUTLINE, 0.4)
+                            : (dx % 2 == 0 ? rgb(0xf2c84b) : rgb(0xd9a14a));      // food on the counter
+                        set(ax + dx, ay + dy, col);
+                    }
+                }
+                outline(ax, ay, 7, 6);
+                set(ax + 3, ay - 2, rgb(0xff5a4a));      // a lantern
+            }
+        }
+        for (int i = 0; i < 120; i++) {
+            int px = ax0 + rnd.nextInt(Math.max(1, ax1 - ax0)), py = ay0 + rnd.nextInt(Math.max(1, ay1 - ay0));
+            if (get(px, py) == rgb(0xb3ada2) && get(px, py - 1) == rgb(0xb3ada2)) {
+                set(px, py - 1, rgb(0xf0c8a0));
+                set(px, py, NEON[rnd.nextInt(NEON.length)]);
+            }
+        }
+    }
+
+    /** green mountains behind the city */
+    static void hills(int x0, int y0, int x1, int y1) {
+        for (int ay = (H - y1) / S; ay <= (H - y0) / S; ay++) {
+            for (int ax = x0 / S; ax <= x1 / S; ax++) {
+                double top = (H - y1) / S + 6 + 8 * Math.sin(ax / 13.0) + 4 * Math.sin(ax / 5.0);
+                if (ay > top && openArt(ax, ay)) {
+                    set(ax, ay, ay < top + 2 ? rgb(0x2f6a34) : ((ax + ay) % 5 == 0 ? rgb(0x3f8a42) : rgb(0x357a3a)));
+                }
+            }
+        }
+    }
+
+    /** rows of scooters parked along the fence lines, Taipei-style */
+    static void scooters() {
+        int[] colors = {rgb(0xd9433b), WHITE, rgb(0x3b6fd9), rgb(0x2a2a30), rgb(0xf2c84b), rgb(0x8fdcc2)};
+        for (int ay = 2; ay < AH - 2; ay++) {
+            for (int ax = 2; ax < AW - 2; ax += 2) {
+                int x = ax * S + 1, y = H - ay * S - 1;
+                int d = roadDistance(x, y);
+                if (d > ROAD + WALK + S + 2 && d <= ROAD + WALK + S + 5 && freeArt(ax, ay) && !isTreeOrBuilding(ax, ay)
+                    && (ax + ay) % 3 != 0 && rnd.nextInt(3) > 0) {
+                    set(ax, ay, colors[rnd.nextInt(colors.length)]);
+                    set(ax, ay + 1, BLACK);
+                }
+            }
+        }
+    }
+
     // ================================================================== geometry
 
     static int roadDistance(int x, int y) {
@@ -216,6 +1013,15 @@ public class MakeCities {
             && !reserved[((H - 1 - y) / S) * AW + x / S];
     }
 
+    /** like freeArt, but ignores reserved spots: for painting a landmark's own grounds */
+    static boolean openArt(int ax, int ay) {
+        if (ax < 0 || ay < 0 || ax >= AW || ay >= AH) {
+            return false;
+        }
+        int x = ax * S + 1, y = H - 1 - ay * S - 1;
+        return roadDistance(x, y) > ROAD + WALK + S && !isWater(x, y) && !nearWater(x, y, 6);
+    }
+
     static boolean freeArt(int ax, int ay) {
         return ax >= 0 && ay >= 0 && ax < AW && ay < AH && free(ax * S + 1, H - 1 - ay * S - 1);
     }
@@ -232,6 +1038,9 @@ public class MakeCities {
 
     // ================================================================== ground, water, parks
 
+    /** the water's color on the map being painted (Chicago's river is greener) */
+    static int waterColor = WATER, waterDark = WATER_DARK;
+
     static void ground(int grass, int grassDark) {
         for (int ay = 0; ay < AH; ay++) {
             for (int ax = 0; ax < AW; ax++) {
@@ -239,7 +1048,7 @@ public class MakeCities {
                 if (isWater(x, y)) {
                     // the darker band near the shore, wave sparkles in rows
                     int n = (ax * 5 + (ay / 2) * 11) % 29;
-                    int c = nearWater(x, y, 10) && !nearWaterAll(x, y, 10) ? WATER_DARK : WATER;
+                    int c = nearWater(x, y, 10) && !nearWaterAll(x, y, 10) ? waterDark : waterColor;
                     set(ax, ay, n == 0 ? SPARKLE : n == 1 ? rgb(0x7fbcef) : c);
                 } else if (nearWater(x, y, 6)) {
                     // stone embankment with a lit top edge
@@ -364,7 +1173,10 @@ public class MakeCities {
 
     static int rowHeight(String style) {
         switch (style) {
-            case "tokyo-towers": case "nyc-towers": return 22 + rnd.nextInt(10);
+            case "tokyo-towers": case "nyc-towers": case "chi-towers": case "london-city": case "taipei-towers": return 22 + rnd.nextInt(10);
+            case "paris-haussmann": return 18;
+            case "taipei-shops": return 17;
+            case "london-terraces": return 15;
             case "nyc-brownstones": return 17;
             case "tokyo-shops": return 13;
             default: return 14;
@@ -373,7 +1185,10 @@ public class MakeCities {
 
     static int width(String style) {
         switch (style) {
-            case "tokyo-towers": case "nyc-towers": return 13 + rnd.nextInt(10);
+            case "tokyo-towers": case "nyc-towers": case "chi-towers": case "london-city": case "taipei-towers": return 13 + rnd.nextInt(10);
+            case "paris-haussmann": return 16 + rnd.nextInt(8);
+            case "taipei-shops": return 8 + rnd.nextInt(3);
+            case "london-terraces": return 9 + rnd.nextInt(2);
             case "nyc-brownstones": return 9 + rnd.nextInt(2);
             case "tokyo-shops": return 12 + rnd.nextInt(6);
             default: return 13 + rnd.nextInt(5);
@@ -395,6 +1210,8 @@ public class MakeCities {
     static final int[] TOKYO_WALLS = {rgb(0xf3ecdc), rgb(0xe9e2d0), rgb(0xf6f1e6), rgb(0xe2d6bd)};
     static final int[] TOWER_GLASS = {rgb(0x9cc4dc), rgb(0xb8c6d2), rgb(0x8fb0c8), rgb(0xc9d1d8), rgb(0xa7b8c4)};
     static final int[] NEON = {rgb(0xff4fa3), rgb(0x3fe0ff), rgb(0xffe23f), rgb(0x8cff5a), rgb(0xff7a3f), rgb(0xb57cff)};
+    static final int[] CHI_GLASS = {rgb(0x5a5d66), rgb(0x8a7a6a), rgb(0x9cb0c0), rgb(0x6f7f8f), rgb(0xa08a6a)};
+    static final int[] TAIPEI_CONCRETE = {rgb(0xd8d2c6), rgb(0xc9c3b6), rgb(0xe3dccf), rgb(0xbfc6c9)};
     static final int[] AWNINGS = {rgb(0xd9433b), rgb(0x2f8f6a), rgb(0x3b6fd9), rgb(0xe08a2e)};
 
     static void drawBuilding(int ax, int ay, int w, int h, String style) {
@@ -410,6 +1227,41 @@ public class MakeCities {
                 break;
             case "nyc-towers":
                 tower(ax, ay, w, h, TOWER_GLASS[rnd.nextInt(TOWER_GLASS.length)], false, true);
+                break;
+            case "chi-towers":
+                tower(ax, ay, w, h, CHI_GLASS[rnd.nextInt(CHI_GLASS.length)], false, rnd.nextInt(4) == 0);
+                break;
+            case "chi-houses":
+                house(ax, ay, w, h, rgb(0x5d4a3e), rgb(0xb5674a), false);
+                break;
+            case "london-city":
+                tower(ax, ay, w, h, TOWER_GLASS[rnd.nextInt(TOWER_GLASS.length)], false, false);
+                break;
+            case "london-terraces":
+                house(ax, ay, w, h, rgb(0x55606b), rnd.nextInt(3) == 0 ? rgb(0xe8e2d0) : rgb(0xa8583c), false);
+                set(ax + 1, ay - 1, rgb(0x8a4a3a));    // chimney pots
+                set(ax + w - 2, ay - 1, rgb(0x8a4a3a));
+                break;
+            case "paris-haussmann":
+                haussmann(ax, ay, w, h);
+                break;
+            case "paris-cafes":
+                house(ax, ay, w, h, rgb(0x6f7f93), rgb(0xefe3c8), true);
+                for (int t = 1; t < w - 1; t += 3) {
+                    if (freeArt(ax + t, ay + h + 2)) {
+                        set(ax + t, ay + h + 2, WHITE);                  // cafe tables
+                        set(ax + t, ay + h + 3, rgb(0x6a4a32));
+                    }
+                }
+                break;
+            case "taipei-shops":
+                tower(ax, ay, w, h, TAIPEI_CONCRETE[rnd.nextInt(TAIPEI_CONCRETE.length)], true, false);
+                break;
+            case "taipei-towers":
+                tower(ax, ay, w, h, TOWER_GLASS[rnd.nextInt(TOWER_GLASS.length)], false, false);
+                break;
+            case "taipei-houses":
+                house(ax, ay, w, h, rgb(0xc8502f), rgb(0xf1ebe0), false);
                 break;
             default:
                 brownstone(ax, ay, w, h);
@@ -518,6 +1370,31 @@ public class MakeCities {
         if (waterTower && w >= 9 && rnd.nextInt(2) == 0) {
             waterTower(ax + 2 + rnd.nextInt(Math.max(1, w - 7)), ay);
         }
+        outline(ax, ay, w, h);
+    }
+
+    /** a Paris Haussmann building: blue-gray mansard roof with dormers, cream stone, balconies */
+    static void haussmann(int ax, int ay, int w, int h) {
+        dropShadow(ax, ay, w, h);
+        int rh = 5;
+        for (int y = 0; y < rh; y++) {
+            for (int x = 0; x < w; x++) {
+                int c = y == 0 ? rgb(0x9aa6b4) : (x % 4 == 2 && y > 1) ? WHITE : (y % 2 == 0 ? rgb(0x5f6f83) : rgb(0x6f7f93));
+                set(ax + x, ay + y, c);
+            }
+        }
+        for (int y = rh; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int c = x == w - 1 ? rgb(0xcbbf9f) : rgb(0xefe3c8);
+                if (y % 4 == 0) {
+                    c = rgb(0x2a2a30);                      // wrought-iron balconies
+                } else if (x % 3 == 1 && y % 4 != 1) {
+                    c = GLASS_DARK;
+                }
+                set(ax + x, ay + y, c);
+            }
+        }
+        door(ax + w / 2 - 1, ay + h - 4);
         outline(ax, ay, w, h);
     }
 
@@ -943,11 +1820,16 @@ public class MakeCities {
 
     /** a Yamanote line train on its tracks: silver cars with the green stripe */
     static void train(int x0, int y, int x1) {
+        train(x0, y, x1, rgb(0x6b4a32), rgb(0x3fae49));
+    }
+
+    /** @param sleepers color of the sleepers   @param stripe the line color on the cars */
+    static void train(int x0, int y, int x1, int sleepers, int stripe) {
         int ay = (H - y) / S;
         for (int ax = x0 / S; ax <= x1 / S; ax++) {
             if (ax % 3 == 0) {
                 for (int k = -3; k <= 3; k++) {
-                    set(ax, ay + k, rgb(0x6b4a32));             // sleepers
+                    set(ax, ay + k, sleepers);                  // sleepers
                 }
             }
             set(ax, ay - 2, rgb(0x8d8f96));
@@ -959,7 +1841,7 @@ public class MakeCities {
             int cx = start + c * (carW + 1);
             for (int yy = -4; yy <= 3; yy++) {
                 for (int xx = 0; xx < carW; xx++) {
-                    int col = yy == -4 ? rgb(0xc9ccd2) : yy == 0 ? rgb(0x3fae49) : (yy == -2 && xx % 4 != 0) ? GLASS_DARK
+                    int col = yy == -4 ? rgb(0xc9ccd2) : yy == 0 ? stripe : (yy == -2 && xx % 4 != 0) ? GLASS_DARK
                         : yy == 3 ? rgb(0x7a7d84) : rgb(0xe3e5e9);
                     set(cx + xx, ay + yy, col);
                 }
@@ -1250,6 +2132,146 @@ public class MakeCities {
     };
     static final String KEI_LETTERS = "kmwbyr";
     static final int[] KEI_COLORS = {rgb(0x1c1c22), rgb(0x8fdcc2), rgb(0xf6f6f3), rgb(0x23262d), rgb(0xfff0b0), rgb(0xd23a3a)};
+
+    // Chicago police cruiser: white with blue stripes and a red/blue light bar
+    // (k outline, w white, b glass, s blue stripe, r red light, l blue light, y headlight, t tail)
+    static final String[] COP = {
+        "...kkkkkkkk...",
+        "..kywwwwwwyk..",
+        ".kwwwwwwwwwwk.",
+        ".kwwwwwwwwwwk.",
+        ".kssssssssssk.",
+        ".kwbbbbbbbbwk.",
+        "kkwbbbbbbbbwkk",
+        ".kwbbbbbbbbwk.",
+        ".kwwwwwwwwwwk.",
+        ".kwrrrrllllwk.",
+        ".kwrrrrllllwk.",
+        ".kwwwwwwwwwwk.",
+        ".kwwwwwwwwwwk.",
+        ".kwwwwwwwwwwk.",
+        ".kwwwwwwwwwwk.",
+        ".kwwwwwwwwwwk.",
+        ".kwbbbbbbbbwk.",
+        ".kwbbbbbbbbwk.",
+        ".kwwwwwwwwwwk.",
+        ".kssssssssssk.",
+        ".kwwwwwwwwwwk.",
+        ".kwwwwwwwwwwk.",
+        ".kwwwwwwwwwwk.",
+        ".kwwwwwwwwwwk.",
+        ".kwwwwwwwwwwk.",
+        "..ktwwwwwwtk..",
+        "...kkkkkkkk...",
+        "..............",
+    };
+    static final String COP_LETTERS = "kwbsrlyt";
+    static final int[] COP_COLORS = {rgb(0x1c1c22), rgb(0xf6f6f3), rgb(0x23262d), rgb(0x2f5fb8), rgb(0xe8322a),
+        rgb(0x3b7bff), rgb(0xfff0b0), rgb(0xd23a3a)};
+
+    // London double-decker bus: long and red, seen from above (k outline, r red, d darker red, w roof white, b glass)
+    static final String[] BUS = {
+        ".kkkkkkkkkkkk.",
+        "kbbbbbbbbbbbbk",
+        "krrrrrrrrrrrrk",
+        "kwwwwwwwwwwwwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrddrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrddrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrddrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwrrrrrrrrrrwk",
+        "kwwwwwwwwwwwwk",
+        "krrrrrrrrrrrrk",
+        "kddrrrrrrrrddk",
+        ".kkkkkkkkkkkk.",
+        "..............",
+    };
+    static final String BUS_LETTERS = "krdwb";
+    static final int[] BUS_COLORS = {rgb(0x1c1c22), rgb(0xd8342c), rgb(0xa8241f), rgb(0xe9e2d2), rgb(0x23262d)};
+
+    // Citroen 2CV: rounded, pale blue with a rolled-back canvas roof (k outline, p body, c canvas, b glass, y lights)
+    static final String[] DEUX = {
+        "....kkkkkk....",
+        "..kkyppppykk..",
+        ".kpppppppppppk".substring(0, 13) + ".",
+        ".kppppppppppk.",
+        ".kppppppppppk.",
+        ".kpbbbbbbbbpk.",
+        "kkpbbbbbbbbpkk",
+        ".kpbbbbbbbbpk.",
+        ".kppppppppppk.",
+        ".kpccccccccpk.",
+        ".kpcCcCcCcCpk.",
+        ".kpccccccccpk.",
+        ".kpcCcCcCcCpk.",
+        ".kpccccccccpk.",
+        ".kpcCcCcCcCpk.",
+        ".kpccccccccpk.",
+        ".kppppppppppk.",
+        ".kpbbbbbbbbpk.",
+        ".kppppppppppk.",
+        ".kppppppppppk.",
+        ".kppppppppppk.",
+        "..kppppppppk..",
+        "..krppppppprk.".substring(0, 13) + ".",
+        "...kkkkkkkk...",
+        "..............",
+        "..............",
+        "..............",
+        "..............",
+    };
+    static final String DEUX_LETTERS = "kpcCbyr";
+    static final int[] DEUX_COLORS = {rgb(0x1c1c22), rgb(0x9fc4e8), rgb(0x3a3f48), rgb(0x2a2e36), rgb(0x23262d),
+        rgb(0xfff0b0), rgb(0xd23a3a)};
+
+    // a Taipei scooter with its rider in a helmet (k outline, m scooter, h helmet, s shirt, a arms, w wheel, y light)
+    static final String[] MOTO = {
+        "..............",
+        "......kk......",
+        ".....kyyk.....",
+        ".....kmmk.....",
+        "....kmmmmk....",
+        "...akmmmmka...",
+        "...akmmmmka...",
+        "....kmmmmk....",
+        "....kssssk....",
+        "...kssssssk...",
+        "...kshhhhsk...",
+        "...khhhhhhk...",
+        "...khhhhhhk...",
+        "...kshhhhsk...",
+        "...kssssssk...",
+        "....kssssk....",
+        "....kmmmmk....",
+        "....kmmmmk....",
+        "....kmmmmk....",
+        "....kmmmmk....",
+        ".....kmmk.....",
+        ".....kwwk.....",
+        ".....kwwk.....",
+        "......kk......",
+        "..............",
+        "..............",
+        "..............",
+        "..............",
+    };
+    static final String MOTO_LETTERS = "kmhsawy";
+    static final int[] MOTO_COLORS = {rgb(0x1c1c22), rgb(0xe8442e), rgb(0xf2c84b), rgb(0x3b6fd9), rgb(0xf0c8a0),
+        rgb(0x2a2a30), rgb(0xfff0b0)};
 
     static final String[] CAB = {
         "...kkkkkkkk...",

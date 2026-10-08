@@ -95,6 +95,30 @@ public class Waypoints {
             860, 520, 860, 230, 200, 230, 200, 300);
     }
 
+    /** Chicago: over the river twice, past Willis Tower, Millennium Park and the lakefront */
+    public static List<Vector2> getChicagoWaypoints() {
+        return points(200, 900, 900, 900, 900, 700, 1500, 700, 1500, 160, 1100, 160, 1100, 430,
+            640, 430, 640, 230, 200, 230, 200, 300);
+    }
+
+    /** London: over Westminster Bridge, past the London Eye and over Tower Bridge */
+    public static List<Vector2> getLondonWaypoints() {
+        return points(200, 860, 1000, 860, 1000, 960, 1760, 960, 1760, 520, 1300, 520, 1300, 180,
+            760, 180, 760, 420, 480, 420, 480, 230, 200, 230, 200, 300);
+    }
+
+    /** Paris: along the Seine, around the Eiffel Tower and the Arc de Triomphe */
+    public static List<Vector2> getParisWaypoints() {
+        return points(200, 700, 700, 700, 700, 940, 1500, 940, 1500, 700, 1760, 700, 1760, 180,
+            1100, 180, 1100, 420, 560, 420, 560, 230, 200, 230, 200, 300);
+    }
+
+    /** Taipei: over the Keelung river twice, past Taipei 101 and Longshan Temple */
+    public static List<Vector2> getTaipeiWaypoints() {
+        return points(200, 900, 1300, 900, 1300, 640, 1760, 640, 1760, 180, 1240, 180, 1240, 420,
+            800, 420, 800, 230, 200, 230, 200, 300);
+    }
+
     private static List<Vector2> points(int... xy) {
         List<Vector2> waypoints = new ArrayList<>();
         for (int i = 0; i + 1 < xy.length; i += 2) {

@@ -17,6 +17,10 @@ public class TrackMap {
     public static final String SAN_FRANCISCO = "sf";
     public static final String TOKYO = "tokyo";
     public static final String NEW_YORK = "nyc";
+    public static final String CHICAGO = "chicago";
+    public static final String LONDON = "london";
+    public static final String PARIS = "paris";
+    public static final String TAIPEI = "taipei";
 
     /** short id sent between the game and the server */
     public final String id;
@@ -75,8 +79,23 @@ public class TrackMap {
                 "Past Central Park, over the Brooklyn Bridge and through Times Square, against yellow cabs.",
                 "maps/nyc/", "nyc_road_mask.png", Waypoints.getNewYorkWaypoints(), true,
                 "ui/cab.png", "CAB"));
+            maps.add(city(CHICAGO, "Chicago", "Over the river, past the Bean and Willis Tower, chased by squad cars.",
+                Waypoints.getChicagoWaypoints(), "ui/cop.png", "COP"));
+            maps.add(city(LONDON, "London", "Westminster to Tower Bridge, against red double-deckers.",
+                Waypoints.getLondonWaypoints(), "ui/bus.png", "BUS"));
+            maps.add(city(PARIS, "Paris", "Along the Seine, round the Eiffel Tower and the Arc, against 2CVs.",
+                Waypoints.getParisWaypoints(), "ui/2cv.png", "2CV"));
+            maps.add(city(TAIPEI, "Taipei", "Past Taipei 101 and the night market, against a swarm of scooters.",
+                Waypoints.getTaipeiWaypoints(), "ui/moto.png", "MOTO"));
         }
         return maps;
+    }
+
+    /** a city map in assets/maps/(id)/, with walls beside the road */
+    private static TrackMap city(String id, String name, String tagline, List<Vector2> waypoints,
+            String cpuSprite, String cpuName) {
+        return new TrackMap(id, name, tagline, "maps/" + id + "/", id + "_road_mask.png", waypoints, true,
+            cpuSprite, cpuName);
     }
 
     /**

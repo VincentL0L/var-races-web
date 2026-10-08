@@ -30,7 +30,9 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
  * highlighted map.
  */
 public class MapSelectScreen implements Screen {
-    private static final float TILE_WIDTH = 230f;
+    private static final float TILE_WIDTH = 210f;
+    /** maps per row of the grid */
+    private static final int COLUMNS = 4;
     /** the last map picked, highlighted first next time */
     private static String lastMap = TrackMap.CLASSIC;
 
@@ -84,16 +86,21 @@ public class MapSelectScreen implements Screen {
 
     private void createUI() {
         Table card = Cards.card();
-        card.defaults().width(TILE_WIDTH * maps.size() + 16f * (maps.size() - 1));
+        int columns = Math.min(COLUMNS, maps.size());
+        card.defaults().width(TILE_WIDTH * columns + 14f * (columns - 1));
         kicker = Cards.kicker(host == null ? "SINGLE PLAYER" : hostPublic ? "HOST A PUBLIC RACE" : "HOST A PRIVATE RACE");
         card.add(kicker).left().row();
         card.add(Cards.title("CHOOSE A TRACK", 40)).left().padTop(2).padBottom(16).row();
 
-        Table row = new Table();
+        // a grid of cards, four to a row
+        Table grid = new Table();
         for (int i = 0; i < maps.size(); i++) {
-            row.add(tile(i)).width(TILE_WIDTH).fillY().padLeft(i == 0 ? 0 : 16);
+            grid.add(tile(i)).width(TILE_WIDTH).fillY().padLeft(i % columns == 0 ? 0 : 14).padBottom(12);
+            if (i % columns == columns - 1) {
+                grid.row();
+            }
         }
-        card.add(row).row();
+        card.add(grid).row();
 
         TextButton back = Cards.smallButton("Back", skin);
         back.addListener(new ClickListener() {
@@ -115,7 +122,7 @@ public class MapSelectScreen implements Screen {
         footer.add(back).width(130).height(52);
         footer.add().expandX();
         footer.add(next).width(200).height(60);
-        card.add(footer).padTop(20).row();
+        card.add(footer).padTop(8).row();
         stage.addActor(Cards.center(card));
     }
 
@@ -129,14 +136,14 @@ public class MapSelectScreen implements Screen {
         previews.add(preview);
 
         Table tile = new Table();
-        tile.pad(10, 10, 12, 10);
+        tile.pad(8, 8, 10, 8);
         tile.top();
         tile.setTouchable(Touchable.enabled);
-        float imageWidth = TILE_WIDTH - 20f;
+        float imageWidth = TILE_WIDTH - 16f;
         tile.add(new Image(preview)).size(imageWidth, imageWidth * 9f / 16f).row();
         Label name = new Label(map.name.toUpperCase(), new LabelStyle(Ui.display(18), Ui.CREAM));
-        tile.add(name).left().padTop(10).row();
-        Label tagline = new Label(map.tagline, new LabelStyle(Ui.font(10), Cards.LABEL));
+        tile.add(name).left().padTop(6).row();
+        Label tagline = new Label(map.tagline, new LabelStyle(Ui.font(9), Cards.LABEL));
         tagline.setWrap(true);
         tile.add(tagline).width(imageWidth).left().padTop(4).row();
         tile.addListener(new ClickListener() {
