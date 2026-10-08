@@ -239,51 +239,48 @@ public class Overlay {
     private static final String[] ICON_RESUME = {
         ".#.....", ".##....", ".###...", ".####..", ".###...", ".##....", ".#....."};
 
+    private static final float ITEM_SIZE = 64f;
+    private static final float PAUSE_SIZE = 38f;
+
     /**
-     * top right, mirroring the standings: the item you're holding, big, with its name
-     * (tap it on a phone to use it)
+     * top right: a small gilded slot with the item you're holding (tap it on a phone to use it)
      */
     private void renderItemPanel(float width, float height) {
-        float x = vw - width - MARGIN;
-        float y = vh - height - MARGIN;
+        float size = ITEM_SIZE;
+        float x = vw - MARGIN - size;
+        float y = vh - MARGIN - size;
         menuRows[1][0] = x;
         menuRows[1][1] = y;
-        menuRows[1][2] = width;
-        menuRows[1][3] = height;
+        menuRows[1][2] = size;
+        menuRows[1][3] = size;
         batch.begin();
-        panel.draw(batch, x, y, width, height);
-        titleFont.setColor(Ui.GOLD);
-        layout.setText(titleFont, "ITEM");
-        titleFont.draw(batch, "ITEM", x + width - BEZEL - layout.width,
-            y + height - BEZEL - (TITLE_HEIGHT - layout.height) / 2f + 2f);
-        float areaTop = y + height - BEZEL - TITLE_HEIGHT;
-        float areaBottom = y + BEZEL;
-        float cx = x + width / 2f;
+        panel.draw(batch, x, y, size, size);
         if (itemIcon != null) {
-            float size = Math.min(64f, areaTop - areaBottom - 30f);
-            float bob = MathUtils.sin(clock * 5f) * 2f;
-            batch.draw(itemIcon, cx - size / 2f, areaBottom + 26f + bob, size, size);
-            String name = itemName.toUpperCase() + (Ui.touchScreen ? "" : "   [E]");
-            buttonFont.setColor(Ui.GOLD);
-            layout.setText(buttonFont, name);
-            buttonFont.draw(batch, name, cx - layout.width / 2f, areaBottom + 18f);
+            float icon = size - 22f;
+            float bob = MathUtils.sin(clock * 5f) * 1.5f;
+            batch.draw(itemIcon, x + (size - icon) / 2f, y + (size - icon) / 2f + bob, icon, icon);
+            if (!Ui.touchScreen) {
+                // the key to use it, tucked in the corner
+                screen.draw(batch, x + size - 20f, y - 6f, 24f, 20f);
+                labelFont.setColor(Ui.GOLD);
+                layout.setText(labelFont, "E");
+                labelFont.draw(batch, "E", x + size - 8f - layout.width / 2f, y + 4f + layout.height / 2f);
+            }
         } else {
-            // an empty slot: a dim box outline with a question mark
-            screen.draw(batch, cx - 28f, areaBottom + (areaTop - areaBottom) / 2f - 28f, 56f, 56f);
             labelFont.setColor(LABEL);
             layout.setText(labelFont, "?");
-            labelFont.draw(batch, "?", cx - layout.width / 2f, areaBottom + (areaTop - areaBottom) / 2f + layout.height / 2f);
+            labelFont.draw(batch, "?", x + (size - layout.width) / 2f, y + (size + layout.height) / 2f);
         }
         batch.end();
     }
 
     /**
-     * a small pause button tucked under the item panel; it opens the pause menu
+     * a small pause button just left of the item slot; it opens the pause menu
      */
     private void renderPauseButton(float sideHeight) {
-        float size = 38f;
-        float x = vw - MARGIN - size;
-        float y = vh - MARGIN - sideHeight - 8f - size;
+        float size = PAUSE_SIZE;
+        float x = vw - MARGIN - ITEM_SIZE - 10f - size;
+        float y = vh - MARGIN - (ITEM_SIZE + size) / 2f;
         menuRows[0][0] = x;
         menuRows[0][1] = y;
         menuRows[0][2] = size;
