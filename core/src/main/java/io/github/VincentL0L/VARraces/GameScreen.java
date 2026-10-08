@@ -34,7 +34,7 @@ import io.github.VincentL0L.VARraces.Multiplayer.client.NetworkClient;
 import io.github.VincentL0L.VARraces.Multiplayer.packets.PositionPacket;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RacerInfo;
-import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Waypoints;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 
 /**
  * Game screen that keeps track of the leaderboard that network client recieves from gameserver
@@ -71,7 +71,8 @@ public class GameScreen implements Screen {
     private final FrostedBackdrop frost = new FrostedBackdrop();
     private float frostAmount = 0f;
     /** follows only our own car, for the RETURN TO TRACK warning */
-    private final RaceManager trackWatch = new RaceManager();
+    private final RaceManager trackWatch;
+    private final TrackMap map;
     /** how far from the track counts as off it (the road is about 125 wide) */
     private static final float OFF_TRACK_DISTANCE = 95f;
 
@@ -95,7 +96,9 @@ public class GameScreen implements Screen {
         game = g;
         car = c;
         nc = n;
-        rm = new RaceManager(Waypoints.getWaypoints());
+        map = nc.getMap();
+        rm = new RaceManager(map.waypoints);
+        trackWatch = new RaceManager(map.waypoints);
         nc.setRaceManager(rm);
 
         OrthographicCamera cam = new OrthographicCamera();
@@ -108,7 +111,7 @@ public class GameScreen implements Screen {
         bgm.setLooping(true);
         bgm.play();
 
-        player = new Player(stage, car);
+        player = new Player(stage, car, map);
         player.setInputEnabled(false);
         player.getImage().setPosition(x, y);
         // start with the camera already on our car in its grid slot
@@ -126,16 +129,18 @@ public class GameScreen implements Screen {
         uiStage.addActor(finish);
 
 
-        bg = new Background(stage);
+        bg = new Background(stage, map);
 
         // car1-3 are the skins players pick, car4-6 are CPU1-CPU3
+        // on some maps the CPUs all drive the same car (San Francisco: Waymos)
         oppSkins = new Texture[6];
         for (int i = 0; i < oppSkins.length; i++) {
-            oppSkins[i] = new Texture(Gdx.files.internal("ui/car" + (i + 1) + ".png"));
+            String file = i >= 3 && map.cpuSprite != null ? map.cpuSprite : "ui/car" + (i + 1) + ".png";
+            oppSkins[i] = new Texture(Gdx.files.internal(file));
             oppSkins[i].setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
         }
 
-        over = new Overlay(rm);
+        over = new Overlay(rm, map);
         over.setOnline(nc.isOnline());
         pauseSkin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
         pausePanel = buildPausePanel();
@@ -191,7 +196,7 @@ public class GameScreen implements Screen {
                     }
                     pos++;
                 }
-                game.setScreen(new EndScreen(game, car, pos, lead));
+                game.setScreen(new EndScreen(game, car, pos, lead, map));
                 return;
             }
         }
@@ -333,7 +338,7 @@ public class GameScreen implements Screen {
         if (nc.isOnline()) {
             quit();
         } else {
-            game.setScreen(new LobbyScreen(game, car, null));
+            game.setScreen(new LobbyScreen(game, car, null, map));
         }
     }
 

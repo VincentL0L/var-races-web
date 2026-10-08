@@ -7,11 +7,18 @@ import com.badlogic.gdx.graphics.Pixmap;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Track;
 
 /**
- * Road check for single player races, read from ui/road_mask.png (white = road)
+ * Road check for single player races, read from the map's road mask (white = road)
  */
 public class PixmapTrack implements Track {
-    private final Pixmap mask = new Pixmap(Gdx.files.internal("ui/road_mask.png"));
+    private final Pixmap mask;
     private final Color color = new Color();
+
+    /**
+     * @param maskPath the map's road mask in assets
+     */
+    public PixmapTrack(String maskPath) {
+        mask = new Pixmap(Gdx.files.internal(maskPath));
+    }
 
     public boolean onRoad(float x, float y) {
         int px = (int) x;

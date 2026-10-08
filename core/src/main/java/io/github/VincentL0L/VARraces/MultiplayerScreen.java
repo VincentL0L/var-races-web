@@ -16,6 +16,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextField;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 
 import io.github.VincentL0L.VARraces.Multiplayer.client.NetworkClient;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 
 /**
  * Online races: one gilded card over the drifting, frosted track with three sections:
@@ -33,7 +34,8 @@ public class MultiplayerScreen implements Screen {
     private final int selectedCar;
     private final Stage stage;
     private final Skin skin;
-    private final TrackBackdrop backdrop = new TrackBackdrop();
+    private final TrackBackdrop backdrop;
+    private final TrackMap map;
     private final NetworkClient networkClient;
     private Label kicker;
     private Table roomsTable;
@@ -48,10 +50,13 @@ public class MultiplayerScreen implements Screen {
      * connects to the race server and builds the menu
      * @param game game
      * @param selectedCar car skin the player picked
+     * @param map the map picked: new races use it and the list shows its open races
      */
-    public MultiplayerScreen(Game game, int selectedCar) {
+    public MultiplayerScreen(Game game, int selectedCar, TrackMap map) {
         this.game = game;
         this.selectedCar = selectedCar;
+        this.map = map;
+        backdrop = new TrackBackdrop(map);
         stage = new Stage(Ui.viewport());
         skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
 
@@ -70,7 +75,7 @@ public class MultiplayerScreen implements Screen {
 
         kicker = Cards.kicker("CONNECTING...");
         card.add(kicker).left().row();
-        card.add(Cards.title("ONLINE RACE", 44)).left().padTop(2).padBottom(16).row();
+        card.add(Cards.title(map.name.toUpperCase(), 44)).left().padTop(2).padBottom(16).row();
 
         // open public races
         card.add(Cards.kicker("OPEN RACES")).left().padBottom(6).row();
@@ -86,14 +91,14 @@ public class MultiplayerScreen implements Screen {
         createPublic.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {
                 if (networkClient.isConnected()) {
-                    networkClient.createRoom(true, selectedCar);
+                    networkClient.createRoom(true, selectedCar, map);
                 }
             }
         });
         createPrivate.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {
                 if (networkClient.isConnected()) {
-                    networkClient.createRoom(false, selectedCar);
+                    networkClient.createRoom(false, selectedCar, map);
                 }
             }
         });
@@ -144,7 +149,7 @@ public class MultiplayerScreen implements Screen {
             public void clicked(InputEvent e, float x, float y) {
                 leaving = true;
                 networkClient.stop();
-                game.setScreen(new MenuScreen(game, selectedCar));
+                game.setScreen(new MapSelectScreen(game, selectedCar, true));
             }
         });
         Table footer = new Table();
@@ -166,7 +171,13 @@ public class MultiplayerScreen implements Screen {
             roomsTable.add(Cards.emptyRow("...")).row();
             return;
         }
-        List<String[]> rooms = networkClient.getPublicRooms();
+        // only races on this map
+        List<String[]> rooms = new java.util.ArrayList<>();
+        for (String[] room : networkClient.getPublicRooms()) {
+            if (room[2].equals(map.id)) {
+                rooms.add(room);
+            }
+        }
         if (rooms.isEmpty()) {
             roomsTable.add(Cards.emptyRow("No open races. Host one below!")).row();
             return;
@@ -195,7 +206,7 @@ public class MultiplayerScreen implements Screen {
         networkClient.update(delta);
 
         if (networkClient.isInRoom()) {
-            game.setScreen(new LobbyScreen(game, selectedCar, networkClient));
+            game.setScreen(new LobbyScreen(game, selectedCar, networkClient, null));
             return;
         }
 

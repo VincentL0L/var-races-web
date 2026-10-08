@@ -1,31 +1,28 @@
 package io.github.VincentL0L.VARraces;
 
-import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
-import com.badlogic.gdx.graphics.Texture;
 
 /**
- * Barriers around the track so nobody can skip part of it across the grass.
+ * Walls around the track on maps that have them (San Francisco: the buildings), so
+ * nobody can skip part of the track.
  *
- * Next to the road there's a strip of grass you can drive on (slowly, see Player), and
- * past that a red and white wall. The wall follows the road's shape, worked out from
- * road_mask.png: every spot gets its distance to the nearest road, and anything further
- * than RUNOFF is behind the wall. Where two stretches of track run close together, the
- * wall runs down the grass between them.
+ * Next to the road there's a strip you can drive on (the sidewalk, slowly, see Player),
+ * and past that a wall. The wall follows the road's shape, worked out from the road mask:
+ * every spot gets its distance to the nearest road, and anything further than RUNOFF is
+ * behind the wall.
  */
 public class Barriers {
-    /** how far from the road a car's center can go, in map pixels */
-    public static final float RUNOFF = 20f;
+    /** how far from the road a car's center can go, in map pixels (keeps the car on the sidewalk) */
+    public static final float RUNOFF = 12f;
     /** the distances are worked out on a grid of this many map pixels per cell */
     private static final int CELL = 2;
     // chamfer distance steps (straight and diagonal, about 3 : 4.24)
     private static final int STRAIGHT = 3;
     private static final int DIAGONAL = 4;
-    /** the painted wall: starts just past where a car's center stops, this many pixels thick */
-    private static final float WALL_START = RUNOFF + 5f;
-    private static final float WALL_THICKNESS = 8f;
 
+    /** which road mask the distances were worked out for */
+    private static Pixmap builtFor;
     private static int gridWidth;
     private static int gridHeight;
     private static int mapHeight;
@@ -37,9 +34,10 @@ public class Barriers {
      * @param roadMask road_mask.png (white = road)
      */
     public static void build(Pixmap roadMask) {
-        if (distance != null) {
+        if (distance != null && builtFor == roadMask) {
             return;
         }
+        builtFor = roadMask;
         mapHeight = roadMask.getHeight();
         gridWidth = roadMask.getWidth() / CELL;
         gridHeight = mapHeight / CELL;
@@ -100,59 +98,5 @@ public class Barriers {
      */
     public static boolean drivable(float x, float y) {
         return distanceToRoad(x, y) <= RUNOFF;
-    }
-
-    /**
-     * paints the wall as a see-through picture the size of the map, drawn over the background
-     * @return new texture
-     */
-    private static Texture makeTexture(Pixmap roadMask) {
-        build(roadMask);
-        Pixmap wall = new Pixmap(roadMask.getWidth(), mapHeight, Pixmap.Format.RGBA8888);
-        wall.setBlending(Pixmap.Blending.None);
-        int outline = Color.rgba8888(0.16f, 0.09f, 0.06f, 1f);
-        int shadow = Color.rgba8888(0f, 0f, 0f, 0.28f);
-        int red = Color.rgba8888(0.86f, 0.2f, 0.15f, 1f);
-        int white = Color.rgba8888(0.95f, 0.93f, 0.88f, 1f);
-        float end = WALL_START + WALL_THICKNESS;
-        for (int py = 0; py < mapHeight; py++) {
-            for (int px = 0; px < wall.getWidth(); px++) {
-                int gx = px / CELL, gy = py / CELL;
-                if (gx >= gridWidth || gy >= gridHeight) {
-                    continue;
-                }
-                float dist = distance[gy * gridWidth + gx] * (float) CELL / STRAIGHT;
-                if (dist < WALL_START - 2f || dist > end + 3f) {
-                    continue;
-                }
-                int color;
-                if (dist > end) {
-                    color = shadow;            // soft shadow on the far side
-                } else if (dist < WALL_START || dist > end - 2f) {
-                    color = outline;           // dark edges, like the pixel-art outlines
-                } else {
-                    // red and white blocks, like the curbs
-                    color = ((px / 8 + py / 8) % 2 == 0) ? red : white;
-                }
-                wall.drawPixel(px, py, color);
-            }
-        }
-        Texture texture = new Texture(wall);
-        wall.dispose();
-        return texture;
-    }
-
-    private static Texture shared;
-
-    /**
-     * the wall picture, painted once and kept for the whole game (every screen shows the same map)
-     */
-    public static Texture texture() {
-        if (shared == null) {
-            Pixmap mask = new Pixmap(Gdx.files.internal("ui/road_mask.png"));
-            shared = makeTexture(mask);
-            mask.dispose();
-        }
-        return shared;
     }
 }

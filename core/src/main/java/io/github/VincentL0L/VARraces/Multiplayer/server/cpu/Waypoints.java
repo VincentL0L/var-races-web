@@ -55,6 +55,26 @@ public class Waypoints {
      * one time in total
      * @return waypoints
      */
+    /**
+     * San Francisco: up the Marina, across the Golden Gate, down the Embarcadero, along
+     * Market Street, up California Street and back past the Painted Ladies.
+     * Same shape as tools/MakeSanFrancisco.java paints; the last point is the start line.
+     * @return waypoints
+     */
+    public static List<Vector2> getSanFranciscoWaypoints() {
+        List<Vector2> waypoints = new ArrayList<>();
+        waypoints.add(new Vector2(200, 880));
+        waypoints.add(new Vector2(1740, 880));
+        waypoints.add(new Vector2(1740, 180));
+        waypoints.add(new Vector2(1100, 180));
+        waypoints.add(new Vector2(1100, 520));
+        waypoints.add(new Vector2(620, 520));
+        waypoints.add(new Vector2(620, 230));
+        waypoints.add(new Vector2(200, 230));
+        waypoints.add(new Vector2(200, 300));
+        return waypoints;
+    }
+
     public static List<Vector2> getWaypoints() {
         List<Vector2> waypoints = new ArrayList<>();
 

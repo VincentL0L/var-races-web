@@ -1,5 +1,7 @@
 package io.github.VincentL0L.VARraces;
 
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
+
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.scenes.scene2d.Stage;
@@ -25,8 +27,15 @@ public class TrackBackdrop {
 
     private final OrthographicCamera camera = new OrthographicCamera(675, 360);
     private final Stage stage = new Stage(new ExtendViewport(675, 360, camera));
-    private final Background background = new Background(stage);
+    private final Background background;
     private final FrostedBackdrop frost = new FrostedBackdrop();
+
+    /**
+     * @param map the map to show drifting behind the menu
+     */
+    public TrackBackdrop(TrackMap map) {
+        background = new Background(stage, map);
+    }
 
     /**
      * moves the drift on and draws the frosted track over the whole screen

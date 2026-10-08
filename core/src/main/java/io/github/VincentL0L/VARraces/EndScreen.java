@@ -1,5 +1,7 @@
 package io.github.VincentL0L.VARraces;
 
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
+
 import java.util.List;
 
 import com.badlogic.gdx.Game;
@@ -36,18 +38,21 @@ public class EndScreen implements Screen {
     private int selectedCar;
     private int finalPosition;
     private List<RacerInfo> leaderboard;
+    private TrackMap map;
     /**
-     * 4-arg constructor for EndScreen
+     * constructor for EndScreen
      * @param game sets game to game 
      * @param selectedCar sets gameScreen selected car to end screen
      * @param finalPosition final position for this client
      * @param leaderboard total leaderboard
+     * @param map the map that was raced (for the CPUs' names)
      */
-    public EndScreen(Game game, int selectedCar, int finalPosition, List<RacerInfo> leaderboard) {
+    public EndScreen(Game game, int selectedCar, int finalPosition, List<RacerInfo> leaderboard, TrackMap map) {
         this.game = game;
         this.selectedCar = selectedCar;
         this.finalPosition = finalPosition;
         this.leaderboard = leaderboard;
+        this.map = map;
         stage = new Stage(Ui.viewport());
         skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
         
@@ -85,7 +90,7 @@ public class EndScreen implements Screen {
         for (RacerInfo racer : leaderboard) {
             Color rowColor = position == finalPosition ? Ui.GOLD : Ui.CREAM;
             Label posLabel = new Label(String.valueOf(position), entryStyle);
-            Label nameLabel = new Label(racer.name, entryStyle);
+            Label nameLabel = new Label(map.displayName(racer.name), entryStyle);
             Label timeLabel = new Label(racer.isFinished() ? Overlay.formatTime(racer.finishTime) : "racing", entryStyle);
 
             // still on track when you finished: dimmed

@@ -10,10 +10,10 @@ import org.java_websocket.WebSocket;
 import com.badlogic.gdx.math.Vector2;
 
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Opponent;
-import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Track;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CpuTraffic;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RacerInfo;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Waypoints;
 
 /**
@@ -28,10 +28,9 @@ public class Room {
     private final Map<WebSocket, PlayerState> players = new LinkedHashMap<>();
     private final List<Opponent> cpuOpponents = new ArrayList<>();
     private final CpuTraffic traffic;
-    /** one road mask shared by every room */
-    private static final Track TRACK = new ImageTrack();
-    private final List<Vector2> waypoints = Waypoints.getWaypoints();
-    private final RaceManager raceManager = new RaceManager();
+    private final TrackMap map;
+    private final List<Vector2> waypoints;
+    private final RaceManager raceManager;
     private int nextPlayerNumber = 1;
     private boolean countdownInProgress = false;
     private boolean started = false;
@@ -43,15 +42,19 @@ public class Room {
      * creates a room with 3 CPU opponents on the starting line
      * @param code 4 letter code players join with
      * @param isPublic true if it shows in the public room list
+     * @param map the map this room races on
      */
-    public Room(String code, boolean isPublic) {
+    public Room(String code, boolean isPublic, TrackMap map) {
         this.code = code;
         this.isPublic = isPublic;
+        this.map = map;
+        waypoints = map.waypoints;
+        raceManager = new RaceManager(waypoints);
         List<Vector2> grid = Waypoints.getCpuGrid();
         for (int i = 0; i < grid.size(); i++) {
             cpuOpponents.add(new Opponent("CPU" + (i + 1), waypoints, grid.get(i)));
         }
-        traffic = new CpuTraffic(cpuOpponents, TRACK);
+        traffic = new CpuTraffic(cpuOpponents, ImageTrack.forMap(map));
     }
 
     /**
@@ -64,7 +67,7 @@ public class Room {
         Vector2 spawn = new Vector2(200 + (players.size()) * 40, 300);
         PlayerState state = new PlayerState(id, car, spawn);
 
-        conn.send("JOINED|" + code + "|" + (isPublic ? "public" : "private") + "|" + id);
+        conn.send("JOINED|" + code + "|" + (isPublic ? "public" : "private") + "|" + id + "|" + map.id);
         for (PlayerState other : players.values()) {
             conn.send("READY|" + other.id + "|" + other.ready);
         }
@@ -192,6 +195,13 @@ public class Room {
                 conn.send(message);
             }
         }
+    }
+
+    /**
+     * @return the map this room races on
+     */
+    public TrackMap getMap() {
+        return map;
     }
 
     /**

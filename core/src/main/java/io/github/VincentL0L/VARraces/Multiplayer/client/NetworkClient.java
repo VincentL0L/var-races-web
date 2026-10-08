@@ -14,6 +14,7 @@ import io.github.VincentL0L.VARraces.Multiplayer.packets.PositionPacket;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CpuTraffic;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Opponent;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Waypoints;
 
 /**
@@ -56,9 +57,11 @@ public class NetworkClient {
     private final List<String[]> publicRooms = new ArrayList<>();
     private float sendTimer = 0f;
 
+    /** the map being raced: picked for single player, sent by the server online */
+    private TrackMap map = TrackMap.get(TrackMap.CLASSIC);
+
     // single player race, the same state RaceServer keeps for each room
-    private final List<Vector2> waypoints = Waypoints.getWaypoints();
-    private final RaceManager serverRaceManager = new RaceManager();
+    private RaceManager serverRaceManager;
     private final List<Opponent> cpuOpponents = new ArrayList<>();
     private final Vector2 playerPos = new Vector2(200, 300);
     private float playerHeading = 90f;
@@ -88,18 +91,20 @@ public class NetworkClient {
 
     /**
      * starts a single player race: assigns the player id and spawns the CPU opponents
-     * @param host unused, kept so callers match the desktop version
+     * @param raceMap the map to race on
      */
-    public void start(String host) {
+    public void start(TrackMap raceMap) {
+        map = raceMap;
         if (playerId == null) {
             playerId = "Player 1";
         }
         playerReadyStates.put(playerId, false);
+        serverRaceManager = new RaceManager(map.waypoints);
 
         List<Vector2> grid = Waypoints.getCpuGrid();
         for (int i = 0; i < grid.size(); i++) {
             Vector2 cpuPos = grid.get(i);
-            Opponent cpu = new Opponent("CPU" + (i + 1), waypoints, cpuPos);
+            Opponent cpu = new Opponent("CPU" + (i + 1), map.waypoints, cpuPos);
             cpuOpponents.add(cpu);
 
             PositionPacket packet = new PositionPacket();
@@ -109,7 +114,7 @@ public class NetworkClient {
             packet.rotation = 90;
             opponents.put(packet.playerId, packet);
         }
-        track = new PixmapTrack();
+        track = new PixmapTrack(map.roadMask);
         traffic = new CpuTraffic(cpuOpponents, track);
         connected = true;
     }
@@ -152,9 +157,10 @@ public class NetworkClient {
      * creates a new room on the server and joins it
      * @param isPublic true if it should be listed for everyone
      * @param car selected car skin
+     * @param raceMap the map the room races on
      */
-    public void createRoom(boolean isPublic, int car) {
-        send("CREATE|" + (isPublic ? "public" : "private") + "|" + car);
+    public void createRoom(boolean isPublic, int car, TrackMap raceMap) {
+        send("CREATE|" + (isPublic ? "public" : "private") + "|" + car + "|" + raceMap.id);
     }
 
     /**
@@ -241,14 +247,16 @@ public class NetworkClient {
     private void handleMessage(String[] parts) {
         String type = parts[0];
         if (type.equals("ROOMS")) {
+            // ROOMS|code|players|map|code|players|map...
             publicRooms.clear();
-            for (int i = 1; i + 1 < parts.length; i += 2) {
-                publicRooms.add(new String[] {parts[i], parts[i + 1]});
+            for (int i = 1; i + 2 < parts.length; i += 3) {
+                publicRooms.add(new String[] {parts[i], parts[i + 1], parts[i + 2]});
             }
         } else if (type.equals("JOINED")) {
             roomCode = parts[1];
             roomPublic = parts[2].equals("public");
             playerId = parts[3];
+            map = TrackMap.get(parts.length > 4 ? parts[4] : TrackMap.CLASSIC);
             playerReadyStates.put(playerId, false);
             error = null;
         } else if (type.equals("ERROR")) {
@@ -403,6 +411,12 @@ public class NetworkClient {
      */
     public String getPlayerId() {
         return playerId;
+    }
+    /**
+     * @return the map this race is on
+     */
+    public TrackMap getMap() {
+        return map;
     }
     /**
      * Every player sorts the same list of names, so each one gets a different grid slot

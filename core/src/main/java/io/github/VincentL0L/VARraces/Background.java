@@ -1,5 +1,7 @@
 package io.github.VincentL0L.VARraces;
 
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
+
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -22,8 +24,8 @@ public class Background {
      * Sets RaceTrack over mask and grass on sides
      * @param stage
      */
-    public Background(Stage stage) {
-        backgroundTexture = new Texture("ui/background.png");
+    public Background(Stage stage, TrackMap map) {
+        backgroundTexture = new Texture(map.background);
         grassTexture = new Texture("ui/grass.png");
         
         grassRegion = new TextureRegion(grassTexture, 0, 0, 512, 512);
@@ -66,8 +68,6 @@ public class Background {
         }
         
         batch.draw(backgroundTexture, 0, 0);
-        // the barriers that stop cars cutting across the grass
-        batch.draw(Barriers.texture(), 0, 0);
         batch.end();
     }
     /**

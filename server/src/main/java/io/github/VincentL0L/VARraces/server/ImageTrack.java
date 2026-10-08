@@ -6,25 +6,45 @@ import java.io.InputStream;
 
 import javax.imageio.ImageIO;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Track;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 
 /**
- * Road check for the server, read from road_mask.png packed into the server jar (white = road)
+ * Road check for the server, read from a map's road mask packed into the server jar (white = road)
  */
 public class ImageTrack implements Track {
+    /** one loaded mask per map, shared by every room on it */
+    private static final Map<String, ImageTrack> LOADED = new HashMap<>();
     private final BufferedImage mask;
 
     /**
-     * loads road_mask.png from the jar
+     * @param map a map
+     * @return the road check for it (loaded once)
      */
-    public ImageTrack() {
-        try (InputStream in = ImageTrack.class.getResourceAsStream("/road_mask.png")) {
+    public static synchronized ImageTrack forMap(TrackMap map) {
+        ImageTrack track = LOADED.get(map.id);
+        if (track == null) {
+            track = new ImageTrack("/" + map.serverMask);
+            LOADED.put(map.id, track);
+        }
+        return track;
+    }
+
+    /**
+     * loads a road mask from the jar
+     * @param resource its name in the jar, like "/road_mask.png"
+     */
+    private ImageTrack(String resource) {
+        try (InputStream in = ImageTrack.class.getResourceAsStream(resource)) {
             if (in == null) {
-                throw new IllegalStateException("road_mask.png missing from the server jar");
+                throw new IllegalStateException(resource + " missing from the server jar");
             }
             mask = ImageIO.read(in);
         } catch (IOException e) {
-            throw new IllegalStateException("could not read road_mask.png", e);
+            throw new IllegalStateException("could not read " + resource, e);
         }
     }
 

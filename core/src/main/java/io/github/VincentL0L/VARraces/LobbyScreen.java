@@ -19,6 +19,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 
 import io.github.VincentL0L.VARraces.Multiplayer.client.NetworkClient;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 
 /**
  * The lobby before a race: one gilded card over the drifting, frosted track. It lists the
@@ -33,7 +34,8 @@ public class LobbyScreen implements Screen {
     private final NetworkClient networkClient;
     private final Stage uiStage;
     private final Skin skin;
-    private final TrackBackdrop backdrop = new TrackBackdrop();
+    private final TrackBackdrop backdrop;
+    private final TrackMap map;
     private final Texture[] cars = new Texture[6];
     private Label kicker;
     private Table drivers;
@@ -45,21 +47,26 @@ public class LobbyScreen implements Screen {
      * @param game game
      * @param selectedCar car skin 1-3
      * @param client online client already in a room, or null for single player
+     * @param singlePlayerMap the map picked for single player (online the room decides)
      */
-    public LobbyScreen(Game game, int selectedCar, NetworkClient client) {
+    public LobbyScreen(Game game, int selectedCar, NetworkClient client, TrackMap singlePlayerMap) {
         this.game = game;
         this.selectedCar = selectedCar;
         uiStage = new Stage(Ui.viewport());
         skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
-        for (int i = 0; i < cars.length; i++) {
-            cars[i] = new Texture(Gdx.files.internal("ui/car" + (i + 1) + ".png"));
-        }
 
         if (client != null) {
             networkClient = client;
         } else {
             networkClient = new NetworkClient(null);
-            networkClient.start("localhost");
+            networkClient.start(singlePlayerMap);
+        }
+        map = networkClient.getMap();
+        backdrop = new TrackBackdrop(map);
+        // car1-3 are the players' skins; the CPUs drive car4-6, or the map's own car (Waymos)
+        for (int i = 0; i < cars.length; i++) {
+            String file = i >= 3 && map.cpuSprite != null ? map.cpuSprite : "ui/car" + (i + 1) + ".png";
+            cars[i] = new Texture(Gdx.files.internal(file));
         }
 
         createUI();
@@ -73,10 +80,11 @@ public class LobbyScreen implements Screen {
         Table card = Cards.card();
         boolean online = networkClient.isOnline();
 
-        kicker = Cards.kicker(online ? (networkClient.isRoomPublic() ? "PUBLIC ROOM" : "PRIVATE ROOM  /  SHARE THIS CODE")
+        String where = map.name.toUpperCase() + "  /  " + lapsText();
+        kicker = Cards.kicker(online ? (networkClient.isRoomPublic() ? "PUBLIC ROOM  /  " : "PRIVATE ROOM  /  ") + where
             : "SINGLE PLAYER  /  " + lapsText());
         card.add(kicker).left().row();
-        card.add(Cards.title(online ? networkClient.getRoomCode() : "QUICK RACE", 44)).left().padTop(2).padBottom(16).row();
+        card.add(Cards.title(online ? networkClient.getRoomCode() : map.name.toUpperCase(), 44)).left().padTop(2).padBottom(16).row();
 
         card.add(Cards.kicker("DRIVERS")).left().padBottom(6).row();
         drivers = new Table();
@@ -145,12 +153,12 @@ public class LobbyScreen implements Screen {
             for (int i = 0; i < CPU_COUNT; i++) {
                 row.add(Cards.carIcon(cars[3 + i])).size(13, 26).padRight(6);
             }
-            row.add(Cards.text("+ " + CPU_COUNT + " CPU RACERS", false)).left().expandX().padLeft(8);
-            row.add(Cards.pill("CPU", Cards.CPU, true));
+            row.add(Cards.text("+ " + CPU_COUNT + " " + map.cpuName + "S", false)).left().expandX().padLeft(8);
+            row.add(Cards.pill(map.cpuName, Cards.CPU, true));
             drivers.add(row).row();
         } else {
             for (int i = 0; i < CPU_COUNT; i++) {
-                drivers.add(driverRow(cars[3 + i], "CPU " + (i + 1), false, "CPU")).row();
+                drivers.add(driverRow(cars[3 + i], map.displayName("CPU" + (i + 1)), false, "CPU")).row();
             }
         }
     }
@@ -164,7 +172,7 @@ public class LobbyScreen implements Screen {
         row.add(Cards.carIcon(car)).size(13, 26).padRight(14);
         row.add(Cards.text(name, you)).left().expandX();
         if ("CPU".equals(status)) {
-            row.add(Cards.pill("CPU", Cards.CPU, true));
+            row.add(Cards.pill(map.cpuName, Cards.CPU, true));
         } else if (status != null) {
             row.add(Cards.pill("READY", Cards.READY, false));
         } else {

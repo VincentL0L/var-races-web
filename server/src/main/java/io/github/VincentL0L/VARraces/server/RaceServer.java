@@ -1,5 +1,7 @@
 package io.github.VincentL0L.VARraces.server;
 
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
+
 import java.net.InetSocketAddress;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -18,8 +20,8 @@ import org.java_websocket.server.WebSocketServer;
  * list public rooms, create a public or private room, or join one by code.
  *
  * Messages are text with fields separated by '|'
- * from players:  LIST | CREATE|public or private|car | JOIN|code|car | READY|true | POS|x|y|rotation
- * to players:    ROOMS|code|count|code|count... | JOINED|code|public|playerId | ERROR|text
+ * from players:  LIST | CREATE|public or private|car|map | JOIN|code|car | READY|true | POS|x|y|rotation
+ * to players:    ROOMS|code|count|map|code|count|map... | JOINED|code|public|playerId|map | ERROR|text
  *                READY|id|true | LEFT|id | COUNTDOWN|3 | POS|id|x|y|rotation|car
  *                LEADER|name|laps|progress|finishTime|name|laps...   (race order, finishTime -1 = racing)
  *
@@ -73,7 +75,8 @@ public class RaceServer extends WebSocketServer {
             if (parts[0].equals("LIST")) {
                 conn.send(listRooms());
             } else if (parts[0].equals("CREATE")) {
-                Room room = new Room(newCode(), parts[1].equals("public"));
+                String map = parts.length > 3 ? parts[3] : TrackMap.CLASSIC;
+                Room room = new Room(newCode(), parts[1].equals("public"), TrackMap.get(map));
                 rooms.put(room.getCode(), room);
                 joinRoom(conn, room, Integer.parseInt(parts[2]));
             } else if (parts[0].equals("JOIN")) {
@@ -110,7 +113,8 @@ public class RaceServer extends WebSocketServer {
         StringBuilder msg = new StringBuilder("ROOMS");
         for (Room room : rooms.values()) {
             if (room.isPublic() && room.isJoinable()) {
-                msg.append('|').append(room.getCode()).append('|').append(room.getPlayerCount());
+                msg.append('|').append(room.getCode()).append('|').append(room.getPlayerCount())
+                    .append('|').append(room.getMap().id);
             }
         }
         return msg.toString();

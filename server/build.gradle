@@ -13,9 +13,12 @@ dependencies {
   implementation "org.slf4j:slf4j-simple:1.7.36"
 }
 
-// the server needs the road mask so CPUs are never pushed off the road
+// the server needs each map's road mask so CPUs are never pushed off the road
 processResources {
   from(rootProject.file('assets/ui/road_mask.png'))
+  from(rootProject.file('assets/maps/sf/road_mask.png')) {
+    rename { 'sf_road_mask.png' }
+  }
 }
 
 // one runnable jar with everything inside: server/build/libs/var-races-server.jar

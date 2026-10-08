@@ -15,6 +15,7 @@ import com.badlogic.gdx.math.MathUtils;
 import java.util.List;
 
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RacerInfo;
 
 /**
@@ -81,6 +82,7 @@ public class Overlay {
     private ShapeRenderer render;
     private Texture gauge;
     private RaceManager raceManager;
+    private final TrackMap map;
     private String playerId = "";
     private float raceTime = 0f;
     private float shownSpeed = 0f;
@@ -98,8 +100,9 @@ public class Overlay {
     /**
      * creates a new overlay
      */
-    public Overlay(RaceManager rm) {
+    public Overlay(RaceManager rm, TrackMap map) {
         raceManager = rm;
+        this.map = map;
         batch = new SpriteBatch();
         font = Ui.font(12);
         valueFont = Ui.display(20);
@@ -347,7 +350,7 @@ public class Overlay {
     }
 
     private String displayName(RacerInfo r) {
-        return r.name.equals(playerId) ? r.name + " (YOU)" : r.name;
+        return r.name.equals(playerId) ? r.name + " (YOU)" : map.displayName(r.name);
     }
 
     private static int currentLap(RacerInfo r) {

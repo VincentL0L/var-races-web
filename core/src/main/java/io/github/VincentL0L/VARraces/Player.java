@@ -1,4 +1,6 @@
 package io.github.VincentL0L.VARraces;
+
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.audio.Music;
@@ -20,6 +22,8 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarBody;
  */
 public class Player {
     private static Pixmap roadMask;
+    /** true on maps with walls beside the track (see Barriers) */
+    private static boolean barriers = false;
     private Texture car;
     private Image i;
     private Vector2 velocity;
@@ -96,7 +100,7 @@ public class Player {
      * @param stage stage that holds actors
      * @param carNumber selected car number to determine car skin
      */
-    public Player(Stage stage, int carNumber) {
+    public Player(Stage stage, int carNumber, TrackMap map) {
         this.currentWaypointIndex = 0; 
         
         car = new Texture(Gdx.files.internal("ui/car" + carNumber + ".png"));
@@ -109,8 +113,11 @@ public class Player {
 
         velocity = new Vector2();
 
-        roadMask = new Pixmap(Gdx.files.internal("ui/road_mask.png"));
-        Barriers.build(roadMask);
+        roadMask = new Pixmap(Gdx.files.internal(map.roadMask));
+        barriers = map.barriers;
+        if (barriers) {
+            Barriers.build(roadMask);
+        }
 
         sound = Gdx.audio.newMusic(Gdx.files.internal("accelerate.mp3"));
         sound.setLooping(true);
@@ -368,15 +375,15 @@ public class Player {
      * @return true if car is on the road; false if not
      */
     /**
-     * The road and a strip of grass beside it can be driven on; past that are the barriers
-     * (see Barriers), so nobody can cut across the grass to skip part of the track.
-     * @return true if a car at (x, y) is inside the barriers
+     * The edge of the map is a wall. On maps with barriers, so is everything more than a
+     * sidewalk's width from the road (see Barriers), so nobody can skip part of the track.
+     * @return true if a car at (x, y) can be there
      */
     public static boolean inBounds(float x, float y, float width, float height) {
         float cx = x + width / 2, cy = y + height / 2;
         return cx >= MAP_MARGIN && cy >= MAP_MARGIN
             && cx < roadMask.getWidth() - MAP_MARGIN && cy < roadMask.getHeight() - MAP_MARGIN
-            && Barriers.drivable(cx, cy);
+            && (!barriers || Barriers.drivable(cx, cy));
     }
 
     /**
