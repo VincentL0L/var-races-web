@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.math.Vector2;
 
 import io.github.VincentL0L.VARraces.Multiplayer.packets.Entry;
@@ -138,26 +139,49 @@ public class NetworkClient {
      * @param url server address, ex "ws://localhost:8080"
      */
     public void connect(GameSocket.Factory factory, String url) {
+        socketFactory = factory;
+        serverUrl = url;
+        final int attempt = ++connectAttempt;
+        socketOpen = false;
+        socketClosed = false;
         socket = factory.create(url, new GameSocket.Listener() {
+            // messages from an older, abandoned connection are ignored
             public void onOpen() {
                 synchronized (inbox) {
-                    socketOpen = true;
+                    if (attempt == connectAttempt) {
+                        socketOpen = true;
+                    }
                 }
             }
 
             public void onMessage(String message) {
                 synchronized (inbox) {
-                    inbox.add(message);
+                    if (attempt == connectAttempt) {
+                        inbox.add(message);
+                    }
                 }
             }
 
             public void onClose() {
                 synchronized (inbox) {
-                    socketClosed = true;
+                    if (attempt == connectAttempt) {
+                        socketClosed = true;
+                    }
                 }
             }
         });
     }
+
+    // reconnecting: the free server sleeps when nobody plays and restarts on every update,
+    // so a dropped connection before joining a room just tries again for a while
+    private GameSocket.Factory socketFactory;
+    private String serverUrl;
+    private int connectAttempt = 0;
+    private int retries = 0;
+    private float retryTimer = 0f;
+    private boolean stopped = false;
+    private static final int MAX_RETRIES = 40;
+    private static final float RETRY_DELAY = 2f;
 
     /**
      * asks the server for the list of public rooms
@@ -251,8 +275,20 @@ public class NetworkClient {
         List<String> messages;
         synchronized (inbox) {
             connected = socketOpen && !socketClosed;
-            if (socketClosed && error == null) {
-                error = "Lost connection to the race server";
+            if (connected) {
+                retries = 0;
+            }
+            if (socketClosed && !stopped && roomCode == null && retries < MAX_RETRIES) {
+                // not in a race yet: quietly try again in a moment
+                retryTimer += Gdx.graphics.getDeltaTime();
+                if (retryTimer >= RETRY_DELAY) {
+                    retryTimer = 0f;
+                    retries++;
+                    connect(socketFactory, serverUrl);
+                }
+            } else if (socketClosed && error == null) {
+                error = roomCode != null ? "Lost connection - the server restarted. Go back and join again"
+                    : "Can't reach the race server right now";
             }
             messages = new ArrayList<>(inbox);
             inbox.clear();
@@ -357,6 +393,7 @@ public class NetworkClient {
      * leaves the race (and disconnects when online)
      */
     public void stop() {
+        stopped = true;
         if (socket != null) {
             socket.close();
         }
