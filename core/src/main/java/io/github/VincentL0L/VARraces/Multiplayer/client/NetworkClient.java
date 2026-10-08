@@ -13,6 +13,7 @@ import io.github.VincentL0L.VARraces.Multiplayer.packets.Entry;
 import io.github.VincentL0L.VARraces.Multiplayer.packets.LeaderboardPacket;
 import io.github.VincentL0L.VARraces.Multiplayer.packets.PositionPacket;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarBody;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarModel;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CpuTraffic;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Opponent;
@@ -237,7 +238,7 @@ public class NetworkClient {
         }
 
         // single player: everything updates every frame so the CPUs move smoothly
-        traffic.setPlayer(playerId, playerPos.x, playerPos.y, playerHeading);
+        traffic.setPlayer(playerId, playerPos.x, playerPos.y, playerHeading, CarModel.of(myCar).mass);
         traffic.update(delta, gameStarted);
         if (gameStarted) {
             raceTime += delta;
@@ -347,6 +348,10 @@ public class NetworkClient {
             flagShown = true;
         } else if (type.equals("COUNTDOWN")) {
             countdownText = parts[1];
+        } else if (type.equals("TICK")) {
+            serverTime = Float.parseFloat(parts[1]);
+            haveServerTime = true;
+            noteArrival(clock - serverTime);
         } else if (type.equals("POS")) {
             if (parts[1].equals(playerId)) return;
             PositionPacket pp = new PositionPacket();
@@ -361,7 +366,7 @@ public class NetworkClient {
                 history = new PoseHistory();
                 poseHistory.put(pp.playerId, history);
             }
-            history.add(pp.x, pp.y, pp.rotation, clock);
+            history.add(pp.x, pp.y, pp.rotation, haveServerTime ? serverTime : clock);
         } else if (type.equals("LEADER")) {
             // LEADER|name|laps|progress|finishTime|name|...
             List<Entry> entries = new ArrayList<>();
@@ -466,7 +471,8 @@ public class NetworkClient {
             out[2] = latest.rotation;
             return true;
         }
-        history.sample(clock - INTERPOLATION_DELAY, out);
+        float renderTime = haveServerTime ? clock - clockOffset - bufferDelay : clock - INTERPOLATION_DELAY;
+        history.sample(renderTime, clock, out);
         return true;
     }
 
@@ -606,6 +612,16 @@ public class NetworkClient {
         return difficulty;
     }
 
+    /** the car picked in the garage (see CarModel) */
+    private int myCar = 4;
+
+    /**
+     * @param car the car number picked in the garage
+     */
+    public void setMyCar(int car) {
+        myCar = car;
+    }
+
     /**
      * @return the map this race is on
      */
@@ -716,29 +732,129 @@ public class NetworkClient {
     /**
      * the last two positions received for an online opponent, and when they arrived
      */
-    private static class PoseHistory {
-        float x0, y0, r0, t0;
-        float x1, y1, r1, t1;
-        boolean hasTwo = false;
-        boolean hasOne = false;
+    // ---------------------------------------------------------------- smoothing online cars
 
-        void add(float x, float y, float rotation, float time) {
-            if (hasOne) {
-                x0 = x1; y0 = y1; r0 = r1; t0 = t1;
-                hasTwo = true;
+    /** the server's clock in the newest TICK message */
+    private float serverTime = 0f;
+    private boolean haveServerTime = false;
+    /** our clock minus the server's, for messages that came straight through */
+    private float clockOffset = 0f;
+    private boolean haveOffset = false;
+    /** how late messages have been arriving lately (seconds) */
+    private float jitter = 0f;
+    /** how far in the past online cars are drawn: longer on a bumpy connection */
+    private float bufferDelay = 0.12f;
+
+    /**
+     * learns from each server tick how late it arrived, and sizes the buffer to match:
+     * a steady connection draws cars about 0.1 s in the past, a jumpy one up to 0.45 s
+     * @param sample our clock minus the server's when this tick arrived
+     */
+    private void noteArrival(float sample) {
+        if (!haveOffset) {
+            clockOffset = sample;
+            haveOffset = true;
+        } else if (sample < clockOffset) {
+            clockOffset += (sample - clockOffset) * 0.5f;     // a faster arrival: trust it quickly
+        } else {
+            clockOffset += (sample - clockOffset) * 0.01f;    // drift slowly with the clocks
+        }
+        float late = Math.max(0f, sample - clockOffset);
+        jitter = Math.max(late, jitter * 0.995f);
+        float wanted = Math.max(0.1f, Math.min(0.45f, UPDATE_INTERVAL * 1.5f + jitter * 1.1f));
+        bufferDelay += (wanted - bufferDelay) * 0.05f;
+    }
+
+    /**
+     * The last couple of seconds of one online car's positions, stamped with the server's
+     * clock. It's drawn a little in the past, sliding between the two updates around that
+     * moment; if updates stop coming it carries on the way it was going for a moment, and
+     * any small jump left over is eased out rather than snapped.
+     */
+    private static class PoseHistory {
+        private static final int SIZE = 24;
+        /** how long to keep moving on the last known speed when updates stop */
+        private static final float MAX_PREDICT = 0.25f;
+        private final float[] t = new float[SIZE], x = new float[SIZE], y = new float[SIZE], r = new float[SIZE];
+        private int count = 0;
+        boolean hasTwo = false;
+        // what was drawn last frame, for easing out corrections
+        private float shownX, shownY, shownR, lastFrame = -1f;
+
+        void add(float px, float py, float rotation, float time) {
+            if (count > 0 && time <= t[count - 1]) {
+                // same server tick (or out of order): keep the newest numbers
+                int i = count - 1;
+                x[i] = px;
+                y[i] = py;
+                r[i] = rotation;
+                return;
             }
-            x1 = x; y1 = y; r1 = rotation; t1 = time;
-            hasOne = true;
+            if (count == SIZE) {
+                System.arraycopy(t, 1, t, 0, SIZE - 1);
+                System.arraycopy(x, 1, x, 0, SIZE - 1);
+                System.arraycopy(y, 1, y, 0, SIZE - 1);
+                System.arraycopy(r, 1, r, 0, SIZE - 1);
+                count--;
+            }
+            t[count] = time;
+            x[count] = px;
+            y[count] = py;
+            r[count] = rotation;
+            count++;
+            hasTwo = count >= 2;
         }
 
-        void sample(float time, float[] out) {
-            float span = t1 - t0;
-            float a = span > 1e-4f ? (time - t0) / span : 1f;
-            a = Math.max(0f, Math.min(1.2f, a));   // a little past the newest update if one is late
-            out[0] = x0 + (x1 - x0) * a;
-            out[1] = y0 + (y1 - y0) * a;
-            float dr = ((r1 - r0) % 360f + 540f) % 360f - 180f;   // shortest way round
-            out[2] = r0 + dr * a;
+        /**
+         * @param time the moment to show (server clock)   @param now our clock, for the easing
+         * @param out filled with x, y, rotation
+         */
+        void sample(float time, float now, float[] out) {
+            int last = count - 1;
+            float tx, ty, tr;
+            if (time >= t[last]) {
+                // past the newest update: predict from the last two, for a short while
+                float span = Math.max(1e-3f, t[last] - t[last - 1]);
+                float ahead = Math.min(time - t[last], MAX_PREDICT);
+                tx = x[last] + (x[last] - x[last - 1]) / span * ahead;
+                ty = y[last] + (y[last] - y[last - 1]) / span * ahead;
+                tr = r[last] + turn(r[last - 1], r[last]) / span * ahead;
+            } else if (time <= t[0]) {
+                tx = x[0];
+                ty = y[0];
+                tr = r[0];
+            } else {
+                int i = last - 1;
+                while (i > 0 && t[i] > time) {
+                    i--;
+                }
+                float a = (time - t[i]) / Math.max(1e-4f, t[i + 1] - t[i]);
+                tx = x[i] + (x[i + 1] - x[i]) * a;
+                ty = y[i] + (y[i + 1] - y[i]) * a;
+                tr = r[i] + turn(r[i], r[i + 1]) * a;
+            }
+            // ease out what's left of any jump; a big one (a respawn) snaps straight there
+            float dt = lastFrame < 0f ? 1f : now - lastFrame;
+            lastFrame = now;
+            float dist = (float) Math.hypot(tx - shownX, ty - shownY);
+            if (dist > 80f || dt >= 1f) {
+                shownX = tx;
+                shownY = ty;
+                shownR = tr;
+            } else {
+                float k = 1f - (float) Math.exp(-28f * dt);
+                shownX += (tx - shownX) * k;
+                shownY += (ty - shownY) * k;
+                shownR += turn(shownR, tr) * k;
+            }
+            out[0] = shownX;
+            out[1] = shownY;
+            out[2] = shownR;
+        }
+
+        /** shortest way round from one angle to another, in degrees */
+        private static float turn(float from, float to) {
+            return ((to - from) % 360f + 540f) % 360f - 180f;
         }
     }
 }

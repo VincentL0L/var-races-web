@@ -62,6 +62,7 @@ public class LobbyScreen implements Screen {
             networkClient = new NetworkClient(null);
             networkClient.start(singlePlayerMap);
         }
+        networkClient.setMyCar(selectedCar);
         map = networkClient.getMap();
         backdrop = new TrackBackdrop(map);
         // car1-3 are the players' skins; the CPUs drive car4-6, or the map's own car (Waymos)
@@ -211,11 +212,10 @@ public class LobbyScreen implements Screen {
         drivers.clear();
 
         // you first, then everyone else, then the CPUs
-        drivers.add(driverRow(cars[selectedCar - 1], "YOU", true, networkClient.isReady() ? "READY" : null)).row();
+        drivers.add(driverRow(skin(selectedCar), "YOU", true, networkClient.isReady() ? "READY" : null)).row();
         for (String id : ids) {
             if (!id.equals(me)) {
-                int car = MathUtils.clamp(networkClient.getOpponentCar(id), 1, 3);
-                drivers.add(driverRow(cars[car - 1], id.toUpperCase(), false,
+                drivers.add(driverRow(skin(networkClient.getOpponentCar(id)), id.toUpperCase(), false,
                     networkClient.isPlayerReady(id) ? "READY" : null)).row();
             }
         }
@@ -233,6 +233,18 @@ public class LobbyScreen implements Screen {
                 drivers.add(driverRow(cars[3 + i], map.displayName("CPU" + (i + 1)), false, "CPU")).row();
             }
         }
+    }
+
+    private final java.util.Map<Integer, Texture> playerSkins = new java.util.HashMap<>();
+
+    /** a player's garage car sprite (loaded once) */
+    private Texture skin(int car) {
+        Texture t = playerSkins.get(car);
+        if (t == null) {
+            t = new Texture(Gdx.files.internal(io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarModel.sprite(car)));
+            playerSkins.put(car, t);
+        }
+        return t;
     }
 
     /**
@@ -318,6 +330,9 @@ public class LobbyScreen implements Screen {
             startFlag.dispose();
         }
         for (Texture t : cars) {
+            t.dispose();
+        }
+        for (Texture t : playerSkins.values()) {
             t.dispose();
         }
         uiStage.dispose();

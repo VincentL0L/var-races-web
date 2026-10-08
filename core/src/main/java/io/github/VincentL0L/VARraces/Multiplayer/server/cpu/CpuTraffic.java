@@ -50,6 +50,13 @@ public class CpuTraffic {
      * @param heading direction in degrees (90 = up)
      */
     public void setPlayer(String id, float x, float y, float heading) {
+        setPlayer(id, x, y, heading, 1f);
+    }
+
+    /**
+     * @param mass the player's car weight (1 = standard), so a heavy car shoves CPUs harder
+     */
+    public void setPlayer(String id, float x, float y, float heading, float mass) {
         PlayerCar p = players.get(id);
         if (p == null) {
             p = new PlayerCar();
@@ -60,6 +67,7 @@ public class CpuTraffic {
         p.newX = x;
         p.newY = y;
         p.heading = heading;
+        p.mass = mass;
     }
 
     /**
@@ -168,8 +176,11 @@ public class CpuTraffic {
                         any = true;
                         addClearance(push);
                         // the player's own game moves the player; here only the CPU moves
+                        // the heavier the player's car, the more of the push and the bump the CPU takes
+                        float share = p.mass / (1f + p.mass);
+                        push.scl(Math.min(1.5f, 2f * share));
                         moveIfOnRoad(a, push.x, push.y);
-                        bump(a, push, p.speed * MathUtils.cosDeg(p.heading), p.speed * MathUtils.sinDeg(p.heading));
+                        bump(a, push, p.speed * MathUtils.cosDeg(p.heading), p.speed * MathUtils.sinDeg(p.heading), share);
                     }
                 }
             }
@@ -204,23 +215,26 @@ public class CpuTraffic {
         // trade momentum: the faster car shoves the slower one along
         float avx = a.getSpeed() * MathUtils.cosDeg(a.getRotation()), avy = a.getSpeed() * MathUtils.sinDeg(a.getRotation());
         float bvx = b.getSpeed() * MathUtils.cosDeg(b.getRotation()), bvy = b.getSpeed() * MathUtils.sinDeg(b.getRotation());
-        bump(a, pushA, bvx, bvy);
-        bump(b, new Vector2(-pushA.x, -pushA.y), avx, avy);
+        bump(a, pushA, bvx, bvy, 0.5f);
+        bump(b, new Vector2(-pushA.x, -pushA.y), avx, avy, 0.5f);
     }
 
     /** a little bounce in every bump (0 = cars stick together, 1 = perfect bounce) */
     private static final float BOUNCE = 0.25f;
 
     /**
-     * A bump between two cars of the same weight, along the line between them: each car
-     * takes half the speed they were closing at. So a fast car that rear-ends a slow one
-     * shoves it forward and only loses part of its own speed. The car keeps pointing the
+     * A bump between two cars, along the line between them: each car takes a share of the
+     * speed they were closing at (half for cars of the same weight, less for the heavier
+     * one). So a fast car that rear-ends a slow one shoves it forward and only loses part
+     * of its own speed. The car keeps pointing the
      * way it was going (the sideways part is just the positions being pushed apart).
      * @param car this car
      * @param pushAway the direction it's being pushed (away from the other car)
      * @param otherVx other car's velocity x   @param otherVy other car's velocity y
+     * @param take this car's share of the speed change: the other car's share of the total
+     * weight (0.5 for two cars of the same weight)
      */
-    static void bump(Opponent car, Vector2 pushAway, float otherVx, float otherVy) {
+    static void bump(Opponent car, Vector2 pushAway, float otherVx, float otherVy, float take) {
         float len = pushAway.len();
         if (len < 1e-4f) {
             return;
@@ -232,8 +246,8 @@ public class CpuTraffic {
         if (closing >= 0f) {
             return;
         }
-        vx -= nx * closing * 0.5f * (1f + BOUNCE);
-        vy -= ny * closing * 0.5f * (1f + BOUNCE);
+        vx -= nx * closing * take * (1f + BOUNCE);
+        vy -= ny * closing * take * (1f + BOUNCE);
         car.setSpeed(Math.max(0f, vx * fx + vy * fy));
     }
 
@@ -267,6 +281,6 @@ public class CpuTraffic {
 
     /** latest known state of a human player */
     private static class PlayerCar {
-        float x, y, newX, newY, heading, speed;
+        float x, y, newX, newY, heading, speed, mass = 1f;
     }
 }

@@ -34,6 +34,7 @@ import io.github.VincentL0L.VARraces.Multiplayer.client.NetworkClient;
 import io.github.VincentL0L.VARraces.Multiplayer.packets.PositionPacket;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RacerInfo;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarModel;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 
 /**
@@ -267,7 +268,7 @@ public class GameScreen implements Screen {
             }
             OpponentState state = nwOpp.get(id);
             if (state == null) {
-                Image actor = new Image(oppSkins[skinFor(id) - 1]);
+                Image actor = new Image(skinFor(id));
                 actor.setSize(player.getWidth(), player.getHeight());
                 actor.setOrigin(actor.getWidth() / 2, actor.getHeight() / 2);
                 stage.addActor(actor);
@@ -289,9 +290,12 @@ public class GameScreen implements Screen {
 
         // bump into the other cars (they're drawn 10x20 like the player, so their image is their body)
         if (!frozen) {
-            for (OpponentState other : nwOpp.values()) {
+            for (Map.Entry<String, OpponentState> e : nwOpp.entrySet()) {
+                OpponentState other = e.getValue();
+                // CPUs weigh the standard amount; other players weigh what their car does
+                float mass = e.getKey().startsWith("CPU") ? 1f : CarModel.of(nc.getOpponentCar(e.getKey())).mass;
                 player.collideWith(other.img.getX(), other.img.getY(), other.img.getRotation() + 90f,
-                    other.velocity.x, other.velocity.y);
+                    other.velocity.x, other.velocity.y, mass);
             }
         }
 
@@ -447,12 +451,22 @@ public class GameScreen implements Screen {
      * @param id opponent id
      * @return which car sprite to draw: CPU1-3 use cars 4-6, players use the car they picked
      */
-    private int skinFor(String id) {
+    private Texture skinFor(String id) {
         if (id.startsWith("CPU") && id.length() == 4) {
-            return 3 + MathUtils.clamp(id.charAt(3) - '0', 1, 3);
+            return oppSkins[2 + MathUtils.clamp(id.charAt(3) - '0', 1, 3)];
         }
-        return MathUtils.clamp(nc.getOpponentCar(id), 1, 3);
+        // other players: the car they picked in the garage (loaded once per car)
+        int car = nc.getOpponentCar(id);
+        Texture t = playerSkins.get(car);
+        if (t == null) {
+            t = new Texture(Gdx.files.internal(CarModel.sprite(car)));
+            t.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
+            playerSkins.put(car, t);
+        }
+        return t;
     }
+
+    private final Map<Integer, Texture> playerSkins = new HashMap<>();
 
     /**
      * removes all opponents aren't part of the race anymore
@@ -508,6 +522,9 @@ public class GameScreen implements Screen {
         pauseSkin.dispose();
         over.dispose();
         stage.dispose();
+        for (Texture t : playerSkins.values()) {
+            t.dispose();
+        }
         for (Texture t : oppSkins) {
             t.dispose();
         }

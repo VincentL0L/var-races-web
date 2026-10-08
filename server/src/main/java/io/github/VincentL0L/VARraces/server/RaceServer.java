@@ -103,7 +103,7 @@ public class RaceServer extends WebSocketServer {
      */
     private void joinRoom(WebSocket conn, Room room, int car) {
         playerRooms.put(conn, room);
-        room.join(conn, Math.max(1, Math.min(3, car)));
+        room.join(conn, Math.max(1, Math.min(io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarModel.count(), car)));
     }
 
     /**

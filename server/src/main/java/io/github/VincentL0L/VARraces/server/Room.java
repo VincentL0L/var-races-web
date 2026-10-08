@@ -10,6 +10,7 @@ import org.java_websocket.WebSocket;
 import com.badlogic.gdx.math.Vector2;
 
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarBody;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarModel;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Opponent;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CpuTraffic;
@@ -34,6 +35,7 @@ public class Room {
     private final List<Vector2> waypoints;
     private final RaceManager raceManager;
     private final ItemSystem items;
+    private float roomClock = 0f;
     // race settings, chosen by the host in the lobby
     private int laps = 1;
     private int difficulty = 1;
@@ -177,6 +179,10 @@ public class Room {
      * @param delta seconds since last tick
      */
     public void tick(float delta) {
+        // every update is stamped with the room's clock, so players' games can space the
+        // cars' movement evenly however unevenly the messages arrive
+        roomClock += delta;
+        broadcast("TICK|" + roomClock);
         if (countdownInProgress) {
             countdownTimer += delta;
             String text;
@@ -197,7 +203,7 @@ public class Room {
 
         // all CPUs move together so they avoid and bump each other and the players
         for (PlayerState p : players.values()) {
-            traffic.setPlayer(p.id, p.position.x, p.position.y, p.rotation + 90f);
+            traffic.setPlayer(p.id, p.position.x, p.position.y, p.rotation + 90f, CarModel.of(p.car).mass);
         }
         traffic.update(delta, started);
         if (started) {

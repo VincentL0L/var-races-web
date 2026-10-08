@@ -1,5 +1,6 @@
 package io.github.VincentL0L.VARraces;
 
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarModel;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -25,6 +26,8 @@ public class Player {
     /** true on maps with walls beside the track (see Barriers) */
     private static boolean barriers = false;
     private Texture car;
+    /** the car picked in the garage: its launch, power, handling and weight */
+    private CarModel model = CarModel.ALL[1];
     private Image i;
     private Vector2 velocity;
     private Sound oof;
@@ -124,6 +127,13 @@ public class Player {
     }
 
     /**
+     * @return this car's weight (1 = standard)
+     */
+    public float getMass() {
+        return model.mass;
+    }
+
+    /**
      * @return true while spun out
      */
     public boolean isSpinning() {
@@ -145,7 +155,8 @@ public class Player {
     public Player(Stage stage, int carNumber, TrackMap map) {
         this.currentWaypointIndex = 0; 
         
-        car = new Texture(Gdx.files.internal("ui/car" + carNumber + ".png"));
+        model = CarModel.of(carNumber);
+        car = new Texture(Gdx.files.internal(CarModel.sprite(carNumber)));
         // smooth filtering looks best on a small rotating pixel-art sprite
         car.setFilter(Texture.TextureFilter.Linear, Texture.TextureFilter.Linear);
         float scaleFactor = CarBody.WIDTH / car.getWidth();
@@ -260,8 +271,8 @@ public class Player {
             if (forward < 0) {
                 forward = Math.min(0f, forward + BRAKE_DECEL * dt);  // going backwards: gas acts as a brake first
             } else {
-                float traction = isBoosting ? BOOST_TRACTION : TRACTION;
-                float power = ENGINE_POWER * (isBoosting ? BOOST_POWER_MULT : 1f) * itemPower();
+                float traction = (isBoosting ? BOOST_TRACTION : TRACTION) * model.traction;
+                float power = ENGINE_POWER * model.power * (isBoosting ? BOOST_POWER_MULT : 1f) * itemPower();
                 forward += Math.min(traction * (nitroTimer > 0f ? 1.8f : 1f), power / Math.max(forward, 1f)) * dt;
             }
         } else {
@@ -278,7 +289,7 @@ public class Player {
         }
 
         // tires resist sliding sideways; less grip while boosting (a little drift) and on grass
-        float grip = onGrass ? GRASS_GRIP : isBoosting ? BOOST_GRIP : GRIP;
+        float grip = onGrass ? GRASS_GRIP : (isBoosting ? BOOST_GRIP : GRIP) * model.handling;
         sideways *= (float) Math.exp(-grip * dt);
 
         velocity.set(fx * forward - fy * sideways, fy * forward + fx * sideways);
@@ -289,7 +300,7 @@ public class Player {
         float speed = Math.abs(forward);
         float speedFactor = MathUtils.clamp(speed / 70f, 0f, 1f) / (1f + speed / 550f);
         float direction = forward >= 0 ? 1f : -1f;  // steering flips when reversing, like a real car
-        i.rotateBy(steer * MAX_YAW_RATE * speedFactor * direction * dt);
+        i.rotateBy(steer * MAX_YAW_RATE * model.handling * speedFactor * direction * dt);
         if (speed < 1f && !gas && !creeping) {
             velocity.setZero();
         }
@@ -322,8 +333,8 @@ public class Player {
             if (forward < 0f) {
                 forward = approachZero(forward, BRAKE_DECEL * dt);
             } else {
-                float traction = isBoosting ? BOOST_TRACTION : TRACTION;
-                float power = ENGINE_POWER * (isBoosting ? BOOST_POWER_MULT : 1f) * itemPower();
+                float traction = (isBoosting ? BOOST_TRACTION : TRACTION) * model.traction;
+                float power = ENGINE_POWER * model.power * (isBoosting ? BOOST_POWER_MULT : 1f) * itemPower();
                 forward += Math.min(traction * (nitroTimer > 0f ? 1.8f : 1f), power / Math.max(forward, 1f)) * dt;
             }
         } else if (!touchBackwards && forward >= 0f && forward < IDLE_CREEP) {
@@ -381,11 +392,15 @@ public class Player {
      * @param ox other car image x   @param oy other car image y
      * @param oHeading other car's heading in degrees (90 = up)
      * @param oVx other car's velocity x   @param oVy other car's velocity y
+     * @param oMass other car's weight (1 = standard)
      */
-    public void collideWith(float ox, float oy, float oHeading, float oVx, float oVy) {
+    public void collideWith(float ox, float oy, float oHeading, float oVx, float oVy, float oMass) {
         if (!CarBody.separation(getX(), getY(), getRotation() + 90f, ox, oy, oHeading, push)) {
             return;
         }
+        // the lighter car gets moved more (a heavy car hardly budges)
+        float share = 2f * oMass / (model.mass + oMass);
+        push.scl(Math.min(1.5f, share));
         float nx = getX() + push.x;
         float ny = getY() + push.y;
         if (inBounds(nx, ny, getWidth(), getHeight())) {
@@ -399,8 +414,10 @@ public class Player {
         // rear-ending a slower car shoves it along instead of stopping us dead
         float into = (velocity.x - oVx) * dirX + (velocity.y - oVy) * dirY;   // negative = closing
         if (into < 0f) {
-            velocity.x -= dirX * into * 0.5f * (1f + CAR_BOUNCE);
-            velocity.y -= dirY * into * 0.5f * (1f + CAR_BOUNCE);
+            // momentum: our change in speed is the other car's share of the total weight
+            float take = oMass / (model.mass + oMass);
+            velocity.x -= dirX * into * take * (1f + CAR_BOUNCE);
+            velocity.y -= dirY * into * take * (1f + CAR_BOUNCE);
             if (-into > 60f) {
                 bump();
             }
