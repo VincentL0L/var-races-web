@@ -19,6 +19,12 @@ processResources {
   from(rootProject.file('assets/maps/sf/road_mask.png')) {
     rename { 'sf_road_mask.png' }
   }
+  from(rootProject.file('assets/maps/tokyo/road_mask.png')) {
+    rename { 'tokyo_road_mask.png' }
+  }
+  from(rootProject.file('assets/maps/nyc/road_mask.png')) {
+    rename { 'nyc_road_mask.png' }
+  }
 }
 
 // one runnable jar with everything inside: server/build/libs/var-races-server.jar

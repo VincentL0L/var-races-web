@@ -75,6 +75,34 @@ public class Waypoints {
         return waypoints;
     }
 
+    /**
+     * Tokyo: over the Sumida three times, through the Shibuya scramble, around Shiba Park
+     * and Tokyo Tower. Same shape as tools/MakeCities.java paints; the last point is the start line.
+     * @return waypoints
+     */
+    public static List<Vector2> getTokyoWaypoints() {
+        return points(200, 860, 700, 860, 700, 620, 1200, 620, 1200, 900, 1760, 900, 1760, 200,
+            1000, 200, 1000, 420, 520, 420, 520, 230, 200, 230, 200, 300);
+    }
+
+    /**
+     * New York: past Central Park, over the Brooklyn Bridge and back over the Manhattan
+     * Bridge, through Times Square. Same shape as tools/MakeCities.java paints.
+     * @return waypoints
+     */
+    public static List<Vector2> getNewYorkWaypoints() {
+        return points(200, 700, 560, 700, 560, 900, 1760, 900, 1760, 200, 1240, 200, 1240, 520,
+            860, 520, 860, 230, 200, 230, 200, 300);
+    }
+
+    private static List<Vector2> points(int... xy) {
+        List<Vector2> waypoints = new ArrayList<>();
+        for (int i = 0; i + 1 < xy.length; i += 2) {
+            waypoints.add(new Vector2(xy[i], xy[i + 1]));
+        }
+        return waypoints;
+    }
+
     public static List<Vector2> getWaypoints() {
         List<Vector2> waypoints = new ArrayList<>();
 

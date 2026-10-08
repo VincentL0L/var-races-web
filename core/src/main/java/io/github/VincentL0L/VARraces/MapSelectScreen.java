@@ -28,7 +28,7 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
  * its name and a line about it. The frosted track drifting behind is the highlighted map.
  */
 public class MapSelectScreen implements Screen {
-    private static final float TILE_WIDTH = 250f;
+    private static final float TILE_WIDTH = 230f;
     /** the last map picked, highlighted first next time */
     private static String lastMap = TrackMap.CLASSIC;
 
@@ -74,7 +74,7 @@ public class MapSelectScreen implements Screen {
 
         Table row = new Table();
         for (int i = 0; i < maps.size(); i++) {
-            row.add(tile(i)).width(TILE_WIDTH).top().padLeft(i == 0 ? 0 : 16);
+            row.add(tile(i)).width(TILE_WIDTH).fillY().padLeft(i == 0 ? 0 : 16);
         }
         card.add(row).row();
 
@@ -109,10 +109,11 @@ public class MapSelectScreen implements Screen {
 
         Table tile = new Table();
         tile.pad(10, 10, 12, 10);
+        tile.top();
         tile.setTouchable(Touchable.enabled);
         float imageWidth = TILE_WIDTH - 20f;
         tile.add(new Image(preview)).size(imageWidth, imageWidth * 9f / 16f).row();
-        Label name = new Label(map.name.toUpperCase(), new LabelStyle(Ui.display(20), Ui.CREAM));
+        Label name = new Label(map.name.toUpperCase(), new LabelStyle(Ui.display(18), Ui.CREAM));
         tile.add(name).left().padTop(10).row();
         Label tagline = new Label(map.tagline, new LabelStyle(Ui.font(10), Cards.LABEL));
         tagline.setWrap(true);

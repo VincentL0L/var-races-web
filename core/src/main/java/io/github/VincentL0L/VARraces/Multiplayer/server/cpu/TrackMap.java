@@ -15,6 +15,8 @@ import com.badlogic.gdx.math.Vector2;
 public class TrackMap {
     public static final String CLASSIC = "classic";
     public static final String SAN_FRANCISCO = "sf";
+    public static final String TOKYO = "tokyo";
+    public static final String NEW_YORK = "nyc";
 
     /** short id sent between the game and the server */
     public final String id;
@@ -65,6 +67,14 @@ public class TrackMap {
                 "Over the Golden Gate and down the Embarcadero, against Waymos.",
                 "maps/sf/", "sf_road_mask.png", Waypoints.getSanFranciscoWaypoints(), true,
                 "ui/waymo.png", "WAYMO"));
+            maps.add(new TrackMap(TOKYO, "Tokyo",
+                "Through the Shibuya scramble and around Tokyo Tower, against kei cars.",
+                "maps/tokyo/", "tokyo_road_mask.png", Waypoints.getTokyoWaypoints(), true,
+                "ui/kei.png", "KEI"));
+            maps.add(new TrackMap(NEW_YORK, "New York",
+                "Past Central Park, over the Brooklyn Bridge and through Times Square, against yellow cabs.",
+                "maps/nyc/", "nyc_road_mask.png", Waypoints.getNewYorkWaypoints(), true,
+                "ui/cab.png", "CAB"));
         }
         return maps;
     }
