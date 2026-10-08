@@ -12,7 +12,6 @@ import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.Texture.TextureFilter;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.GlyphLayout;
-import com.badlogic.gdx.graphics.g2d.NinePatch;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.MathUtils;
@@ -54,8 +53,7 @@ public class TitleBackdrop {
     private static final Color SHADE = new Color(0.05f, 0.03f, 0.02f, 0.45f);
     private static final Color CLEAR = new Color(0.05f, 0.03f, 0.02f, 0f);
     private final Texture white;
-    private final NinePatch panel = Ui.patch("panel", 6, 6, 6, 6);
-    private final BitmapFont title = Ui.displayOutlined(80);
+    private final BitmapFont title = Ui.display(80);
     private final GlyphLayout layout = new GlyphLayout();
     private float clock = 0f;
     private float camX = START_X, camY = START_Y;
@@ -85,10 +83,9 @@ public class TitleBackdrop {
      */
     public void render(float delta, boolean showTitle) {
         clock += delta;
-        // wait a moment on the animals, then the race starts and the camera follows the leader
-        boolean racing = clock > 1.5f;
-        traffic.update(delta, racing);
-        if (racing) {
+        // the race is on from the first frame; the camera follows the leader
+        traffic.update(delta, true);
+        {
             Vector2 leader = cars.get(0).getPosition();
             for (Opponent car : cars) {
                 if (car.getLapCount() * 100000 + car.getCurrentWaypointIndex() * 1000
@@ -133,35 +130,37 @@ public class TitleBackdrop {
         batch.end();
     }
 
-    /** the VAR RACES sign: red like the one on the track, in a gold frame, gently bobbing */
+    /**
+     * the VAR RACES sign: plain red and white, like the one on the track, with a faint
+     * shimmer rolling across it like light on a waving flag
+     */
     private void drawSign(float w, float h) {
         float scale = Math.min(1f, Math.min(w / 900f, h / 620f));
         title.getData().setScale(80f / 64f * scale);
         layout.setText(title, "VAR RACES");
-        float signW = layout.width + 90f * scale, signH = layout.height + 64f * scale;
+        float signW = layout.width + 80f * scale, signH = layout.height + 56f * scale;
         float x = (w - signW) / 2f;
-        float y = h - signH - 34f * scale + MathUtils.sin(clock * 1.6f) * 3f;
-        // drop shadow, frame, red face, then a lighter band like a lit sign
-        batch.setColor(0f, 0f, 0f, 0.35f);
-        batch.draw(white, x + 8, y - 8, signW, signH);
+        float y = h - signH - 40f * scale;
+        float border = 4f * scale;
+
+        batch.setColor(0f, 0f, 0f, 0.3f);
+        batch.draw(white, x + 6, y - 6, signW, signH);            // soft shadow
         batch.setColor(Color.WHITE);
-        panel.draw(batch, x, y, signW, signH);
-        float inset = 6 * Ui.PIXEL;
-        batch.setColor(0.86f, 0.16f, 0.12f, 1f);
-        batch.draw(white, x + inset, y + inset, signW - inset * 2, signH - inset * 2);
-        batch.setColor(1f, 0.42f, 0.32f, 1f);
-        batch.draw(white, x + inset, y + signH - inset - 3 * Ui.PIXEL, signW - inset * 2, 3 * Ui.PIXEL);
-        batch.setColor(0.6f, 0.08f, 0.06f, 1f);
-        batch.draw(white, x + inset, y + inset, signW - inset * 2, 2 * Ui.PIXEL);
-        batch.setColor(Color.WHITE);
-        // light bulbs around the edge, chasing like a marquee
-        int bulbs = (int) (signW / 22f);
-        for (int i = 0; i < bulbs; i++) {
-            boolean on = ((i + (int) (clock * 6f)) % 3) != 0;
-            batch.setColor(on ? 1f : 0.55f, on ? 0.92f : 0.45f, on ? 0.55f : 0.2f, 1f);
-            float bx = x + inset + 8 + i * (signW - inset * 2 - 16) / Math.max(1, bulbs - 1);
-            batch.draw(white, bx - 3, y + signH - inset - 7f, 6, 6);
-            batch.draw(white, bx - 3, y + inset + 4f, 6, 6);
+        batch.draw(white, x, y, signW, signH);                    // white edge
+        batch.setColor(0.88f, 0.16f, 0.12f, 1f);
+        batch.draw(white, x + border, y + border, signW - border * 2, signH - border * 2);
+        // the shimmer: thin columns a touch lighter or darker, drifting slowly sideways
+        float inner = signW - border * 2;
+        int columns = (int) (inner / 3f);
+        for (int i = 0; i < columns; i++) {
+            float t = i / (float) columns;
+            float wave = MathUtils.sin(t * 9f - clock * 1.4f) * 0.5f + MathUtils.sin(t * 4f - clock * 0.7f) * 0.5f;
+            if (wave > 0f) {
+                batch.setColor(1f, 1f, 1f, 0.09f * wave);
+            } else {
+                batch.setColor(0f, 0f, 0f, 0.08f * -wave);
+            }
+            batch.draw(white, x + border + i * 3f, y + border, 3f, signH - border * 2);
         }
         batch.setColor(Color.WHITE);
         title.setColor(Color.WHITE);
