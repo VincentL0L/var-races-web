@@ -199,7 +199,7 @@ public class GameScreen implements Screen {
         // controls work while racing and not paused
         player.setInputEnabled(start && !done && !paused);
         if (touch == null) {
-            player.setTouchInput(false, false, false, false, false);
+            player.setTouchInput(false, 0f, false, false, false);
         }
         if (!frozen) {
             player.render(delta);

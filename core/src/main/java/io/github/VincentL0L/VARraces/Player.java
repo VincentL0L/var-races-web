@@ -84,8 +84,11 @@ public class Player {
 
     private Vector2 prevPos = null;
     private boolean inputEnabled = false;
-    // on-screen buttons (TouchControls), held down this frame
-    private boolean touchGas, touchBrake, touchLeft, touchRight, touchBoost;
+    // phone controls (TouchControls): joystick steering amount and the pedal
+    private boolean touchActive, touchGas, touchBoost, touchReverse;
+    private float touchSteer;
+    /** on phones, lifting off the pedal brakes this hard (but never reverses) */
+    private static final float LIFT_BRAKE = 300f;
 
     /**
      * Creates a player class and initializes textures, sounds, and other fields
@@ -126,11 +129,18 @@ public class Player {
         }
 
         // WASD or the arrow keys, or the on-screen buttons on phones and tablets
+        // WASD or the arrow keys, or the joystick and pedal on phones and tablets
         boolean gas = inputEnabled && (touchGas || Gdx.input.isKeyPressed(Input.Keys.W) || Gdx.input.isKeyPressed(Input.Keys.UP));
-        boolean brake = inputEnabled && (touchBrake || Gdx.input.isKeyPressed(Input.Keys.S) || Gdx.input.isKeyPressed(Input.Keys.DOWN));
-        boolean left = inputEnabled && (touchLeft || Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT));
-        boolean right = inputEnabled && (touchRight || Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT));
+        boolean brake = inputEnabled && (touchReverse || Gdx.input.isKeyPressed(Input.Keys.S) || Gdx.input.isKeyPressed(Input.Keys.DOWN));
+        boolean left = inputEnabled && (Gdx.input.isKeyPressed(Input.Keys.A) || Gdx.input.isKeyPressed(Input.Keys.LEFT));
+        boolean right = inputEnabled && (Gdx.input.isKeyPressed(Input.Keys.D) || Gdx.input.isKeyPressed(Input.Keys.RIGHT));
         boolean boost = inputEnabled && (touchBoost || Gdx.input.isKeyPressed(Input.Keys.SPACE));
+        // keys steer all the way; the joystick steers as far as it's pushed
+        float steerInput = (left ? 1f : 0f) - (right ? 1f : 0f);
+        if (inputEnabled && touchSteer != 0f) {
+            steerInput = MathUtils.clamp(touchSteer, -1f, 1f);
+        }
+        boolean liftBrake = inputEnabled && touchActive && !gas && !brake;
 
         if (gas) {
             sound.play();
@@ -145,7 +155,7 @@ public class Player {
         int steps = Math.max(1, (int) Math.ceil(time / MAX_STEP - 1e-4f));
         float dt = time / steps;
         for (int n = 0; n < steps; n++) {
-            step(dt, gas, brake, left, right, boost);
+            step(dt, gas, brake, steerInput, boost, liftBrake);
         }
 
         prevPos.set(getX(), getY());
@@ -154,7 +164,7 @@ public class Player {
     /**
      * one fixed physics step: engine, brakes, drag, steering, tire grip and walls
      */
-    private void step(float dt, boolean gas, boolean brake, boolean left, boolean right, boolean boost) {
+    private void step(float dt, boolean gas, boolean brake, float steerInput, boolean boost, boolean liftBrake) {
         // split velocity into "along the car" and "sideways" parts
         float heading = (i.getRotation() + 90) * MathUtils.degreesToRadians;
         float fx = MathUtils.cos(heading);
@@ -184,6 +194,8 @@ public class Player {
                 float power = ENGINE_POWER * (isBoosting ? BOOST_POWER_MULT : 1f);
                 forward += Math.min(traction, power / Math.max(forward, 1f)) * dt;
             }
+        } else if (liftBrake) {
+            forward = approachZero(forward, LIFT_BRAKE * dt);
         } else {
             forward = approachZero(forward, ENGINE_BRAKING * dt);
         }
@@ -204,7 +216,7 @@ public class Player {
         velocity.set(fx * forward - fy * sideways, fy * forward + fx * sideways);
 
         // steering: wheels turn smoothly, and a car can only rotate while it's moving
-        float steerTarget = (left ? 1f : 0f) - (right ? 1f : 0f);
+        float steerTarget = steerInput;
         steer += (steerTarget - steer) * Math.min(1f, STEER_RESPONSE * dt);
         float speed = Math.abs(forward);
         float speedFactor = MathUtils.clamp(speed / 70f, 0f, 1f) / (1f + speed / 550f);
@@ -401,13 +413,17 @@ public class Player {
     }
 
     /**
-     * which on-screen buttons are held down (phones and tablets)
+     * the phone controls this frame
+     * @param active true when the phone controls are in use (letting go of the pedal brakes)
+     * @param steer joystick: -1 full right .. 1 full left, 0 straight
+     * @param gas pedal held   @param boost pedal held after a double tap
+     * @param reverse joystick pulled down (brake, then reverse)
      */
-    public void setTouchInput(boolean gas, boolean brake, boolean left, boolean right, boolean boost) {
+    public void setTouchInput(boolean active, float steer, boolean gas, boolean boost, boolean reverse) {
+        touchActive = active;
+        touchSteer = steer;
         touchGas = gas;
-        touchBrake = brake;
-        touchLeft = left;
-        touchRight = right;
         touchBoost = boost;
+        touchReverse = reverse;
     }
 }
