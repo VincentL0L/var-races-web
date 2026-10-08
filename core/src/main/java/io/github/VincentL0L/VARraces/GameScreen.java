@@ -101,6 +101,7 @@ public class GameScreen implements Screen {
         nc = n;
         map = nc.getMap();
         rm = new RaceManager(map.waypoints);
+        rm.setLaps(nc.getLaps());
         trackWatch = new RaceManager(map.waypoints);
         nc.setRaceManager(rm);
 

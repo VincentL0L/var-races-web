@@ -47,11 +47,11 @@ public class Opponent {
     private float arriveRadius;
 
     // personality, picked once per CPU
-    private final float topSpeed;
-    private final float acceleration;
-    private final float braking;
-    private final float turnRate;        // degrees per second
-    private final float cornerRadius;    // how tight a corner it aims to drive at speed (smaller = braver)
+    private float topSpeed;
+    private float acceleration;
+    private float braking;
+    private float turnRate;              // degrees per second
+    private float cornerRadius;    // how tight a corner it aims to drive at speed (smaller = braver)
     private final float lineBias;        // -1 prefers the left side of the road, 1 the right
     private float reactionDelay;         // seconds before it reacts to GO
 
@@ -159,7 +159,7 @@ public class Opponent {
             if (currentWaypointIndex == waypoints.size()) {
                 currentWaypointIndex = 0;
                 lapCount++;
-                if (lapCount >= RaceManager.LAPS && !endless) {
+                if (lapCount >= laps && !endless) {
                     shouldStopAtNextWaypoint = true;
                 }
             }
@@ -443,6 +443,38 @@ public class Opponent {
      */
     public float getDisplayRotation() {
         return heading + spinAngle;
+    }
+
+    private int laps = 1;
+
+    /**
+     * @param count laps in this race
+     */
+    public void setLaps(int count) {
+        laps = Math.max(1, count);
+    }
+
+    /**
+     * Makes this CPU a weaker or stronger driver. Call once, right after creating it.
+     * @param difficulty 0 easy, 1 normal, 2 hard
+     */
+    public void setDifficulty(int difficulty) {
+        if (difficulty == 0) {
+            // slower, softer on the gas, brakes early and takes corners wide
+            topSpeed *= 0.84f;
+            acceleration *= 0.8f;
+            turnRate *= 0.9f;
+            cornerRadius *= 1.2f;
+            reactionDelay += 0.3f;
+        } else if (difficulty == 2) {
+            // a little faster than you, quick off the line and brave in the corners
+            topSpeed *= 1.08f;
+            acceleration *= 1.3f;
+            braking *= 1.1f;
+            turnRate *= 1.12f;
+            cornerRadius *= 0.88f;
+            reactionDelay *= 0.4f;
+        }
     }
 
     /** true: keeps lapping forever (the title screen's demo race) */

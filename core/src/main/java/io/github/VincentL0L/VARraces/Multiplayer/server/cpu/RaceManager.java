@@ -24,8 +24,10 @@ import io.github.VincentL0L.VARraces.Multiplayer.packets.LeaderboardPacket;
  */
 public class RaceManager {
 
-    /** laps in a race; change this one number to make races longer */
-    public static final int LAPS = 1;
+    /** lap counts a race can be set to, in the lobby */
+    public static final int[] LAP_CHOICES = {1, 2, 3, 5};
+    /** laps in this race */
+    private int laps = 1;
     /** seconds the red VAR RACES flag waves after everyone is ready, before the 3 2 1 countdown */
     public static final float FLAG_TIME = 2.15f;
 
@@ -120,10 +122,10 @@ public class RaceManager {
         info.position = new Vector2(position);
         if (!info.isFinished()) {
             info.progress = info.lap * trackLength + along(position, info.segment);
-            info.lapCount = Math.max(0, Math.min(LAPS, info.lap));
-            if (info.lap >= LAPS) {
+            info.lapCount = Math.max(0, Math.min(laps, info.lap));
+            if (info.lap >= laps) {
                 info.finishTime = raceTime;
-                info.progress = LAPS * trackLength;
+                info.progress = laps * trackLength;
             }
         }
     }
@@ -200,6 +202,20 @@ public class RaceManager {
      * Finished racers first, in the order they finished; then everyone else by distance driven.
      * @return racers in race order
      */
+    /**
+     * @param count laps in this race
+     */
+    public void setLaps(int count) {
+        laps = Math.max(1, count);
+    }
+
+    /**
+     * @return laps in this race
+     */
+    public int getLaps() {
+        return laps;
+    }
+
     public List<RacerInfo> getSortedLeaderboard() {
         List<RacerInfo> sorted = new ArrayList<>(racers);
         Collections.sort(sorted, new Comparator<RacerInfo>() {

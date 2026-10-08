@@ -338,6 +338,11 @@ public class NetworkClient {
             if (parts[1].equals(playerId)) {
                 myEffects.add(parts[2]);
             }
+        } else if (type.equals("SETTINGS")) {
+            laps = Integer.parseInt(parts[1]);
+            difficulty = Integer.parseInt(parts[2]);
+        } else if (type.equals("HOST")) {
+            hostId = parts[1];
         } else if (type.equals("FLAG")) {
             flagShown = true;
         } else if (type.equals("COUNTDOWN")) {
@@ -559,6 +564,48 @@ public class NetworkClient {
         return out;
     }
 
+    // race settings: laps and CPU difficulty (0 easy, 1 normal, 2 hard)
+    private int laps = 1;
+    private int difficulty = 1;
+    private String hostId;
+
+    /**
+     * changes the race settings (online only the host can, and the server tells everyone)
+     * @param lapCount laps   @param cpuDifficulty 0 easy, 1 normal, 2 hard
+     */
+    public void setRaceSettings(int lapCount, int cpuDifficulty) {
+        if (!canChangeSettings()) {
+            return;
+        }
+        if (isOnline()) {
+            send("SETTINGS|" + lapCount + "|" + cpuDifficulty);
+        } else {
+            laps = lapCount;
+            difficulty = cpuDifficulty;
+        }
+    }
+
+    /**
+     * @return true if this player may change the laps and difficulty (single player, or the online host)
+     */
+    public boolean canChangeSettings() {
+        return !flagShown && !gameStarted && (!isOnline() || (playerId != null && playerId.equals(hostId)));
+    }
+
+    /**
+     * @return laps in this race
+     */
+    public int getLaps() {
+        return laps;
+    }
+
+    /**
+     * @return CPU difficulty: 0 easy, 1 normal, 2 hard
+     */
+    public int getDifficulty() {
+        return difficulty;
+    }
+
     /**
      * @return the map this race is on
      */
@@ -626,6 +673,12 @@ public class NetworkClient {
         if (isOnline()) {
             send("READY|" + ready);
         } else if (ready && !gameStarted && !countdownInProgress) {
+            // the settings are locked in now
+            serverRaceManager.setLaps(laps);
+            for (Opponent cpu : cpuOpponents) {
+                cpu.setLaps(laps);
+                cpu.setDifficulty(difficulty);
+            }
             // the flag waves first, then the countdown starts
             countdownInProgress = true;
             countdownTimer = -RaceManager.FLAG_TIME;

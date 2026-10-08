@@ -34,6 +34,9 @@ public class Room {
     private final List<Vector2> waypoints;
     private final RaceManager raceManager;
     private final ItemSystem items;
+    // race settings, chosen by the host in the lobby
+    private int laps = 1;
+    private int difficulty = 1;
     private int nextPlayerNumber = 1;
     private boolean countdownInProgress = false;
     private boolean started = false;
@@ -77,6 +80,20 @@ public class Room {
         }
         players.put(conn, state);
         broadcast("READY|" + id + "|false");
+        conn.send(settingsMessage());
+        broadcast("HOST|" + hostId());
+    }
+
+    /** the host (who picks laps and difficulty) is whoever has been in the room longest */
+    private String hostId() {
+        for (PlayerState p : players.values()) {
+            return p.id;
+        }
+        return "";
+    }
+
+    private String settingsMessage() {
+        return "SETTINGS|" + laps + "|" + difficulty;
     }
 
     /**
@@ -88,6 +105,9 @@ public class Room {
         if (state != null) {
             traffic.removePlayer(state.id);
             broadcast("LEFT|" + state.id);
+            if (!players.isEmpty()) {
+                broadcast("HOST|" + hostId());
+            }
             checkAllReady();
         }
     }
@@ -112,6 +132,15 @@ public class Room {
             } catch (NumberFormatException e) {
                 // ignore bad position
             }
+        } else if (parts[0].equals("SETTINGS") && parts.length >= 3 && !started && !countdownInProgress
+                && state.id.equals(hostId())) {
+            try {
+                laps = Math.max(1, Math.min(10, Integer.parseInt(parts[1])));
+                difficulty = Math.max(0, Math.min(2, Integer.parseInt(parts[2])));
+                broadcast(settingsMessage());
+            } catch (NumberFormatException e) {
+                // ignore bad settings
+            }
         } else if (parts[0].equals("USE") && started) {
             List<ItemSystem.Racer> racers = racers();
             for (ItemSystem.Racer r : racers) {
@@ -130,6 +159,12 @@ public class Room {
         if (started || countdownInProgress || players.isEmpty()) return;
         for (PlayerState p : players.values()) {
             if (!p.ready) return;
+        }
+        // the settings are locked in now
+        raceManager.setLaps(laps);
+        for (Opponent cpu : cpuOpponents) {
+            cpu.setLaps(laps);
+            cpu.setDifficulty(difficulty);
         }
         // everyone sees the red flag wave at the same time, then the countdown starts
         countdownInProgress = true;

@@ -212,7 +212,7 @@ public class Overlay {
             font.draw(batch, name, x + BEZEL + tab + 10, middle + layout.height / 2f);
 
             String status = r.isFinished() ? formatTime(r.finishTime)
-                : "LAP " + currentLap(r) + "/" + RaceManager.LAPS;
+                : "LAP " + currentLap(r) + "/" + raceManager.getLaps();
             font.setColor(r.isFinished() ? Ui.GOLD : LABEL);
             layout.setText(font, status);
             font.draw(batch, status, x + width - BEZEL - layout.width, middle + layout.height / 2f);
@@ -334,8 +334,8 @@ public class Overlay {
         return r.name.equals(playerId) ? r.name + " (YOU)" : map.displayName(r.name);
     }
 
-    private static int currentLap(RacerInfo r) {
-        return Math.max(1, Math.min(RaceManager.LAPS, r.lapCount + 1));
+    private int currentLap(RacerInfo r) {
+        return Math.max(1, Math.min(raceManager.getLaps(), r.lapCount + 1));
     }
 
     // ---------------------------------------------------------------- instrument cluster
@@ -375,7 +375,7 @@ public class Overlay {
         // right: lap (top) and stopwatch (bottom)
         RacerInfo me = raceManager.getRacerInfoByName(playerId);
         boolean finished = me != null && me.isFinished();
-        String lap = finished ? "DONE" : (me != null ? currentLap(me) : 1) + "/" + RaceManager.LAPS;
+        String lap = finished ? "DONE" : (me != null ? currentLap(me) : 1) + "/" + raceManager.getLaps();
         renderScreen(rightX, topRowY, moduleWidth, "LAP", lap, Ui.CREAM);
         renderScreen(rightX, bottomRowY, moduleWidth, "TIME", formatTime(raceTime), finished ? Ui.GOLD : Ui.CREAM);
 

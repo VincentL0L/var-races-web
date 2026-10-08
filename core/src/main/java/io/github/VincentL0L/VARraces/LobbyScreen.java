@@ -19,6 +19,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.TextButton;
 import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 
 import io.github.VincentL0L.VARraces.Multiplayer.client.NetworkClient;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 
 /**
@@ -80,9 +81,8 @@ public class LobbyScreen implements Screen {
         Table card = Cards.card();
         boolean online = networkClient.isOnline();
 
-        String where = map.name.toUpperCase() + "  /  " + lapsText();
-        kicker = Cards.kicker(online ? (networkClient.isRoomPublic() ? "PUBLIC ROOM  /  " : "PRIVATE ROOM  /  ") + where
-            : "SINGLE PLAYER  /  " + lapsText());
+        kicker = Cards.kicker(online ? (networkClient.isRoomPublic() ? "PUBLIC ROOM  /  " : "PRIVATE ROOM  /  ")
+            + map.name.toUpperCase() : "SINGLE PLAYER");
         card.add(kicker).left().row();
         card.add(Cards.title(online ? networkClient.getRoomCode() : map.name.toUpperCase(), 44)).left().padTop(2).padBottom(16).row();
 
@@ -90,6 +90,15 @@ public class LobbyScreen implements Screen {
         drivers = new Table();
         drivers.defaults().width(Cards.CARD_WIDTH).height(Cards.ROW_HEIGHT).padBottom(6);
         card.add(drivers).row();
+
+        // race settings: laps and how good the CPUs are (online, only the host can change them)
+        card.add(Cards.kicker("RACE SETTINGS")).left().padTop(8).padBottom(6).row();
+        lapsValue = Cards.text("", true);
+        difficultyValue = Cards.text("", true);
+        card.add(picker("LAPS", lapsValue, -1, 0)).height(Cards.ROW_HEIGHT).padBottom(6).row();
+        card.add(picker("CPU DIFFICULTY", difficultyValue, 0, -1)).height(Cards.ROW_HEIGHT).row();
+        settingsNote = new Label("", new Label.LabelStyle(Ui.font(9), Cards.LABEL));
+        card.add(settingsNote).left().padTop(4).row();
 
         TextButton leave = Cards.smallButton("Leave", skin);
         leave.addListener(new ClickListener() {
@@ -117,9 +126,72 @@ public class LobbyScreen implements Screen {
         uiStage.addActor(Cards.center(card));
     }
 
-    private static String lapsText() {
-        int laps = io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RaceManager.LAPS;
-        return laps + (laps == 1 ? " LAP" : " LAPS");
+    private static final String[] DIFFICULTIES = {"EASY", "NORMAL", "HARD"};
+    private Label lapsValue, difficultyValue, settingsNote;
+    private final List<TextButton> settingButtons = new ArrayList<>();
+
+    /**
+     * one setting: a recessed row with its name, then < value >
+     * @param lapsStep non-zero for the laps picker   @param difficultyStep non-zero for the CPU picker
+     */
+    private Table picker(String name, Label value, int lapsStep, int difficultyStep) {
+        final boolean isLaps = lapsStep != 0;
+        Table row = Cards.row();
+        row.add(Cards.text(name, false)).left().expandX();
+        TextButton less = Cards.smallButton("<", skin);
+        TextButton more = Cards.smallButton(">", skin);
+        less.addListener(new ClickListener() {
+            public void clicked(InputEvent e, float x, float y) {
+                step(isLaps, -1);
+            }
+        });
+        more.addListener(new ClickListener() {
+            public void clicked(InputEvent e, float x, float y) {
+                step(isLaps, 1);
+            }
+        });
+        settingButtons.add(less);
+        settingButtons.add(more);
+        row.add(less).size(38, 32);
+        row.add(value).width(120).center();
+        value.setAlignment(com.badlogic.gdx.utils.Align.center);
+        row.add(more).size(38, 32);
+        return row;
+    }
+
+    /** moves a setting one choice left or right (wrapping round) */
+    private void step(boolean isLaps, int direction) {
+        int laps = networkClient.getLaps(), difficulty = networkClient.getDifficulty();
+        if (isLaps) {
+            int[] choices = RaceManager.LAP_CHOICES;
+            int i = 0;
+            for (int k = 0; k < choices.length; k++) {
+                if (choices[k] == laps) {
+                    i = k;
+                }
+            }
+            laps = choices[(i + direction + choices.length) % choices.length];
+        } else {
+            difficulty = (difficulty + direction + DIFFICULTIES.length) % DIFFICULTIES.length;
+        }
+        networkClient.setRaceSettings(laps, difficulty);
+    }
+
+    /** shows the current settings, and greys the arrows out for players who can't change them */
+    private void refreshSettings() {
+        int laps = networkClient.getLaps();
+        lapsValue.setText(laps + (laps == 1 ? " LAP" : " LAPS"));
+        difficultyValue.setText(DIFFICULTIES[networkClient.getDifficulty()]);
+        boolean canChange = networkClient.canChangeSettings();
+        for (TextButton b : settingButtons) {
+            b.setDisabled(!canChange);
+            b.setVisible(canChange);
+        }
+        // colour code the difficulty
+        int d = networkClient.getDifficulty();
+        difficultyValue.setColor(d == 0 ? Cards.READY : d == 2 ? Cards.ERROR : Ui.GOLD);
+        settingsNote.setText(networkClient.isOnline() && !canChange && !networkClient.isFlagShown()
+            ? "The host picks the laps and CPU difficulty" : "");
     }
 
     /**
@@ -190,6 +262,7 @@ public class LobbyScreen implements Screen {
         networkClient.update(delta);
 
         refreshDrivers();
+        refreshSettings();
         if (!networkClient.isConnected()) {
             String error = networkClient.getError();
             kicker.setText(error != null ? error.toUpperCase() : "CONNECTING...");
