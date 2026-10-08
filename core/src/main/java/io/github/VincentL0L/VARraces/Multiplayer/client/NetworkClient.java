@@ -143,6 +143,7 @@ public class NetworkClient {
         socketFactory = factory;
         serverUrl = url;
         final int attempt = ++connectAttempt;
+        attemptStarted = clock;
         socketOpen = false;
         socketClosed = false;
         socket = factory.create(url, new GameSocket.Listener() {
@@ -181,8 +182,13 @@ public class NetworkClient {
     private int retries = 0;
     private float retryTimer = 0f;
     private boolean stopped = false;
-    private static final int MAX_RETRIES = 40;
+    private static final int MAX_RETRIES = 1000;
     private static final float RETRY_DELAY = 2f;
+    /** a connection that hasn't opened by now is given up on and tried again */
+    private static final float CONNECT_TIMEOUT = 8f;
+    private float attemptStarted = 0f;
+    /** when we started trying to reach the server (reset once connected) */
+    private float tryingSince = -1f;
 
     /**
      * asks the server for the list of public rooms
@@ -275,9 +281,20 @@ public class NetworkClient {
     private void readMessages() {
         List<String> messages;
         synchronized (inbox) {
+            // a connection stuck halfway (a hung network or a server mid-restart) never
+            // opens and never fails: give up on it after a few seconds and start a fresh one
+            if (!socketOpen && !socketClosed && clock - attemptStarted > CONNECT_TIMEOUT) {
+                socketClosed = true;
+                if (socket != null) {
+                    socket.close();
+                }
+            }
             connected = socketOpen && !socketClosed;
             if (connected) {
                 retries = 0;
+                tryingSince = -1f;
+            } else if (tryingSince < 0f) {
+                tryingSince = clock;
             }
             if (socketClosed && !stopped && roomCode == null && retries < MAX_RETRIES) {
                 // not in a race yet: quietly try again in a moment
@@ -620,6 +637,13 @@ public class NetworkClient {
      */
     public void setMyCar(int car) {
         myCar = car;
+    }
+
+    /**
+     * @return seconds we've been trying to reach the server without success (0 if connected)
+     */
+    public float getTimeTrying() {
+        return tryingSince < 0f ? 0f : clock - tryingSince;
     }
 
     /**

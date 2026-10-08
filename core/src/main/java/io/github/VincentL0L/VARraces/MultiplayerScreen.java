@@ -29,6 +29,7 @@ public class MultiplayerScreen implements Screen {
     private static final int MAX_PLAYERS = 6;
     /** the free server sleeps when nobody plays; after this long it's probably waking up */
     private static final float WAKE_HINT_TIME = 3f;
+    private static final float BLOCKED_HINT_TIME = 75f;
     private static final int MAX_ROWS = 4;
 
     private final Game game;
@@ -226,9 +227,18 @@ public class MultiplayerScreen implements Screen {
         } else if (networkClient.isConnected()) {
             kicker.setText("MULTIPLAYER");
             kicker.setColor(Cards.LABEL);
+            connectingTime = 0f;
         } else {
             connectingTime += delta;
-            kicker.setText(connectingTime > WAKE_HINT_TIME ? "WAKING UP THE SERVER... (UP TO A MINUTE)" : "CONNECTING...");
+            // the free server takes up to a minute to wake up; much longer than that and
+            // it's this device's network that's blocking it (school and work Wi-Fi often do)
+            if (connectingTime > BLOCKED_HINT_TIME) {
+                kicker.setText("CAN'T CONNECT. YOUR WI-FI MAY BLOCK ONLINE GAMES - TRY MOBILE DATA");
+            } else if (connectingTime > WAKE_HINT_TIME) {
+                kicker.setText("WAKING UP THE SERVER... (UP TO A MINUTE)");
+            } else {
+                kicker.setText("CONNECTING...");
+            }
         }
         for (TextButton b : actionButtons) {
             b.setDisabled(!networkClient.isConnected());
