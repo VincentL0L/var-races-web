@@ -209,8 +209,15 @@ public class MultiplayerScreen implements Screen {
         }
         if (account.uid() == null) {
             String error = account.error();
-            row.add(Cards.text(error == null ? "Sign in to race for a rank" : "Sign-in failed, try again", false)).expandX().left();
-            TextButton signIn = Cards.smallButton("Sign in with Google", skin);
+            row.add(Cards.text(error == null ? "Sign in for ranked" : "Sign-in failed, try again", false)).expandX().left();
+            TextButton email = Cards.smallButton("Email", skin);
+            email.addListener(new ClickListener() {
+                public void clicked(InputEvent e, float x, float y) {
+                    Ui.account.openEmailSignIn();
+                }
+            });
+            row.add(email).width(100).height(38).padRight(6);
+            TextButton signIn = Cards.smallButton("Google", skin);
             // the browser only opens Google's window straight from a click: arm it on press
             signIn.addListener(new com.badlogic.gdx.scenes.scene2d.InputListener() {
                 public boolean touchDown(InputEvent e, float x, float y, int pointer, int button) {
@@ -218,7 +225,7 @@ public class MultiplayerScreen implements Screen {
                     return true;
                 }
             });
-            row.add(signIn).width(210).height(38);
+            row.add(signIn).width(110).height(38);
             return;
         }
         if (name == null) {

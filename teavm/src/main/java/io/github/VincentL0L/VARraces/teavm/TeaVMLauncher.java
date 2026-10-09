@@ -41,6 +41,10 @@ public class TeaVMLauncher {
                 authSignOut();
             }
 
+            public void openEmailSignIn() {
+                authOpenEmail();
+            }
+
             public String uid() {
                 return authField("uid");
             }
@@ -76,6 +80,9 @@ public class TeaVMLauncher {
 
     @JSBody(script = "if (window.varAuth) window.varAuth.armed = true;")
     private static native void authArm();
+
+    @JSBody(script = "if (window.varAuth && window.varAuth.openEmail) window.varAuth.openEmail();")
+    private static native void authOpenEmail();
 
     @JSBody(script = "if (window.varAuth && window.varAuth.signOut) window.varAuth.signOut();")
     private static native void authSignOut();

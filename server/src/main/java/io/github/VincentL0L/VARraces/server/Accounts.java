@@ -128,7 +128,10 @@ public class Accounts {
             if (a.uid.isEmpty()) {
                 return null;
             }
-            a.name = shortName(claims.getString("name", "Racer"));
+            // Google accounts show first name and last initial; email accounts chose a username
+            JsonValue fb = claims.get("firebase");
+            boolean email = fb != null && "password".equals(fb.getString("sign_in_provider", ""));
+            a.name = email ? username(claims.getString("name", "Racer")) : shortName(claims.getString("name", "Racer"));
             return a;
         } catch (Exception e) {
             return null;
@@ -143,6 +146,15 @@ public class Accounts {
         }
         String first = words[0].length() > 12 ? words[0].substring(0, 12) : words[0];
         return words.length > 1 ? first + " " + Character.toUpperCase(words[words.length - 1].charAt(0)) : first;
+    }
+
+    /** a chosen username, tidied: letters, numbers, spaces, _ and -, at most 14 characters */
+    static String username(String name) {
+        String clean = name.trim().replaceAll("[^\\p{L}\\p{N} _-]", "").replaceAll("\\s+", " ");
+        if (clean.length() > 14) {
+            clean = clean.substring(0, 14).trim();
+        }
+        return clean.length() < 2 ? "Racer" : clean;
     }
 
     private synchronized PublicKey publicKey(String kid) throws Exception {

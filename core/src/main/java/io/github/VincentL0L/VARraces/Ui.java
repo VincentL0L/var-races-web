@@ -69,6 +69,8 @@ public class Ui {
          */
         void armSignIn();
         void signOut();
+        /** opens the email and password form (sign in or create an account with a username) */
+        void openEmailSignIn();
         /** @return the account id, or null when signed out */
         String uid();
         /** @return the account's name ("Vincent Lo"), or null */
