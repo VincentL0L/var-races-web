@@ -16,38 +16,11 @@ dependencies {
 // the server needs each map's road mask so CPUs are never pushed off the road
 processResources {
   from(rootProject.file('assets/ui/road_mask.png'))
-  from(rootProject.file('assets/maps/sf/road_mask.png')) {
-    rename { 'sf_road_mask.png' }
-  }
-  from(rootProject.file('assets/maps/tokyo/road_mask.png')) {
-    rename { 'tokyo_road_mask.png' }
-  }
-  from(rootProject.file('assets/maps/nyc/road_mask.png')) {
-    rename { 'nyc_road_mask.png' }
-  }
-  from(rootProject.file('assets/maps/chicago/road_mask.png')) {
-    rename { 'chicago_road_mask.png' }
-  }
-  from(rootProject.file('assets/maps/london/road_mask.png')) {
-    rename { 'london_road_mask.png' }
-  }
-  from(rootProject.file('assets/maps/paris/road_mask.png')) {
-    rename { 'paris_road_mask.png' }
-  }
-  from(rootProject.file('assets/maps/taipei/road_mask.png')) {
-    rename { 'taipei_road_mask.png' }
-  }
-  from(rootProject.file('assets/maps/summit/road_mask.png')) {
-    rename { 'summit_road_mask.png' }
-  }
-  from(rootProject.file('assets/maps/rushhour/road_mask.png')) {
-    rename { 'rushhour_road_mask.png' }
-  }
-  from(rootProject.file('assets/maps/rooftop/road_mask.png')) {
-    rename { 'rooftop_road_mask.png' }
-  }
-  from(rootProject.file('assets/maps/moon/road_mask.png')) {
-    rename { 'moon_road_mask.png' }
+  // every map folder's road mask, renamed <map>_road_mask.png (see TrackMap.serverMask)
+  rootProject.file('assets/maps').eachDir { dir ->
+    from(new File(dir, 'road_mask.png')) {
+      rename { "${dir.name}_road_mask.png" }
+    }
   }
 }
 
