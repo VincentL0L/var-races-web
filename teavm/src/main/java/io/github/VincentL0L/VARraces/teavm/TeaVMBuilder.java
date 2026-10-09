@@ -69,7 +69,7 @@ public class TeaVMBuilder {
         + "try {\n"
         + "  var host = location.hostname;\n"
         + "  firebase.initializeApp({apiKey: 'AIzaSyBlIzA_86YzqDi3_G9BbUAVzh0ss0MIYaA',\n"
-        + "    authDomain: (host.endsWith('.web.app') || host.endsWith('.firebaseapp.com')) ? host : 'var-races.firebaseapp.com',\n"
+        + "    authDomain: 'var-races.firebaseapp.com',\n"
         + "    projectId: 'var-races', appId: '1:222306009427:web:132612da1788a9ad8a21a6', messagingSenderId: '222306009427'});\n"
         + "  var auth = firebase.auth();\n"
         + "  var provider = new firebase.auth.GoogleAuthProvider();\n"
