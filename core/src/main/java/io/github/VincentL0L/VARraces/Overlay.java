@@ -497,6 +497,13 @@ public class Overlay {
         float icon = SCREEN_HEIGHT - 8f;
         if (shown != null) {
             batch.draw(shown, ix + half - 8f - icon, sy + 4f, icon, icon);
+            if (itemAmmo > 0 && rouletteTimer <= 0f) {
+                // shots left in a blaster
+                tabFont.setColor(Ui.GOLD);
+                String n = "x" + itemAmmo;
+                layout.setText(tabFont, n);
+                tabFont.draw(batch, n, ix + half - 14f - icon - layout.width, sy + SCREEN_HEIGHT / 2f + layout.height / 2f);
+            }
         } else {
             valueFont.setColor(LABEL);
             layout.setText(valueFont, "-");
@@ -786,6 +793,14 @@ public class Overlay {
     }
 
     private Texture itemIcon;
+    private int itemAmmo = 0;
+
+    /**
+     * @param shots shots left in a blaster (0 for other items)
+     */
+    public void setItemAmmo(int shots) {
+        itemAmmo = shots;
+    }
     private String itemName;
 
     /**

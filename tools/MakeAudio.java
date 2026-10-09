@@ -51,6 +51,10 @@ public class MakeAudio {
         save("shield", shield());
         save("block", ping());
         save("pulse", zap());
+        save("frost_shot", sweep(2200, 1300, 0.12, 0.35, 0.25));
+        save("fire_shot", fireShot());
+        save("freeze", freeze());
+        save("burn", crash(0.3, 0.6));
         // ---- battle
         save("hit", crash(0.35, 0.9));
         save("knockout", explosion(1.4, 0.95));
@@ -339,6 +343,30 @@ public class MakeAudio {
             out[i] = (float) (low * Math.exp(-t / 0.08) + Math.sin(2 * Math.PI * 120 * t) * 0.5 * Math.exp(-t / 0.05));
         }
         return master(out, 0.75f);
+    }
+
+    /** a fireball whooshing out: a crackle over a falling tone */
+    static float[] fireShot() {
+        float[] out = new float[(int) (0.22 * RATE)];
+        double low = 0;
+        for (int i = 0; i < out.length; i++) {
+            double k = i / (double) out.length;
+            low += (noise() - low) * 0.35;
+            out[i] = (float) ((low * 0.7 + square(i / (double) RATE * (420 - 260 * k), 0.4) * 0.25) * (1 - k) * Math.min(1, k * 40));
+        }
+        return master(out, 0.7f);
+    }
+
+    /** ice cracking: sharp high clicks over a cold shimmer */
+    static float[] freeze() {
+        float[] out = new float[(int) (0.5 * RATE)];
+        for (int i = 0; i < out.length; i++) {
+            double t = i / (double) RATE, k = i / (double) out.length;
+            double shimmer = (Math.sin(2 * Math.PI * 2600 * t) + Math.sin(2 * Math.PI * 3300 * t)) * 0.15 * (1 - k);
+            double crack = (RND.nextInt(90) == 0 ? noise() * 0.9 : 0) * (1 - k);
+            out[i] = (float) (shimmer + crack);
+        }
+        return master(out, 0.7f);
     }
 
     /** a shimmering bubble going up */

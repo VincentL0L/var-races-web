@@ -126,6 +126,35 @@ public class Player {
         slowTimer = seconds;
     }
 
+    private float freezeTimer = 0f, burnTimer = 0f;
+
+    /**
+     * hit by a Frost Blaster shot: frozen solid for a moment
+     * @param seconds how long
+     */
+    public void freeze(float seconds) {
+        freezeTimer = seconds;
+        Sounds.play("freeze", 0.6f);
+    }
+
+    /**
+     * hit by a Fire Blaster shot: knocked back to half speed, and down on power while it burns
+     * @param seconds how long it burns
+     */
+    public void burn(float seconds) {
+        velocity.scl(0.5f);
+        burnTimer = seconds;
+        slowTimer = Math.max(slowTimer, seconds);
+        Sounds.play("burn", 0.6f);
+    }
+
+    /**
+     * @return true while frozen (no control)
+     */
+    public boolean isFrozen() {
+        return freezeTimer > 0f;
+    }
+
     /** used a Nitro: a kick of speed and extra power for a moment */
     public void nitro() {
         Sounds.play("nitro", 0.6f);
@@ -219,6 +248,21 @@ public class Player {
         bumpCooldown -= delta;
         slowTimer -= delta;
         nitroTimer -= delta;
+        // frozen by a Frost Blaster: an icy blue block sliding to a stop, no control
+        if (freezeTimer > 0f) {
+            freezeTimer -= delta;
+            velocity.scl((float) Math.exp(-1.6f * delta));
+            moveWithWalls(delta);
+            i.setColor(freezeTimer > 0f ? new Color(0.6f, 0.85f, 1f, 1f) : Color.WHITE);
+            prevPos.set(getX(), getY());
+            return;
+        }
+        // on fire: an orange flicker while it burns
+        if (burnTimer > 0f) {
+            burnTimer -= delta;
+            float flick = 0.75f + 0.25f * MathUtils.sin(burnTimer * 40f);
+            i.setColor(burnTimer > 0f ? new Color(1f, 0.55f * flick + 0.2f, 0.3f * flick, 1f) : Color.WHITE);
+        }
         // spun out by an item: skid, spin round twice, no control until it's over
         if (spinTimer > 0f) {
             spinTimer -= delta;

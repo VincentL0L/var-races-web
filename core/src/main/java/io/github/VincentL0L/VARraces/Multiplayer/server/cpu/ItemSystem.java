@@ -24,7 +24,8 @@ import com.badlogic.gdx.math.Vector2;
  */
 public class ItemSystem {
     public enum Item {
-        NITRO("Nitro"), ROCKET("Bottle Rocket"), OIL("Oil Slick"), BUBBLE("Bubble Shield"), PULSE("Static Pulse");
+        NITRO("Nitro"), ROCKET("Bottle Rocket"), OIL("Oil Slick"), BUBBLE("Bubble Shield"), PULSE("Static Pulse"),
+        FROST("Frost Blaster"), FIRE("Fire Blaster");
 
         public final String label;
 
@@ -54,6 +55,13 @@ public class ItemSystem {
         }
     }
 
+    /** a Frost or Fire Blaster shot */
+    public static class Shot {
+        public float x, y, heading, age;
+        public boolean fire;
+        String owner;
+    }
+
     public static class Rocket {
         public float x, y, heading, age;
         String owner;
@@ -77,6 +85,22 @@ public class ItemSystem {
     private final List<Rocket> rockets = new ArrayList<>();
     private final List<Slick> slicks = new ArrayList<>();
     private final Map<String, Item> held = new HashMap<>();
+    /** shots left for the blasters (the other items are used up in one go) */
+    private final Map<String, Integer> ammo = new HashMap<>();
+    private final Map<String, Float> lastShot = new HashMap<>();
+    private final List<Shot> shots = new ArrayList<>();
+    private float clock = 0f;
+    /** blaster shots per pickup, how fast they fly, how long, and the gap between them */
+    public static final int BLASTER_SHOTS = 5;
+    private static final float SHOT_SPEED = 620f, SHOT_LIFE = 1.1f, SHOT_GAP = 0.22f;
+    public static final float FREEZE_TIME = 1.3f, BURN_TIME = 2f;
+    /** how hard a rocket turns toward its target (degrees a second), and how far it looks */
+    private static final float HOMING_TURN = 170f, HOMING_RANGE = 520f;
+
+    /** the shortest turn from one heading to another, degrees */
+    private static float angleTo(float from, float to) {
+        return ((to - from) % 360f + 540f) % 360f - 180f;
+    }
     private final Map<String, Float> shields = new HashMap<>();
     /** when each CPU will use what it's holding */
     private final Map<String, Float> cpuUseIn = new HashMap<>();
@@ -145,6 +169,7 @@ public class ItemSystem {
      * @param order racer ids, leader first
      */
     public void update(float dt, List<Racer> racers, List<String> order) {
+        clock += dt;
         for (Box box : boxes) {
             box.respawn -= dt;
         }
@@ -164,7 +189,9 @@ public class ItemSystem {
                     box.respawn = BOX_RESPAWN;
                     Item item = roll(order.indexOf(r.id) + 1, order.size());
                     held.put(r.id, item);
-                    events.add("GOT|" + r.id + "|" + item.name());
+                    int shotsLeft = item == Item.FROST || item == Item.FIRE ? BLASTER_SHOTS : 1;
+                    ammo.put(r.id, shotsLeft);
+                    events.add("GOT|" + r.id + "|" + item.name() + "|" + shotsLeft);
                     if (r.cpu != null) {
                         cpuUseIn.put(r.id, MathUtils.random(0.4f, 2.5f));
                     }
@@ -176,6 +203,26 @@ public class ItemSystem {
         for (int i = rockets.size() - 1; i >= 0; i--) {
             Rocket rocket = rockets.get(i);
             rocket.age += dt;
+            // homing: after a moment it locks on to the nearest car ahead and turns toward it
+            if (rocket.age > 0.12f) {
+                Racer target = null;
+                float best = HOMING_RANGE;
+                for (Racer r : racers) {
+                    if (r.id.equals(rocket.owner) || (battle != null && battle.isOut(r.id))) {
+                        continue;
+                    }
+                    float dx = r.x - rocket.x, dy = r.y - rocket.y, d = (float) Math.hypot(dx, dy);
+                    float off = Math.abs(angleTo(rocket.heading, MathUtils.atan2(dy, dx) * MathUtils.radiansToDegrees));
+                    if (d < best && off < 75f) {
+                        best = d;
+                        target = r;
+                    }
+                }
+                if (target != null) {
+                    float want = MathUtils.atan2(target.y - rocket.y, target.x - rocket.x) * MathUtils.radiansToDegrees;
+                    rocket.heading += MathUtils.clamp(angleTo(rocket.heading, want), -HOMING_TURN * dt, HOMING_TURN * dt);
+                }
+            }
             rocket.x += MathUtils.cosDeg(rocket.heading) * ROCKET_SPEED * dt;
             rocket.y += MathUtils.sinDeg(rocket.heading) * ROCKET_SPEED * dt;
             boolean gone = rocket.age > ROCKET_LIFE;
@@ -188,6 +235,24 @@ public class ItemSystem {
             }
             if (gone) {
                 rockets.remove(i);
+            }
+        }
+
+        // blaster shots: quick and straight; frost freezes, fire burns
+        for (int i = shots.size() - 1; i >= 0; i--) {
+            Shot shot = shots.get(i);
+            shot.age += dt;
+            shot.x += MathUtils.cosDeg(shot.heading) * SHOT_SPEED * dt;
+            shot.y += MathUtils.sinDeg(shot.heading) * SHOT_SPEED * dt;
+            boolean gone = shot.age > SHOT_LIFE;
+            for (Racer r : racers) {
+                if (!gone && !r.id.equals(shot.owner) && Vector2.dst(r.x, r.y, shot.x, shot.y) < HIT_RADIUS) {
+                    hit(r, shot.fire ? "BURN" : "FREEZE", shot.owner, shot.fire ? BattleSystem.FIRE_DAMAGE : BattleSystem.FROST_DAMAGE);
+                    gone = true;
+                }
+            }
+            if (gone) {
+                shots.remove(i);
             }
         }
 
@@ -215,9 +280,12 @@ public class ItemSystem {
             float wait = cpuUseIn.getOrDefault(r.id, 1f) - dt;
             cpuUseIn.put(r.id, wait);
             Item item = held.get(r.id);
-            boolean targetAhead = item == ItemSystem.Item.ROCKET && carAhead(r, racers);
-            if (wait <= 0f && (item != Item.ROCKET || targetAhead || wait < -6f)) {
+            boolean aimed = item == Item.ROCKET || item == Item.FROST || item == Item.FIRE;
+            boolean targetAhead = aimed && carAhead(r, racers);
+            if (wait <= 0f && (!aimed || targetAhead || wait < -6f)) {
                 use(r, racers, order);
+                // blasters: the next shot follows quickly
+                cpuUseIn.put(r.id, MathUtils.random(0.3f, 0.7f));
             }
         }
     }
@@ -248,7 +316,9 @@ public class ItemSystem {
             2f,                                 // ROCKET
             2.6f - 2f * r,                      // OIL
             2f - 1.2f * r,                      // BUBBLE
-            place <= 1 ? 0f : 0.3f + 2.4f * r   // PULSE
+            place <= 1 ? 0f : 0.3f + 2.4f * r,  // PULSE
+            1.6f,                               // FROST
+            1.6f                                // FIRE
         };
         float total = 0f;
         for (float w : weights) {
@@ -271,11 +341,37 @@ public class ItemSystem {
      * @param order racer ids, leader first
      */
     public void use(Racer me, List<Racer> racers, List<String> order) {
-        Item item = held.remove(me.id);
+        Item item = held.get(me.id);
         if (item == null) {
             return;
         }
         float fx = MathUtils.cosDeg(me.heading), fy = MathUtils.sinDeg(me.heading);
+        if (item == Item.FROST || item == Item.FIRE) {
+            // a blaster: one shot each use, a short gap between them, until it's empty
+            Float last = lastShot.get(me.id);
+            if (last != null && clock - last < SHOT_GAP) {
+                return;
+            }
+            lastShot.put(me.id, clock);
+            Shot shot = new Shot();
+            shot.x = me.x + fx * 16f;
+            shot.y = me.y + fy * 16f;
+            shot.heading = me.heading;
+            shot.fire = item == Item.FIRE;
+            shot.owner = me.id;
+            shots.add(shot);
+            int left = ammo.getOrDefault(me.id, 1) - 1;
+            events.add("SHOT|" + me.id + "|" + (shot.fire ? "FIRE" : "FROST") + "|" + left);
+            if (left <= 0) {
+                held.remove(me.id);
+                ammo.remove(me.id);
+            } else {
+                ammo.put(me.id, left);
+            }
+            return;
+        }
+        held.remove(me.id);
+        ammo.remove(me.id);
         switch (item) {
             case NITRO:
                 if (me.cpu != null) {
@@ -337,6 +433,10 @@ public class ItemSystem {
         if (r.cpu != null) {
             if (effect.equals("SPIN")) {
                 r.cpu.spinOut();
+            } else if (effect.equals("FREEZE")) {
+                r.cpu.freeze(FREEZE_TIME);
+            } else if (effect.equals("BURN")) {
+                r.cpu.burn(BURN_TIME);
             } else {
                 r.cpu.slowDown(SLOW_TIME);
             }
@@ -375,6 +475,10 @@ public class ItemSystem {
         sb.append('|');
         for (String id : shields.keySet()) {
             sb.append(id).append(';');
+        }
+        sb.append('|');
+        for (Shot s : shots) {
+            sb.append((int) s.x).append(',').append((int) s.y).append(',').append(s.fire ? 1 : 0).append(';');
         }
         return sb.toString();
     }

@@ -34,7 +34,7 @@ public class ItemRenderer {
                 boxes.add(p);
             }
         }
-        String[] names = {"nitro", "rocket", "oil", "bubble", "pulse"};
+        String[] names = {"nitro", "rocket", "oil", "bubble", "pulse", "frost", "fire"};
         for (int i = 0; i < names.length; i++) {
             icons[i] = load(names[i]);
         }
@@ -113,6 +113,27 @@ public class ItemRenderer {
             }
             batch.setColor(1f, 1f, 1f, 1f);
             batch.draw(rocket, p[0] - 7f, p[1] - 7f, 7f, 7f, 14f, 14f, 1f, 1f, p[2] - 90f, 0, 0, 16, 16, false, false);
+        }
+        // blaster shots: an ice shard or a fireball, with a short glowing trail
+        if (parts.length > 4) {
+            for (String sh : parts[4].split(";")) {
+                float[] p = numbers(sh);
+                if (p == null) {
+                    continue;
+                }
+                boolean fire = p[2] > 0.5f;
+                for (int k = 3; k >= 0; k--) {
+                    float a = 0.85f - k * 0.2f, size = 9f - k * 1.5f;
+                    if (fire) {
+                        batch.setColor(1f, 0.55f + k * 0.08f, 0.15f, a);
+                    } else {
+                        batch.setColor(0.6f, 0.9f, 1f, a);
+                    }
+                    batch.draw(shield, p[0] - size / 2f, p[1] - size / 2f, size, size);
+                }
+                batch.setColor(1f, 1f, 1f, 1f);
+                batch.draw(fire ? icons[6] : icons[5], p[0] - 6f, p[1] - 6f, 12f, 12f);
+            }
         }
         for (String id : parts[3].split(";")) {
             Vector2 c = cars.get(id);

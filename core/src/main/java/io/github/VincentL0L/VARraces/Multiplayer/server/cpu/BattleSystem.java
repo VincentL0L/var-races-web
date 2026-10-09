@@ -40,6 +40,8 @@ public class BattleSystem {
     public static final float ROCKET_DAMAGE = 30f;
     public static final float OIL_DAMAGE = 14f;
     public static final float PULSE_DAMAGE = 10f;
+    public static final float FROST_DAMAGE = 7f;
+    public static final float FIRE_DAMAGE = 11f;
 
     private static class Car {
         String id;

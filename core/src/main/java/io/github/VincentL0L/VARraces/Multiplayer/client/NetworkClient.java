@@ -368,10 +368,19 @@ public class NetworkClient {
             playerReadyStates.remove(parts[1]);
             opponents.remove(parts[1]);
         } else if (type.equals("ITEMS")) {
-            itemView = parts[1] + "|" + parts[2] + "|" + parts[3] + "|" + parts[4];
+            itemView = parts[1] + "|" + parts[2] + "|" + parts[3] + "|" + parts[4] + "|" + (parts.length > 5 ? parts[5] : "");
         } else if (type.equals("GOT")) {
             if (parts[1].equals(playerId)) {
                 heldItem = ItemSystem.Item.valueOf(parts[2]);
+                heldAmmo = parts.length > 3 ? Integer.parseInt(parts[3]) : 1;
+            }
+        } else if (type.equals("SHOT")) {
+            // a blaster shot fired: count down our ammo (the item's gone when it's empty)
+            if (parts[1].equals(playerId)) {
+                heldAmmo = Integer.parseInt(parts[3]);
+                if (heldAmmo <= 0) {
+                    heldItem = null;
+                }
             }
         } else if (type.equals("BOOST") || type.equals("BLOCK")) {
             if (parts[1].equals(playerId)) {
@@ -613,7 +622,10 @@ public class NetworkClient {
         if (heldItem == null) {
             return;
         }
-        heldItem = null;
+        // blasters keep firing until they're empty (the server counts the shots)
+        if (heldItem != ItemSystem.Item.FROST && heldItem != ItemSystem.Item.FIRE) {
+            heldItem = null;
+        }
         if (isOnline()) {
             send("USE");
         } else if (gameStarted) {
@@ -623,6 +635,15 @@ public class NetworkClient {
                 handleMessage(event.split("\\|", -1));
             }
         }
+    }
+
+    private int heldAmmo = 0;
+
+    /**
+     * @return shots left in a blaster (1 for the other items)
+     */
+    public int getHeldAmmo() {
+        return heldAmmo;
     }
 
     /**

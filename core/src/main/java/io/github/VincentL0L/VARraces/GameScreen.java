@@ -246,6 +246,10 @@ public class GameScreen implements Screen {
                 } else if (effect.equals("SLOW")) {
                     player.slowDown(io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem.SLOW_TIME);
                     Sounds.play("pulse", 0.5f, 0.8f);
+                } else if (effect.equals("FREEZE")) {
+                    player.freeze(io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem.FREEZE_TIME);
+                } else if (effect.equals("BURN")) {
+                    player.burn(io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem.BURN_TIME);
                 } else if (effect.equals("BLOCK")) {
                     Sounds.play("block", 0.6f);
                 } else if (effect.equals("DMG")) {
@@ -270,12 +274,13 @@ public class GameScreen implements Screen {
         }
         over.setItem(nc.getHeldItem() == null ? null : itemArt.icon(nc.getHeldItem()),
             nc.getHeldItem() == null ? null : nc.getHeldItem().label);
+        over.setItemAmmo(nc.getHeldItem() == io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem.Item.FROST || nc.getHeldItem() == io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem.Item.FIRE ? nc.getHeldAmmo() : 0);
         if (touch != null) {
             touch.setItem(nc.getHeldItem() == null ? null : itemArt.icon(nc.getHeldItem()));
         }
 
         // controls work while racing and not paused
-        player.setInputEnabled(start && !done && !paused && !player.isSpinning() && !wrecked);
+        player.setInputEnabled(start && !done && !paused && !player.isSpinning() && !player.isFrozen() && !wrecked);
         if (touch == null) {
             player.setTouchInput(false, 0f, false, false, false, false);
         }
@@ -361,6 +366,7 @@ public class GameScreen implements Screen {
         worldBatch.end();
         if (map.battle) {
             drawHealthBars();
+            drawOpponentArrows();
         }
         if (frosted) {
             frost.end();
@@ -411,6 +417,8 @@ public class GameScreen implements Screen {
             case OIL: Sounds.play("oil", 0.6f); break;
             case BUBBLE: Sounds.play("shield", 0.55f); break;
             case PULSE: Sounds.play("pulse", 0.6f); break;
+            case FROST: Sounds.play("frost_shot", 0.5f, MathUtils.random(0.95f, 1.08f)); break;
+            case FIRE: Sounds.play("fire_shot", 0.5f, MathUtils.random(0.95f, 1.08f)); break;
             default: break;
         }
     }
@@ -444,6 +452,57 @@ public class GameScreen implements Screen {
             bars.rect(x, y, w * hp, h);
         }
         bars.end();
+    }
+
+    /**
+     * battle: an arrow at the screen's edge pointing at every opponent that's off screen
+     * (still in), so you can always find someone to ram
+     */
+    private void drawOpponentArrows() {
+        if (bars == null) {
+            return;
+        }
+        int w = Gdx.graphics.getWidth(), h = Gdx.graphics.getHeight();
+        float px = Gdx.graphics.getBackBufferWidth() / (float) Math.max(1, w);
+        float u = Ui.density / px;
+        // the arrows stay inside a box clear of the HUD across the top
+        float margin = 46f * u, top = h - Math.min(h * 0.45f, 290f * u);
+        float cx = w / 2f, cy = (margin + top) / 2f, halfW = cx - margin, halfH = (top - margin) / 2f;
+        com.badlogic.gdx.math.Vector3 p = new com.badlogic.gdx.math.Vector3();
+        bars.getProjectionMatrix().setToOrtho2D(0, 0, w, h);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        bars.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Filled);
+        for (RacerInfo r : rm.getRacers()) {
+            Vector2 c = carCenters.get(r.name);
+            if (c == null || r.name.equals(nc.getPlayerId())
+                    || r.progress < io.github.VincentL0L.VARraces.Multiplayer.server.cpu.BattleSystem.ALIVE) {
+                continue;
+            }
+            p.set(c.x, c.y, 0f);
+            stage.getCamera().project(p, 0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
+            float sx = p.x / px, sy = p.y / px;
+            if (sx > margin && sx < w - margin && sy > margin && sy < top) {
+                continue;     // on screen: no arrow needed
+            }
+            // pin it to the edge along the line from the middle of the screen
+            float dx = sx - cx, dy = sy - cy;
+            float t = Math.min(halfW / Math.max(1e-3f, Math.abs(dx)), halfH / Math.max(1e-3f, Math.abs(dy)));
+            float ax = cx + dx * t, ay = cy + dy * t;
+            float len = (float) Math.hypot(dx, dy), nx = dx / len, ny = dy / len;
+            float size = 26f * u;
+            // closer opponents get bigger, brighter arrows
+            float near = MathUtils.clamp(1f - (len - w * 0.5f) / (w * 1.5f), 0.45f, 1f);
+            bars.setColor(0.1f, 0.07f, 0.05f, 0.85f);
+            triangle(ax, ay, nx, ny, size * near + 3f * u);
+            bars.setColor(0.95f, 0.3f + 0.4f * (1f - near), 0.2f, 0.95f);
+            triangle(ax, ay, nx, ny, size * near);
+        }
+        bars.end();
+    }
+
+    private void triangle(float x, float y, float nx, float ny, float s) {
+        bars.triangle(x + nx * s, y + ny * s, x - nx * s * 0.6f - ny * s * 0.8f, y - ny * s * 0.6f + nx * s * 0.8f,
+            x - nx * s * 0.6f + ny * s * 0.8f, y - ny * s * 0.6f - nx * s * 0.8f);
     }
 
     /**

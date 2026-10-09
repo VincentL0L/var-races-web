@@ -151,6 +151,19 @@ public class Opponent {
         }
         slowTimer -= dt;
         nitroTimer -= dt;
+        if (freezeTimer > 0f) {
+            // frozen: slide to a stop on the same heading, no steering
+            freezeTimer -= dt;
+            speed = Math.max(0f, speed - 500f * dt);
+            float nx = position.x + MathUtils.cosDeg(heading) * speed * dt;
+            float ny = position.y + MathUtils.sinDeg(heading) * speed * dt;
+            if (traffic == null || traffic.carOnRoad(nx, ny)) {
+                position.set(nx, ny);
+            } else {
+                speed = 0f;
+            }
+            return;
+        }
         if (battle) {
             battleDrive(dt, traffic);
             return;
@@ -463,6 +476,26 @@ public class Opponent {
     public void spinOut() {
         spinTimer = SPIN_TIME;
         speed *= 0.6f;
+    }
+
+    private float freezeTimer = 0f;
+
+    /** hit by a Frost Blaster shot: frozen solid, sliding to a stop, for a moment */
+    public void freeze(float seconds) {
+        freezeTimer = seconds;
+    }
+
+    /** hit by a Fire Blaster shot: knocked back and slowed while it burns */
+    public void burn(float seconds) {
+        speed *= 0.5f;
+        slowTimer = Math.max(slowTimer, seconds);
+    }
+
+    /**
+     * @return true while frozen (drawn icy blue)
+     */
+    public boolean isFrozen() {
+        return freezeTimer > 0f;
     }
 
     /**

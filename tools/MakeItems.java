@@ -120,6 +120,42 @@ public class MakeItems {
             "..c..kk......c..",
             "...cc......cc...",
             "................");
+        // frost blaster: an ice crystal (k dark blue, b blue, B light blue, w white)
+        save("frost", "kbBw", new int[] {0x1f3f7f, 0x5fb0f0, 0xb8e6ff, 0xffffff},
+            ".......kk.......",
+            "......kwBk......",
+            "..kk..kBbk..kk..",
+            "..kBk.kBbk.kBk..",
+            "...kBkkBbkkBk...",
+            "....kBBwBBBk....",
+            "kkkkkBwwwBbkkkkk",
+            "kBBBBwwwwwBBBBbk",
+            "kkkkkBwwwBbkkkkk",
+            "....kBBwBBBk....",
+            "...kBkkBbkkBk...",
+            "..kBk.kBbk.kBk..",
+            "..kk..kBbk..kk..",
+            "......kBbk......",
+            ".......kk.......",
+            "................");
+        // fire blaster: a fireball (k dark red, r red, o orange, y yellow, w white core)
+        save("fire", "kroyw", new int[] {0x5a1408, 0xd9332a, 0xf08a2e, 0xffd23f, 0xfff6d0},
+            "......k.........",
+            ".....kr...k.....",
+            "....kro..kr.....",
+            "...kroo.kro.k...",
+            "...kroookrookr..",
+            "..kroooooooookr.",
+            "..krooyyyyoook..",
+            ".krooyyyyyyook..",
+            ".kroyyywwyyyok..",
+            ".kroyywwwwyyok..",
+            ".kroyywwwwyyok..",
+            ".krooyywwyyook..",
+            "..krooyyyyook...",
+            "...krroooork....",
+            "....kkrrrrk.....",
+            "......kkkk......");
         // the shield ring drawn around a protected car (32 x 32)
         BufferedImage ring = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
         for (int y = 0; y < 32; y++) {
