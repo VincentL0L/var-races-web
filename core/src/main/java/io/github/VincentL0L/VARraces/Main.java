@@ -35,6 +35,17 @@ public class Main extends Game {
     }
 
     /**
+     * every frame: M mutes or unmutes all sound, on any screen
+     */
+    @Override
+    public void render() {
+        if (com.badlogic.gdx.Gdx.input.isKeyJustPressed(com.badlogic.gdx.Input.Keys.M)) {
+            Sounds.setMuted(!Sounds.isMuted());
+        }
+        super.render();
+    }
+
+    /**
      * clears memory
      */
     public void dispose() {

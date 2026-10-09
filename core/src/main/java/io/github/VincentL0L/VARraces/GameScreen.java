@@ -15,7 +15,6 @@ import com.badlogic.gdx.scenes.scene2d.ui.Skin;
 import com.badlogic.gdx.scenes.scene2d.InputEvent;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Screen;
-import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
@@ -44,7 +43,6 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 public class GameScreen implements Screen {
     private Stage stage;
     private Stage uiStage;
-    private Music bgm;
     private Map<String, OpponentState> nwOpp = new HashMap<>();
     private RaceManager rm;
     private Game game;
@@ -112,11 +110,11 @@ public class GameScreen implements Screen {
         camControl = new CameraController(cam);
         stage = new Stage(new ExtendViewport(675, 360, cam));
         uiStage = new Stage(Ui.viewport());
+        Sounds.clickSounds(uiStage);
         Gdx.input.setInputProcessor(uiStage);
 
-        bgm = Gdx.audio.newMusic(Gdx.files.internal("idle.mp3"));
-        bgm.setLooping(true);
-        bgm.play();
+        // the menus' music fades out while everyone lines up on the grid
+        Sounds.stopMusic();
 
         player = new Player(stage, car, map);
         player.setInputEnabled(false);
@@ -186,16 +184,15 @@ public class GameScreen implements Screen {
 
         // everyone waits on the grid until GO!, then the racing music starts
         if (!start && cdtxt.equals("GO!")) {
-            bgm.stop();
-            bgm.dispose();
-            bgm = Gdx.audio.newMusic(Gdx.files.internal("background.mp3"));
-            bgm.setLooping(true);
-            bgm.play();
+            Sounds.music(map.battle ? Sounds.BATTLE : Sounds.RACE, true);
             start = true;
         }
 
         if (!done && rm.isFinished(nc.getPlayerId())) {
             done = true;
+            player.stopEngine();
+            Sounds.stopMusic();
+            Sounds.play("finish", 0.6f);
             end = 0f;
             if (map.battle) {
                 // the battle's over: did we win?
@@ -245,14 +242,27 @@ public class GameScreen implements Screen {
                     player.spinOut();
                 } else if (effect.equals("SLOW")) {
                     player.slowDown(io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem.SLOW_TIME);
+                    Sounds.play("pulse", 0.5f, 0.8f);
+                } else if (effect.equals("BLOCK")) {
+                    Sounds.play("block", 0.6f);
                 } else if (effect.equals("DMG")) {
                     over.flashDamage();
                     camControl.shake(6f);
+                    Sounds.play("hit", 0.6f, MathUtils.random(0.9f, 1.1f));
+                } else if (effect.equals("OUT")) {
+                    Sounds.play("knockout", 0.8f);
+                }
+            }
+            // other cars knocked out in a battle go up with a bang too (quieter)
+            for (String out : nc.takeKnockouts()) {
+                if (!out.equals(nc.getPlayerId())) {
+                    Sounds.play("knockout", 0.4f, 1.15f);
                 }
             }
         }
         boolean useItem = Gdx.input.isKeyJustPressed(Input.Keys.E) || (touch != null && touch.itemTapped());
         if (useItem && start && !done && !paused && !player.isSpinning()) {
+            playItemSound(nc.getHeldItem());
             nc.useItem();
         }
         over.setItem(nc.getHeldItem() == null ? null : itemArt.icon(nc.getHeldItem()),
@@ -388,6 +398,20 @@ public class GameScreen implements Screen {
         }
     }
 
+    /** the sound of using an item (the Nitro's whoosh plays when the boost arrives) */
+    private static void playItemSound(io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem.Item item) {
+        if (item == null) {
+            return;
+        }
+        switch (item) {
+            case ROCKET: Sounds.play("rocket", 0.6f); break;
+            case OIL: Sounds.play("oil", 0.6f); break;
+            case BUBBLE: Sounds.play("shield", 0.55f); break;
+            case PULSE: Sounds.play("pulse", 0.6f); break;
+            default: break;
+        }
+    }
+
     private com.badlogic.gdx.graphics.glutils.ShapeRenderer bars;
 
     /** a little health bar over every car in a battle (wrecks get none) */
@@ -434,6 +458,7 @@ public class GameScreen implements Screen {
             if (row == 0) {
                 setPaused(!paused);        // the little pause button opens the pause menu
             } else if (row == 1 && start && !done && !paused && !player.isSpinning()) {
+                playItemSound(nc.getHeldItem());
                 nc.useItem();              // tapping the item panel uses the item
             }
         }
@@ -442,10 +467,9 @@ public class GameScreen implements Screen {
     private void setPaused(boolean value) {
         paused = value;
         pausePanel.setVisible(paused);
+        Sounds.pauseMusic(paused);
         if (paused) {
-            bgm.pause();
-        } else {
-            bgm.play();
+            player.stopEngine();
         }
     }
 
@@ -588,7 +612,7 @@ public class GameScreen implements Screen {
         for (Texture t : oppSkins) {
             t.dispose();
         }
-        bgm.dispose();
+        player.stopEngine();
         nc.stop();
     }
 

@@ -56,6 +56,11 @@ public class StartLights {
     public void render(String text, float delta) {
         if (!text.equals(shown)) {
             shown = text;
+            if (text.equals("GO!")) {
+                Sounds.play("go", 0.55f);
+            } else if (!text.isEmpty()) {
+                Sounds.play("beep", 0.5f);
+            }
             sinceChange = 0f;
             if (text.equals("GO!")) {
                 sinceGo = 0f;

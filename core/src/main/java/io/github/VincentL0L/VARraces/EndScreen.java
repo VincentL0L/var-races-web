@@ -54,8 +54,10 @@ public class EndScreen implements Screen {
         this.leaderboard = leaderboard;
         this.map = map;
         stage = new Stage(Ui.viewport());
+        Sounds.clickSounds(stage);
         skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
         
+        Sounds.music(Sounds.RESULTS, false);
         createUI();
         Gdx.input.setInputProcessor(stage);
     }

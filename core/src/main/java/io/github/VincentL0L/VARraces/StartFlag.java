@@ -38,6 +38,7 @@ public class StartFlag {
     private float time = 0f;
 
     public StartFlag() {
+        Sounds.play("flag", 0.6f);
         Pixmap pixel = new Pixmap(1, 1, Pixmap.Format.RGBA8888);
         pixel.setColor(Color.WHITE);
         pixel.fill();

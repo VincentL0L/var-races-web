@@ -442,6 +442,7 @@ public class Overlay {
 
     private Texture[] allIcons;
     private float rouletteTimer = 0f;
+    private boolean rouletteLanded = true;
 
     /**
      * @param icons every item's icon, for the roulette that spins when you pick one up
@@ -456,6 +457,10 @@ public class Overlay {
      */
     private void renderItemStrip(float x, float y, float width) {
         rouletteTimer -= Gdx.graphics.getDeltaTime();
+        if (itemIcon != null && rouletteTimer <= 0f && !rouletteLanded) {
+            rouletteLanded = true;
+            Sounds.play("item_land", 0.45f);
+        }
         batch.begin();
         panel.draw(batch, x, y, width, STRIP_HEIGHT);
         batch.end();
@@ -544,6 +549,7 @@ public class Overlay {
             shownLap = me.lapCount;
             int lap = me.lapCount + 1;
             bannerText = lap == raceManager.getLaps() ? "FINAL LAP" : "LAP " + lap + "/" + raceManager.getLaps();
+            Sounds.play(lap == raceManager.getLaps() ? "final_lap" : "lap", 0.5f);
             bannerTimer = BANNER_TIME;
         }
         if (bannerTimer <= 0f) {
@@ -789,6 +795,8 @@ public class Overlay {
     public void setItem(Texture icon, String name) {
         if (icon != null && itemIcon == null) {
             rouletteTimer = ROULETTE_TIME;      // just picked one up: spin the roulette
+            rouletteLanded = false;
+            Sounds.play("item_pickup", 0.5f);
         }
         itemIcon = icon;
         itemName = name;

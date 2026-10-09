@@ -4,7 +4,6 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarModel;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
-import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
@@ -34,8 +33,11 @@ public class Player {
     private CarModel model = CarModel.ALL[1];
     private Image i;
     private Vector2 velocity;
-    private Sound oof;
-    private Music sound;
+    // the engine: one looping sound whose pitch follows the car's speed (see updateEngine)
+    private Sound engine;
+    private long engineId = -1;
+    private float enginePitch = 0.7f, engineVolume = 0.15f;
+    private boolean wasBoosting = false;
 
     // ---- car tuning (distances in track pixels, times in seconds) ----
     // The engine works like a real one: at low speed the tires limit how hard the car can
@@ -106,6 +108,7 @@ public class Player {
 
     /** hit by a Bottle Rocket or an Oil Slick */
     public void spinOut() {
+        Sounds.play("spin", 0.5f);
         if (spinTimer > 0f) {
             return;
         }
@@ -125,6 +128,7 @@ public class Player {
 
     /** used a Nitro: a kick of speed and extra power for a moment */
     public void nitro() {
+        Sounds.play("nitro", 0.6f);
         nitroTimer = 1.3f;
         float heading = (i.getRotation() + 90) * MathUtils.degreesToRadians;
         velocity.add(MathUtils.cos(heading) * 150f, MathUtils.sin(heading) * 150f);
@@ -179,9 +183,7 @@ public class Player {
             Barriers.build(roadMask, maskScale);
         }
 
-        sound = Gdx.audio.newMusic(Gdx.files.internal("accelerate.mp3"));
-        sound.setLooping(true);
-        oof = Gdx.audio.newSound(Gdx.files.internal("oof.mp3"));
+        engine = Sounds.get("engine");
 
         i.setPosition(200, 300);
 
@@ -212,11 +214,7 @@ public class Player {
         // (S brakes, then reverses once stopped)
         boolean automatic = inputEnabled && touchActive;
 
-        if (gas) {
-            sound.play();
-        } else {
-            sound.stop();
-        }
+        updateEngine(delta, gas);
 
         bumpCooldown -= delta;
         slowTimer -= delta;
@@ -432,11 +430,48 @@ public class Player {
     }
 
     /**
+     * The engine note: its pitch rises smoothly with road speed, like a car in one long gear
+     * (no gear changes), with a little extra when the gas is down; louder on the gas.
+     */
+    private void updateEngine(float delta, boolean gas) {
+        if (engine == null || Sounds.isMuted()) {
+            if (engineId >= 0 && Sounds.isMuted()) {
+                stopEngine();
+            }
+            return;
+        }
+        if (engineId < 0) {
+            engineId = engine.loop(engineVolume, enginePitch, 0f);
+        }
+        float speed = MathUtils.clamp(velocity.len() / 520f, 0f, 1.3f);
+        float targetPitch = 0.7f + 1.75f * (float) Math.pow(speed, 0.8f) + (gas ? 0.12f : 0f) + (isBoosting ? 0.15f : 0f);
+        float targetVolume = gas ? 0.42f : 0.18f + 0.15f * Math.min(1f, speed);
+        float k = 1f - (float) Math.exp(-8f * delta);
+        enginePitch += (targetPitch - enginePitch) * k;
+        engineVolume += (targetVolume - engineVolume) * k;
+        engine.setPitch(engineId, enginePitch);
+        engine.setVolume(engineId, engineVolume);
+        // a whoosh when the boost kicks in
+        if (isBoosting && !wasBoosting) {
+            Sounds.play("nitro", 0.35f, 1.2f);
+        }
+        wasBoosting = isBoosting;
+    }
+
+    /** silences the engine (paused, race over, leaving the screen) */
+    public void stopEngine() {
+        if (engine != null && engineId >= 0) {
+            engine.stop(engineId);
+        }
+        engineId = -1;
+    }
+
+    /**
      * plays the crash sound, at most a couple of times a second
      */
     private void bump() {
         if (bumpCooldown <= 0f) {
-            oof.play();
+            Sounds.play("crash", 0.55f, MathUtils.random(0.85f, 1.15f));
             bumpCooldown = 0.5f;
         }
     }
@@ -493,8 +528,7 @@ public class Player {
     public void dispose(){
         car.dispose();
         roadMask.dispose();
-        sound.stop();
-        sound.dispose();
+        stopEngine();
     }
 
     public Vector2 getPrevPos(){

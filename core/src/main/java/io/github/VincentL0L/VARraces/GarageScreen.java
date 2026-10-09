@@ -64,6 +64,8 @@ public class GarageScreen implements Screen {
             sprites[i] = new Texture(Gdx.files.internal(CarModel.sprite(i + 1)));
             sprites[i].setFilter(TextureFilter.Nearest, TextureFilter.Nearest);
         }
+        Sounds.clickSounds(stage);
+        Sounds.music(Sounds.TITLE, true);
         createUI();
         show(model, paint);
         Gdx.input.setInputProcessor(stage);

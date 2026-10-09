@@ -33,6 +33,7 @@ public class MenuScreen implements Screen {
         game = g;
         button = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
         car = GarageScreen.savedCar();
+        Sounds.music(Sounds.TITLE, true);
     }
 
     /**
@@ -98,6 +99,7 @@ public class MenuScreen implements Screen {
      */
     public void clearStage(){
         stage = new Stage(Ui.viewport());
+        Sounds.clickSounds(stage);
         Gdx.input.setInputProcessor(stage);
     }
 

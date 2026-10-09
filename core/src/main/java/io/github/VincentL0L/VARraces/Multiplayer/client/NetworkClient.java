@@ -390,6 +390,7 @@ public class NetworkClient {
             }
         } else if (type.equals("OUT")) {
             knockedOut.add(parts[1]);
+            newKnockouts.add(parts[1]);
             if (traffic != null) {
                 traffic.setOut(parts[1]);
             }
@@ -722,6 +723,16 @@ public class NetworkClient {
     // battle mode
     private BattleSystem battle;
     private final java.util.Set<String> knockedOut = new java.util.HashSet<>();
+    private final List<String> newKnockouts = new ArrayList<>();
+
+    /**
+     * @return cars knocked out since the last call (cleared)
+     */
+    public List<String> takeKnockouts() {
+        List<String> out = new ArrayList<>(newKnockouts);
+        newKnockouts.clear();
+        return out;
+    }
 
     /**
      * @param id a racer

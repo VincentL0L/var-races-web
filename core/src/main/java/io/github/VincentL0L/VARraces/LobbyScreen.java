@@ -53,7 +53,9 @@ public class LobbyScreen implements Screen {
     public LobbyScreen(Game game, int selectedCar, NetworkClient client, TrackMap singlePlayerMap) {
         this.game = game;
         this.selectedCar = selectedCar;
+        Sounds.music(Sounds.TITLE, true);
         uiStage = new Stage(Ui.viewport());
+        Sounds.clickSounds(uiStage);
         skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
 
         if (client != null) {
@@ -118,6 +120,7 @@ public class LobbyScreen implements Screen {
             public void clicked(InputEvent event, float x, float y) {
                 if (!networkClient.isReady() && networkClient.isConnected()) {
                     networkClient.setReady(true);
+                    Sounds.play("ready", 0.5f);
                 }
             }
         });

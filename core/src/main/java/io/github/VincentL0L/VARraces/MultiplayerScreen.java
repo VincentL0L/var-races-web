@@ -62,7 +62,9 @@ public class MultiplayerScreen implements Screen {
     public MultiplayerScreen(Game game, int selectedCar, NetworkClient client) {
         this.game = game;
         this.selectedCar = selectedCar;
+        Sounds.music(Sounds.TITLE, true);
         stage = new Stage(Ui.viewport());
+        Sounds.clickSounds(stage);
         skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
 
         if (client != null) {

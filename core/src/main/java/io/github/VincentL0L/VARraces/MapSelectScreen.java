@@ -99,7 +99,9 @@ public class MapSelectScreen implements Screen {
         this.selectedCar = selectedCar;
         this.host = client;
         this.hostPublic = isPublic;
+        Sounds.music(Sounds.TITLE, true);
         stage = new Stage(Ui.viewport());
+        Sounds.clickSounds(stage);
         skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
         backdrops = new TrackBackdrop[maps.size()];
         for (int i = 0; i < maps.size(); i++) {
