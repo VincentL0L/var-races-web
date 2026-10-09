@@ -18,6 +18,7 @@ public class Background {
     private TextureRegion grassRegion;
     private SpriteBatch batch;
     private float worldWidth;
+    private int scale = 1;
     private float worldHeight;
     /**
      * 1-Arg constructor for BackGround
@@ -26,6 +27,10 @@ public class Background {
      */
     public Background(Stage stage, TrackMap map) {
         backgroundTexture = new Texture(map.background);
+        // big maps are stored small and drawn scaled up, pixel-crisp
+        scale = map.scale;
+        backgroundTexture.setFilter(com.badlogic.gdx.graphics.Texture.TextureFilter.Nearest,
+            com.badlogic.gdx.graphics.Texture.TextureFilter.Nearest);
         grassTexture = new Texture("ui/grass.png");
         
         grassRegion = new TextureRegion(grassTexture, 0, 0, 512, 512);
@@ -57,6 +62,16 @@ public class Background {
         int endX = (int)(rightEdge / tileSize) + 1;
         int endY = (int)(topEdge / tileSize) + 1;
         
+        if (scale > 1) {
+            // big maps: past the edges, the map's own edge carries on (stretched), not grass
+            int tw = backgroundTexture.getWidth(), th = backgroundTexture.getHeight();
+            float mw = tw * scale, mh = th * scale, far = 4000f;
+            batch.draw(backgroundTexture, -far, 0, far, mh, 0, 0, 1, th, false, false);
+            batch.draw(backgroundTexture, mw, 0, far, mh, tw - 1, 0, 1, th, false, false);
+            batch.draw(backgroundTexture, -far, mh, mw + far * 2, far, 0, 0, tw, 1, false, false);
+            batch.draw(backgroundTexture, -far, -far, mw + far * 2, far, 0, th - 1, tw, 1, false, false);
+            startX = endX + 1;     // skip the grass
+        }
         for (int x = startX; x <= endX; x++) {
             for (int y = startY; y <= endY; y++) {
                 batch.draw(grassRegion,
@@ -67,7 +82,7 @@ public class Background {
             }
         }
         
-        batch.draw(backgroundTexture, 0, 0);
+        batch.draw(backgroundTexture, 0, 0, backgroundTexture.getWidth() * scale, backgroundTexture.getHeight() * scale);
         batch.end();
     }
     /**

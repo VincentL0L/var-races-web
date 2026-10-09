@@ -152,10 +152,29 @@ public class Opponent {
         slowTimer -= dt;
         nitroTimer -= dt;
 
+        // stuck off the road for a while (wedged in a corner, run wide): like a kart race's
+        // rescue, it's put back on the course just before where it was heading
+        if (traffic != null && !traffic.carOnRoad(position.x, position.y)) {
+            offRoadTime += dt;
+            if (offRoadTime > RESCUE_TIME) {
+                rescue();
+                return;
+            }
+        } else {
+            offRoadTime = 0f;
+        }
+
         // reached the current waypoint: move on and pick a new line for the next one
         if (position.dst(target) < arriveRadius || position.dst(waypoints.get(currentWaypointIndex)) < arriveRadius
                 || passedCorner()) {
             currentWaypointIndex++;
+            if (currentWaypointIndex == waypoints.size() && sprint) {
+                // a sprint: this was the run-off past the finish line, pull up here
+                currentWaypointIndex = waypoints.size() - 1;
+                isFinished = true;
+                speed = 0f;
+                return;
+            }
             if (currentWaypointIndex == waypoints.size()) {
                 currentWaypointIndex = 0;
                 lapCount++;
@@ -238,8 +257,9 @@ public class Opponent {
         }
         // a car pointed the wrong way slows down to turn around
         desired *= MathUtils.clamp(1f - Math.abs(diff) / 120f, 0.35f, 1f);
-        if (shouldStopAtNextWaypoint && currentWaypointIndex == 1) {
-            desired *= Math.max(0.3f, distance / 200f);
+        if (shouldStopAtNextWaypoint && currentWaypointIndex == 1
+                || sprint && currentWaypointIndex == waypoints.size() - 1) {
+            desired *= Math.max(0.3f, distance / 200f);   // easing up past the finish
         }
 
         if (speed < desired) {
@@ -262,7 +282,7 @@ public class Opponent {
      */
     private void pickTarget() {
         Vector2 point = waypoints.get(currentWaypointIndex);
-        Vector2 before = waypoints.get((currentWaypointIndex - 1 + waypoints.size()) % waypoints.size());
+        Vector2 before = pointBefore(currentWaypointIndex);
         Vector2 dir = new Vector2(point).sub(before).nor();
         lineOffset = MathUtils.clamp(lineBias * 14f + MathUtils.random(-16f, 16f), -MAX_LINE_OFFSET, MAX_LINE_OFFSET);
         basePoint.set(point);
@@ -328,8 +348,8 @@ public class Opponent {
      */
     private boolean passedCorner() {
         Vector2 point = waypoints.get(currentWaypointIndex);
-        Vector2 before = waypoints.get((currentWaypointIndex - 1 + waypoints.size()) % waypoints.size());
-        Vector2 after = waypoints.get((currentWaypointIndex + 1) % waypoints.size());
+        Vector2 before = pointBefore(currentWaypointIndex);
+        Vector2 after = pointAfter(currentWaypointIndex);
         Vector2 in = new Vector2(point).sub(before).nor();
         Vector2 out = new Vector2(after).sub(point).nor();
         // the corner's bisector: the diagonal line through the waypoint halfway between the
@@ -344,8 +364,8 @@ public class Opponent {
      */
     private float cornerSharpness() {
         Vector2 point = waypoints.get(currentWaypointIndex);
-        Vector2 before = waypoints.get((currentWaypointIndex - 1 + waypoints.size()) % waypoints.size());
-        Vector2 after = waypoints.get((currentWaypointIndex + 1) % waypoints.size());
+        Vector2 before = pointBefore(currentWaypointIndex);
+        Vector2 after = pointAfter(currentWaypointIndex);
         Vector2 in = new Vector2(point).sub(before).nor();
         Vector2 out = new Vector2(after).sub(point).nor();
         return MathUtils.clamp(1f - in.dot(out), 0f, 1f);
@@ -416,6 +436,23 @@ public class Opponent {
         return distanceToNextWaypoint;
     }
     private static final float SPIN_TIME = 1.0f;
+    /** seconds off the road before a CPU is put back on it */
+    private static final float RESCUE_TIME = 3f;
+    private float offRoadTime = 0f;
+
+    /** back onto the middle of the course, a little before the waypoint it was heading for */
+    private void rescue() {
+        Vector2 to = waypoints.get(currentWaypointIndex), from = pointBefore(currentWaypointIndex);
+        Vector2 dir = new Vector2(to).sub(from);
+        float len = Math.max(1f, dir.len());
+        dir.scl(1f / len);
+        float back = Math.min(len * 0.5f, 160f);
+        position.set(to.x - dir.x * back - CarBody.WIDTH / 2f, to.y - dir.y * back - CarBody.LENGTH / 2f);
+        heading = MathUtils.atan2(dir.y, dir.x) * MathUtils.radiansToDegrees;
+        speed = 0f;
+        offRoadTime = 0f;
+        pickTarget();
+    }
     private float spinTimer = 0f, spinAngle = 0f, slowTimer = 0f, nitroTimer = 0f;
 
     /** hit by a Bottle Rocket or an Oil Slick: spin out and lose most of the speed */
@@ -446,6 +483,36 @@ public class Opponent {
     }
 
     private int laps = 1;
+    /** a sprint from A to B: the waypoints don't loop back round */
+    private boolean sprint = false;
+
+    /**
+     * @param value true on a sprint map (see TrackMap.pointToPoint)
+     */
+    public void setSprint(boolean value) {
+        sprint = value;
+        currentWaypointIndex = 0;
+        pickTarget();
+    }
+
+    /** the waypoint before i; on a sprint the start has an imaginary one straight behind it */
+    private Vector2 pointBefore(int i) {
+        if (sprint && i == 0) {
+            Vector2 a = waypoints.get(0), b = waypoints.get(1);
+            return new Vector2(a).sub(new Vector2(b).sub(a).nor().scl(100f));
+        }
+        return waypoints.get((i - 1 + waypoints.size()) % waypoints.size());
+    }
+
+    /** the waypoint after i; on a sprint the end carries on straight */
+    private Vector2 pointAfter(int i) {
+        int last = waypoints.size() - 1;
+        if (sprint && i == last) {
+            Vector2 a = waypoints.get(last - 1), b = waypoints.get(last);
+            return new Vector2(b).add(new Vector2(b).sub(a).nor().scl(100f));
+        }
+        return waypoints.get((i + 1) % waypoints.size());
+    }
 
     /**
      * @param count laps in this race

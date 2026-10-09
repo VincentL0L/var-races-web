@@ -23,8 +23,12 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarBody;
  */
 public class Player {
     private static Pixmap roadMask;
+    /** map pixels per road-mask pixel (big maps store a smaller mask) */
+    private static int maskScale = 1;
     /** true on maps with walls beside the track (see Barriers) */
     private static boolean barriers = false;
+    /** the map's surface: the moon is slippery */
+    private float surfaceGrip = 1f, surfaceTraction = 1f;
     private Texture car;
     /** the car picked in the garage: its launch, power, handling and weight */
     private CarModel model = CarModel.ALL[1];
@@ -167,9 +171,12 @@ public class Player {
         velocity = new Vector2();
 
         roadMask = new Pixmap(Gdx.files.internal(map.roadMask));
+        maskScale = map.scale;
         barriers = map.barriers;
+        surfaceGrip = map.grip;
+        surfaceTraction = map.traction;
         if (barriers) {
-            Barriers.build(roadMask);
+            Barriers.build(roadMask, maskScale);
         }
 
         sound = Gdx.audio.newMusic(Gdx.files.internal("accelerate.mp3"));
@@ -271,7 +278,7 @@ public class Player {
             if (forward < 0) {
                 forward = Math.min(0f, forward + BRAKE_DECEL * dt);  // going backwards: gas acts as a brake first
             } else {
-                float traction = (isBoosting ? BOOST_TRACTION : TRACTION) * model.traction;
+                float traction = (isBoosting ? BOOST_TRACTION : TRACTION) * model.traction * surfaceTraction;
                 float power = ENGINE_POWER * model.power * (isBoosting ? BOOST_POWER_MULT : 1f) * itemPower();
                 forward += Math.min(traction * (nitroTimer > 0f ? 1.8f : 1f), power / Math.max(forward, 1f)) * dt;
             }
@@ -289,7 +296,7 @@ public class Player {
         }
 
         // tires resist sliding sideways; less grip while boosting (a little drift) and on grass
-        float grip = onGrass ? GRASS_GRIP : (isBoosting ? BOOST_GRIP : GRIP) * model.handling;
+        float grip = (onGrass ? GRASS_GRIP : (isBoosting ? BOOST_GRIP : GRIP) * model.handling) * surfaceGrip;
         sideways *= (float) Math.exp(-grip * dt);
 
         velocity.set(fx * forward - fy * sideways, fy * forward + fx * sideways);
@@ -333,7 +340,7 @@ public class Player {
             if (forward < 0f) {
                 forward = approachZero(forward, BRAKE_DECEL * dt);
             } else {
-                float traction = (isBoosting ? BOOST_TRACTION : TRACTION) * model.traction;
+                float traction = (isBoosting ? BOOST_TRACTION : TRACTION) * model.traction * surfaceTraction;
                 float power = ENGINE_POWER * model.power * (isBoosting ? BOOST_POWER_MULT : 1f) * itemPower();
                 forward += Math.min(traction * (nitroTimer > 0f ? 1.8f : 1f), power / Math.max(forward, 1f)) * dt;
             }
@@ -458,7 +465,7 @@ public class Player {
     public static boolean inBounds(float x, float y, float width, float height) {
         float cx = x + width / 2, cy = y + height / 2;
         return cx >= MAP_MARGIN && cy >= MAP_MARGIN
-            && cx < roadMask.getWidth() - MAP_MARGIN && cy < roadMask.getHeight() - MAP_MARGIN
+            && cx < roadMask.getWidth() * maskScale - MAP_MARGIN && cy < roadMask.getHeight() * maskScale - MAP_MARGIN
             && (!barriers || Barriers.drivable(cx, cy));
     }
 
@@ -470,8 +477,8 @@ public class Player {
     }
 
     public static boolean onRoad(float x, float y, float width, float height) {
-        int X = (int)(x + width / 2);
-        int Y = roadMask.getHeight() - (int)(y + height/2);
+        int X = (int) ((x + width / 2) / maskScale);
+        int Y = (int) ((roadMask.getHeight() * maskScale - (y + height / 2)) / maskScale);
 
         int pixel = roadMask.getPixel(X, Y);
         Color color = new Color();

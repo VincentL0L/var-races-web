@@ -15,8 +15,8 @@ import com.badlogic.gdx.utils.viewport.ExtendViewport;
  * it, so going from the online menu to a lobby carries on the same drift without a jump.
  */
 public class TrackBackdrop {
-    private static final float MAP_WIDTH = 1920f;
-    private static final float MAP_HEIGHT = 1080f;
+    /** the map's size (sprint maps are bigger than circuits) */
+    private final float mapWidth, mapHeight;
     private static final float SPEED_X = 70f;
     private static final float SPEED_Y = 45f;
 
@@ -35,6 +35,8 @@ public class TrackBackdrop {
      */
     public TrackBackdrop(TrackMap map) {
         background = new Background(stage, map);
+        mapWidth = map.width;
+        mapHeight = map.height;
     }
 
     /**
@@ -51,22 +53,22 @@ public class TrackBackdrop {
     }
 
     private void drift(float delta) {
-        float halfW = Math.min(camera.viewportWidth * camera.zoom / 2f, MAP_WIDTH / 2f);
-        float halfH = Math.min(camera.viewportHeight * camera.zoom / 2f, MAP_HEIGHT / 2f);
+        float halfW = Math.min(camera.viewportWidth * camera.zoom / 2f, mapWidth / 2f);
+        float halfH = Math.min(camera.viewportHeight * camera.zoom / 2f, mapHeight / 2f);
         camX += driftX * delta;
         camY += driftY * delta;
         if (camX < halfW) {
             camX = halfW;
             driftX = Math.abs(driftX);
-        } else if (camX > MAP_WIDTH - halfW) {
-            camX = MAP_WIDTH - halfW;
+        } else if (camX > mapWidth - halfW) {
+            camX = mapWidth - halfW;
             driftX = -Math.abs(driftX);
         }
         if (camY < halfH) {
             camY = halfH;
             driftY = Math.abs(driftY);
-        } else if (camY > MAP_HEIGHT - halfH) {
-            camY = MAP_HEIGHT - halfH;
+        } else if (camY > mapHeight - halfH) {
+            camY = mapHeight - halfH;
             driftY = -Math.abs(driftY);
         }
         camera.position.set(camX, camY, 0);

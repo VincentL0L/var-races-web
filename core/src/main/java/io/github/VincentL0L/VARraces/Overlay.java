@@ -219,7 +219,7 @@ public class Overlay {
             font.draw(batch, name, x + BEZEL + tab + 10, middle + layout.height / 2f);
 
             String status = r.isFinished() ? formatTime(r.finishTime)
-                : "LAP " + currentLap(r) + "/" + raceManager.getLaps();
+                : raceManager.isSprint() ? percent(r) : "LAP " + currentLap(r) + "/" + raceManager.getLaps();
             font.setColor(r.isFinished() ? Ui.GOLD : LABEL);
             layout.setText(font, status);
             font.draw(batch, status, x + width - BEZEL - layout.width, middle + layout.height / 2f);
@@ -355,26 +355,39 @@ public class Overlay {
 
         // fit the 1920 x 1080 map into the space under the title, centered
         float areaW = width - BEZEL * 2 - 12f, areaH = height - BEZEL * 2 - TITLE_HEIGHT - 8f;
-        float scale = Math.min(areaW / 1920f, areaH / 1080f);
-        float ox = x + (width - 1920f * scale) / 2f;
-        float oy = y + BEZEL + 4f + (areaH - 1080f * scale) / 2f;
+        float scale = Math.min(areaW / map.width, areaH / map.height);
+        float ox = x + (width - map.width * scale) / 2f;
+        float oy = y + BEZEL + 4f + (areaH - map.height * scale) / 2f;
+
         List<com.badlogic.gdx.math.Vector2> path = map.waypoints;
+        // a sprint's line stops at the finish (the last waypoint is only the run-off)
+        int stretches = map.pointToPoint ? path.size() - 2 : path.size();
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         render.begin(ShapeRenderer.ShapeType.Filled);
         for (int pass = 0; pass < 2; pass++) {
             render.setColor(pass == 0 ? TRACK_EDGE : TRACK_ROAD);
             float w = pass == 0 ? 7f : 4f;
-            for (int i = 0; i < path.size(); i++) {
+            for (int i = 0; i < stretches; i++) {
                 com.badlogic.gdx.math.Vector2 a = path.get(i), b = path.get((i + 1) % path.size());
                 float ax = ox + a.x * scale, ay = oy + a.y * scale, bx = ox + b.x * scale, by = oy + b.y * scale;
                 render.rectLine(ax, ay, bx, by, w);
                 render.circle(ax, ay, w / 2f, 12);
             }
         }
-        // the start line
+        // the start line, and on a sprint a checkered flag at the finish
         render.setColor(Color.WHITE);
         render.rect(ox + (200f - 64f) * scale, oy + 300f * scale - 1f, 128f * scale, 2.5f);
+        if (map.pointToPoint) {
+            com.badlogic.gdx.math.Vector2 f = map.finishPoint();
+            float fx = ox + f.x * scale, fy = oy + f.y * scale;
+            for (int cy = 0; cy < 3; cy++) {
+                for (int cx = 0; cx < 3; cx++) {
+                    render.setColor((cx + cy) % 2 == 0 ? Color.WHITE : TRACK_EDGE);
+                    render.rect(fx - 4.5f + cx * 3f, fy - 4.5f + cy * 3f, 3f, 3f);
+                }
+            }
+        }
         // cars: everyone else first, you on top in gold
         for (java.util.Map.Entry<String, com.badlogic.gdx.math.Vector2> e : cars.entrySet()) {
             if (e.getKey().equals(playerId)) {
@@ -473,7 +486,7 @@ public class Overlay {
     /** "LAP 2/3" or "FINAL LAP" slides across the middle as you cross the line */
     private void renderLapBanner(List<RacerInfo> standings) {
         RacerInfo me = raceManager.getRacerInfoByName(playerId);
-        if (me != null && !me.isFinished() && me.lapCount > shownLap) {
+        if (me != null && !raceManager.isSprint() && !me.isFinished() && me.lapCount > shownLap) {
             shownLap = me.lapCount;
             int lap = me.lapCount + 1;
             bannerText = lap == raceManager.getLaps() ? "FINAL LAP" : "LAP " + lap + "/" + raceManager.getLaps();
@@ -532,6 +545,12 @@ public class Overlay {
         return r.name.equals(playerId) ? r.name + " (YOU)" : map.displayName(r.name);
     }
 
+    /** how much of a sprint this racer has driven, like "64%" */
+    private String percent(RacerInfo r) {
+        float done = MathUtils.clamp(r.progress / Math.max(1f, raceManager.getTrackLength()), 0f, 1f);
+        return Math.round(done * 100f) + "%";
+    }
+
     private int currentLap(RacerInfo r) {
         return Math.max(1, Math.min(raceManager.getLaps(), r.lapCount + 1));
     }
@@ -573,8 +592,13 @@ public class Overlay {
         // right: lap (top) and stopwatch (bottom)
         RacerInfo me = raceManager.getRacerInfoByName(playerId);
         boolean finished = me != null && me.isFinished();
-        String lap = finished ? "DONE" : (me != null ? currentLap(me) : 1) + "/" + raceManager.getLaps();
-        renderScreen(rightX, topRowY, moduleWidth, "LAP", lap, Ui.CREAM);
+        if (raceManager.isSprint()) {
+            // a sprint has no laps: how much of the course is done
+            renderScreen(rightX, topRowY, moduleWidth, "DIST", finished ? "DONE" : me != null ? percent(me) : "0%", Ui.CREAM);
+        } else {
+            String lap = finished ? "DONE" : (me != null ? currentLap(me) : 1) + "/" + raceManager.getLaps();
+            renderScreen(rightX, topRowY, moduleWidth, "LAP", lap, Ui.CREAM);
+        }
         renderScreen(rightX, bottomRowY, moduleWidth, "TIME", formatTime(raceTime), finished ? Ui.GOLD : Ui.CREAM);
 
         // center pod: the speedometer sits high so it hangs below the housing

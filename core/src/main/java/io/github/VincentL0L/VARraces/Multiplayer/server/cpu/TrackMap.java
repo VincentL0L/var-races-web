@@ -21,6 +21,10 @@ public class TrackMap {
     public static final String LONDON = "london";
     public static final String PARIS = "paris";
     public static final String TAIPEI = "taipei";
+    public static final String SUMMIT = "summit";
+    public static final String RUSH_HOUR = "rushhour";
+    public static final String ROOFTOP = "rooftop";
+    public static final String MOON = "moon";
 
     /** short id sent between the game and the server */
     public final String id;
@@ -41,6 +45,42 @@ public class TrackMap {
     public final String cpuSprite;
     /** what the CPUs are called in the standings: "CPU" or "WAYMO" */
     public final String cpuName;
+    /** size of the map picture in map pixels */
+    public int width = 1920, height = 1080;
+    /**
+     * true for a sprint from A to B instead of laps of a circuit. The waypoints then run from
+     * the start line to the finish line, plus one last point in the run-off past the finish
+     * where the CPUs pull up.
+     */
+    public boolean pointToPoint = false;
+    /**
+     * the map picture and road mask are stored this many times smaller than the map and
+     * drawn scaled up (pixel art made of 3 x 3 blocks loses nothing), so big maps stay small
+     */
+    public int scale = 1;
+    /** tire grip and launch traction on this map (1 = normal; the moon is slippery) */
+    public float grip = 1f, traction = 1f;
+
+    private TrackMap sprint(int w, int h) {
+        width = w;
+        height = h;
+        pointToPoint = true;
+        scale = 3;
+        return this;
+    }
+
+    private TrackMap surface(float gripScale, float tractionScale) {
+        grip = gripScale;
+        traction = tractionScale;
+        return this;
+    }
+
+    /**
+     * @return the finish line point (the start line is waypoint 0 on a sprint, the last waypoint on a circuit)
+     */
+    public Vector2 finishPoint() {
+        return pointToPoint ? waypoints.get(waypoints.size() - 2) : waypoints.get(waypoints.size() - 1);
+    }
 
     private TrackMap(String id, String name, String tagline, String folder, String serverMask,
             List<Vector2> waypoints, boolean barriers, String cpuSprite, String cpuName) {
@@ -87,6 +127,15 @@ public class TrackMap {
                 Waypoints.getParisWaypoints(), "ui/2cv.png", "2CV"));
             maps.add(city(TAIPEI, "Taipei", "Past Taipei 101 and the night market, against a swarm of scooters.",
                 Waypoints.getTaipeiWaypoints(), "ui/moto.png", "MOTO"));
+            // sprints: one run from A to B
+            maps.add(city(SUMMIT, "Summit Sprint", "Hairpins up a mountain pass. The road narrows near the top.",
+                Waypoints.getSummitWaypoints(), null, "RALLY").sprint(1920, 7200));
+            maps.add(city(RUSH_HOUR, "Rush Hour", "Rob the bank, lose the cops in the alley and the car park.",
+                Waypoints.getRushHourWaypoints(), "ui/cop.png", "COP").sprint(3840, 3840));
+            maps.add(city(ROOFTOP, "Rooftop Run", "Skyscraper roofs and narrow sky bridges. Don't look down.",
+                Waypoints.getRooftopWaypoints(), null, "RIVAL").sprint(7200, 1800));
+            maps.add(city(MOON, "Moon Base", "Low grip, big craters, and a rocket waiting at the end.",
+                Waypoints.getMoonWaypoints(), "ui/rover.png", "ROVER").sprint(5400, 3240).surface(0.45f, 0.7f));
         }
         return maps;
     }

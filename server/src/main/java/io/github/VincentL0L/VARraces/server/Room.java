@@ -57,11 +57,13 @@ public class Room {
         this.isPublic = isPublic;
         this.map = map;
         waypoints = map.waypoints;
-        raceManager = new RaceManager(waypoints);
-        items = new ItemSystem(waypoints);
+        raceManager = RaceManager.forMap(map);
+        items = new ItemSystem(waypoints, map.pointToPoint);
         List<Vector2> grid = Waypoints.getCpuGrid();
         for (int i = 0; i < grid.size(); i++) {
-            cpuOpponents.add(new Opponent("CPU" + (i + 1), waypoints, grid.get(i)));
+            Opponent cpu = new Opponent("CPU" + (i + 1), waypoints, grid.get(i));
+            cpu.setSprint(map.pointToPoint);
+            cpuOpponents.add(cpu);
         }
         traffic = new CpuTraffic(cpuOpponents, ImageTrack.forMap(map));
     }

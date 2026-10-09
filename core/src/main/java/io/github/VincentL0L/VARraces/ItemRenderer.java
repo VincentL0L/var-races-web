@@ -29,7 +29,7 @@ public class ItemRenderer {
      * @param map the map being raced (the boxes sit in the same places every race)
      */
     public ItemRenderer(TrackMap map) {
-        for (Vector2[] row : ItemSystem.boxRows(map.waypoints)) {
+        for (Vector2[] row : ItemSystem.boxRows(map.waypoints, map.pointToPoint)) {
             for (Vector2 p : row) {
                 boxes.add(p);
             }

@@ -96,7 +96,10 @@ public class LobbyScreen implements Screen {
         card.add(Cards.kicker("RACE SETTINGS")).left().padTop(8).padBottom(6).row();
         lapsValue = Cards.text("", true);
         difficultyValue = Cards.text("", true);
-        card.add(picker("LAPS", lapsValue, -1, 0)).height(Cards.ROW_HEIGHT).padBottom(6).row();
+        if (!map.pointToPoint) {
+            // a sprint is one run from start to finish, so there's no lap count to pick
+            card.add(picker("LAPS", lapsValue, -1, 0)).height(Cards.ROW_HEIGHT).padBottom(6).row();
+        }
         card.add(picker("CPU DIFFICULTY", difficultyValue, 0, -1)).height(Cards.ROW_HEIGHT).row();
         settingsNote = new Label("", new Label.LabelStyle(Ui.font(9), Cards.LABEL));
         card.add(settingsNote).left().padTop(4).row();

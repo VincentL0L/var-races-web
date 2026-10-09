@@ -113,12 +113,13 @@ public class NetworkClient {
             playerId = "Player 1";
         }
         playerReadyStates.put(playerId, false);
-        serverRaceManager = new RaceManager(map.waypoints);
+        serverRaceManager = RaceManager.forMap(map);
 
         List<Vector2> grid = Waypoints.getCpuGrid();
         for (int i = 0; i < grid.size(); i++) {
             Vector2 cpuPos = grid.get(i);
             Opponent cpu = new Opponent("CPU" + (i + 1), map.waypoints, cpuPos);
+            cpu.setSprint(map.pointToPoint);
             cpuOpponents.add(cpu);
 
             PositionPacket packet = new PositionPacket();
@@ -128,8 +129,8 @@ public class NetworkClient {
             packet.rotation = 90;
             opponents.put(packet.playerId, packet);
         }
-        track = new PixmapTrack(map.roadMask);
-        items = new ItemSystem(map.waypoints);
+        track = new PixmapTrack(map.roadMask, map.scale);
+        items = new ItemSystem(map.waypoints, map.pointToPoint);
         traffic = new CpuTraffic(cpuOpponents, track);
         connected = true;
     }

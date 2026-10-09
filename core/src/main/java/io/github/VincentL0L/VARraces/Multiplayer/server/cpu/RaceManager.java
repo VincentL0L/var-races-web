@@ -44,13 +44,40 @@ public class RaceManager {
     private final float[] bisectorX;
     private final float[] bisectorY;
 
+    /** true on a sprint: the path runs once from the start line to the finish line */
+    private final boolean open;
+
+    /**
+     * @param map a map
+     * @return a race manager for it (laps of a circuit, or a sprint from A to B)
+     */
+    public static RaceManager forMap(TrackMap map) {
+        return new RaceManager(map.waypoints, map.pointToPoint);
+    }
+
     /**
      * @param waypoints the race waypoints; the last one is the start/finish line
      */
     public RaceManager(List<Vector2> waypoints) {
-        path.add(waypoints.get(waypoints.size() - 1));
-        for (int i = 0; i < waypoints.size() - 1; i++) {
-            path.add(waypoints.get(i));
+        this(waypoints, false);
+    }
+
+    /**
+     * @param waypoints the race waypoints
+     * @param sprint false: a circuit, the last waypoint is the start/finish line;
+     * true: start line first, finish line second to last (the last is the run-off)
+     */
+    public RaceManager(List<Vector2> waypoints, boolean sprint) {
+        open = sprint;
+        if (open) {
+            for (int i = 0; i < waypoints.size() - 1; i++) {
+                path.add(waypoints.get(i));
+            }
+        } else {
+            path.add(waypoints.get(waypoints.size() - 1));
+            for (int i = 0; i < waypoints.size() - 1; i++) {
+                path.add(waypoints.get(i));
+            }
         }
         int n = path.size();
         segmentStart = new float[n];
@@ -58,7 +85,7 @@ public class RaceManager {
         float total = 0f;
         for (int i = 0; i < n; i++) {
             segmentStart[i] = total;
-            segmentLength[i] = path.get(i).dst(path.get((i + 1) % n));
+            segmentLength[i] = open && i == n - 1 ? 0f : path.get(i).dst(path.get((i + 1) % n));
             total += segmentLength[i];
         }
         trackLength = total;
@@ -75,6 +102,55 @@ public class RaceManager {
         // at the start the "bisector" is the painted finish line itself: straight across at y = 300
         bisectorX[0] = 0f;
         bisectorY[0] = 1f;
+        if (open) {
+            // a sprint's finish line is straight across the last stretch
+            Vector2 d = new Vector2(path.get(n - 1)).sub(path.get(n - 2)).nor();
+            bisectorX[n - 1] = d.x;
+            bisectorY[n - 1] = d.y;
+        }
+    }
+
+    /**
+     * @return true on a sprint from A to B (no laps)
+     */
+    public boolean isSprint() {
+        return open;
+    }
+
+    /** a sprint: where the car is along the course, and whether it's crossed the finish */
+    private void updateSprint(RacerInfo info, Vector2 position, float raceTime, boolean first) {
+        int n = path.size();
+        int segments = n - 1;
+        if (first) {
+            // first sighting: simply the nearest stretch (the bisector test can match a stretch
+            // far away for a car still behind the start line)
+            float bestDist = Float.MAX_VALUE;
+            for (int i = 0; i < segments; i++) {
+                float d = distanceToSegment(position, i);
+                if (d < bestDist) {
+                    bestDist = d;
+                    info.segment = i;
+                }
+            }
+        } else if (!info.isFinished()) {
+            int from = Math.max(0, info.segment - 1);
+            int count = Math.min(segments - from, 4);
+            info.segment = Math.max(0, closestSegment(position, from, count));
+        }
+        info.position = new Vector2(position);
+        if (info.isFinished()) {
+            return;
+        }
+        info.lap = 0;
+        info.lapCount = 0;
+        // behind the start line counts as negative, so the starting grid is in order
+        float behind = pastBisector(position, 0);
+        info.progress = info.segment == 0 && behind < 0f ? behind : along(position, info.segment);
+        if (info.segment == segments - 1 && pastBisector(position, n - 1) >= 0f) {
+            info.finishTime = raceTime;
+            info.lapCount = 1;
+            info.progress = trackLength;
+        }
     }
 
     /**
@@ -96,6 +172,15 @@ public class RaceManager {
         }
         RacerInfo info = getRacerInfoByName(name);
         int n = path.size();
+        if (open) {
+            boolean first = info == null;
+            if (first) {
+                info = new RacerInfo(name);
+                racers.add(info);
+            }
+            updateSprint(info, position, raceTime, first);
+            return;
+        }
         if (info == null) {
             info = new RacerInfo(name);
             racers.add(info);
@@ -141,6 +226,9 @@ public class RaceManager {
         for (int pass = 0; pass < 2 && best < 0; pass++) {
             for (int k = 0; k < count; k++) {
                 int i = ((first + k) % n + n) % n;
+                if (open && i >= n - 1) {
+                    continue;    // a sprint has no stretch from the finish back to the start
+                }
                 if (pass == 0 && !(pastBisector(p, i) >= 0f && pastBisector(p, (i + 1) % n) < 0f)) {
                     continue;
                 }
@@ -206,7 +294,7 @@ public class RaceManager {
      * @param count laps in this race
      */
     public void setLaps(int count) {
-        laps = Math.max(1, count);
+        laps = open ? 1 : Math.max(1, count);
     }
 
     /**

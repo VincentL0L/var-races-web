@@ -26,6 +26,9 @@ public class Barriers {
     private static int gridWidth;
     private static int gridHeight;
     private static int mapHeight;
+    private static int cellPixels = CELL;
+    /** a cell's size in map pixels */
+    private static int cellSize = CELL;
     /** distance from each cell to the road, in chamfer steps (3 per cell) */
     private static int[] distance;
 
@@ -34,19 +37,29 @@ public class Barriers {
      * @param roadMask road_mask.png (white = road)
      */
     public static void build(Pixmap roadMask) {
+        build(roadMask, 1);
+    }
+
+    /**
+     * @param maskScale map pixels per mask pixel (big maps store a smaller mask)
+     */
+    public static void build(Pixmap roadMask, int maskScale) {
         if (distance != null && builtFor == roadMask) {
             return;
         }
         builtFor = roadMask;
-        mapHeight = roadMask.getHeight();
-        gridWidth = roadMask.getWidth() / CELL;
-        gridHeight = mapHeight / CELL;
+        // a cell is CELL mask pixels on a full-size mask, one mask pixel on a small one
+        cellPixels = maskScale > 1 ? 1 : CELL;
+        cellSize = cellPixels * maskScale;
+        mapHeight = roadMask.getHeight() * maskScale;
+        gridWidth = roadMask.getWidth() / cellPixels;
+        gridHeight = roadMask.getHeight() / cellPixels;
         int[] d = new int[gridWidth * gridHeight];
         int far = Integer.MAX_VALUE / 2;
         Color c = new Color();
         for (int gy = 0; gy < gridHeight; gy++) {
             for (int gx = 0; gx < gridWidth; gx++) {
-                Color.rgba8888ToColor(c, roadMask.getPixel(gx * CELL + CELL / 2, gy * CELL + CELL / 2));
+                Color.rgba8888ToColor(c, roadMask.getPixel(gx * cellPixels + cellPixels / 2, gy * cellPixels + cellPixels / 2));
                 d[gy * gridWidth + gx] = c.r >= 0.85f && c.g >= 0.85f && c.b >= 0.85f ? 0 : far;
             }
         }
@@ -85,12 +98,12 @@ public class Barriers {
      * @return how far that spot is from the road, in map pixels
      */
     public static float distanceToRoad(float x, float y) {
-        int gx = (int) (x / CELL);
-        int gy = (int) ((mapHeight - y) / CELL);
+        int gx = (int) (x / cellSize);
+        int gy = (int) ((mapHeight - y) / cellSize);
         if (distance == null || gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight) {
             return Float.MAX_VALUE;
         }
-        return distance[gy * gridWidth + gx] * (float) CELL / STRAIGHT;
+        return distance[gy * gridWidth + gx] * (float) cellSize / STRAIGHT;
     }
 
     /**

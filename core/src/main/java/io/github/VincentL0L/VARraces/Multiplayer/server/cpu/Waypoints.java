@@ -119,6 +119,29 @@ public class Waypoints {
             800, 420, 800, 230, 200, 230, 200, 300);
     }
 
+    // ---- sprints: from the start line (200, 300) to the finish line, then a run-off point
+    // (same as tools/MakeSprints.java, which also paints a stretch below the start for the grid)
+
+    /** Summit Sprint: five sets of hairpins up a mountain pass, forest to rock to snow */
+    public static List<Vector2> getSummitWaypoints() {
+        return points(200, 300, 200, 620, 1650, 920, 1730, 1180, 1000, 1260, 850, 1420, 300, 1480, 230, 1740, 900, 1810, 1050, 1970, 1650, 2040, 1730, 2300, 300, 2600, 230, 2860, 1650, 3160, 1730, 3420, 1000, 3500, 850, 3660, 300, 3720, 230, 3980, 900, 4050, 1050, 4210, 1650, 4280, 1730, 4540, 300, 4840, 230, 5100, 1650, 5400, 1730, 5660, 1000, 5740, 850, 5900, 300, 5960, 230, 6220, 1100, 6480, 1100, 6780, 1100, 6920);
+    }
+
+    /** Rush Hour Getaway: from the bank, up an alley, zigzag through a car park, along the waterfront to the warehouse */
+    public static List<Vector2> getRushHourWaypoints() {
+        return points(200, 300, 200, 1100, 1200, 1100, 1200, 1700, 1750, 1700, 2550, 1700, 2550, 1960, 1950, 1960, 1950, 2220, 2650, 2220, 3050, 2220, 3050, 3000, 1700, 3000, 1100, 3000, 1100, 3480, 3450, 3480, 3450, 2850, 3450, 2700);
+    }
+
+    /** Rooftop Run: across skyscraper roofs and the sky bridges between them */
+    public static List<Vector2> getRooftopWaypoints() {
+        return points(200, 300, 200, 900, 700, 900, 1100, 900, 1500, 900, 1500, 1400, 2100, 1400, 2500, 1400, 2900, 1400, 3300, 1000, 3700, 1000, 4100, 1000, 4500, 1000, 4500, 500, 5000, 500, 5400, 500, 5800, 500, 5800, 1200, 6300, 1200, 6650, 1200, 6900, 1200, 7050, 1200);
+    }
+
+    /** Moon Base: across the craters to the launch pad */
+    public static List<Vector2> getMoonWaypoints() {
+        return points(200, 300, 200, 1100, 1100, 1100, 1700, 1800, 1700, 2700, 2900, 2700, 3500, 2000, 3500, 900, 4400, 900, 4900, 1500, 4900, 2550, 4900, 2700);
+    }
+
     private static List<Vector2> points(int... xy) {
         List<Vector2> waypoints = new ArrayList<>();
         for (int i = 0; i + 1 < xy.length; i += 2) {

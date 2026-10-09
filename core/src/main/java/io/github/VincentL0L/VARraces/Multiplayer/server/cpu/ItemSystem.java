@@ -87,7 +87,14 @@ public class ItemSystem {
      * @param waypoints the map's racing line
      */
     public ItemSystem(List<Vector2> waypoints) {
-        for (Vector2[] row : boxRows(waypoints)) {
+        this(waypoints, false);
+    }
+
+    /**
+     * @param sprint true on a sprint map (no stretch from the finish back to the start)
+     */
+    public ItemSystem(List<Vector2> waypoints, boolean sprint) {
+        for (Vector2[] row : boxRows(waypoints, sprint)) {
             for (Vector2 p : row) {
                 boxes.add(new Box(p.x, p.y));
             }
@@ -99,21 +106,34 @@ public class ItemSystem {
      * boxes are taken has to be sent online)
      */
     public static List<Vector2[]> boxRows(List<Vector2> waypoints) {
+        return boxRows(waypoints, false);
+    }
+
+    /**
+     * @param sprint true on a sprint: no boxes on the way back from the finish, or in the run-off
+     */
+    public static List<Vector2[]> boxRows(List<Vector2> waypoints, boolean sprint) {
         List<Vector2[]> rows = new ArrayList<>();
         int n = waypoints.size();
-        for (int i = 0; i < n; i++) {
+        int stretches = sprint ? n - 2 : n;
+        for (int i = 0; i < stretches; i++) {
             Vector2 a = waypoints.get(i), b = waypoints.get((i + 1) % n);
             float len = a.dst(b);
             if (len < 420f) {
                 continue;
             }
             float dx = (b.x - a.x) / len, dy = (b.y - a.y) / len;
-            float cx = (a.x + b.x) / 2f, cy = (a.y + b.y) / 2f;
-            Vector2[] row = new Vector2[3];
-            for (int k = -1; k <= 1; k++) {
-                row[k + 1] = new Vector2(cx - dy * 34f * k, cy + dx * 34f * k);
+            // one row in the middle; a long straight gets one every 900 or so
+            int count = Math.max(1, (int) (len / 900f));
+            for (int c = 0; c < count; c++) {
+                float t = (c + 1f) / (count + 1f);
+                float cx = a.x + (b.x - a.x) * t, cy = a.y + (b.y - a.y) * t;
+                Vector2[] row = new Vector2[3];
+                for (int k = -1; k <= 1; k++) {
+                    row[k + 1] = new Vector2(cx - dy * 30f * k, cy + dx * 30f * k);
+                }
+                rows.add(row);
             }
-            rows.add(row);
         }
         return rows;
     }

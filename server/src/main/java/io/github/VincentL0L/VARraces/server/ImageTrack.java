@@ -19,6 +19,8 @@ public class ImageTrack implements Track {
     /** one loaded mask per map, shared by every room on it */
     private static final Map<String, ImageTrack> LOADED = new HashMap<>();
     private final BufferedImage mask;
+    /** map pixels per mask pixel */
+    private int scale = 1;
 
     /**
      * @param map a map
@@ -28,6 +30,7 @@ public class ImageTrack implements Track {
         ImageTrack track = LOADED.get(map.id);
         if (track == null) {
             track = new ImageTrack("/" + map.serverMask);
+            track.scale = map.scale;
             LOADED.put(map.id, track);
         }
         return track;
@@ -49,8 +52,8 @@ public class ImageTrack implements Track {
     }
 
     public boolean onRoad(float x, float y) {
-        int px = (int) x;
-        int py = mask.getHeight() - (int) y;
+        int px = (int) (x / scale);
+        int py = (int) ((mask.getHeight() * scale - y) / scale);
         if (px < 0 || py < 0 || px >= mask.getWidth() || py >= mask.getHeight()) {
             return false;
         }

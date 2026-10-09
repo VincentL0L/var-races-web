@@ -101,9 +101,9 @@ public class GameScreen implements Screen {
         car = c;
         nc = n;
         map = nc.getMap();
-        rm = new RaceManager(map.waypoints);
+        rm = RaceManager.forMap(map);
         rm.setLaps(nc.getLaps());
-        trackWatch = new RaceManager(map.waypoints);
+        trackWatch = RaceManager.forMap(map);
         // it only watches where we are on the track, so it must never think we've finished
         trackWatch.setLaps(1000);
         nc.setRaceManager(rm);

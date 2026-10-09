@@ -17,12 +17,22 @@ public class PixmapTrack implements Track {
      * @param maskPath the map's road mask in assets
      */
     public PixmapTrack(String maskPath) {
-        mask = new Pixmap(Gdx.files.internal(maskPath));
+        this(maskPath, 1);
     }
 
+    /**
+     * @param scale map pixels per mask pixel (big maps store a smaller mask)
+     */
+    public PixmapTrack(String maskPath, int scale) {
+        mask = new Pixmap(Gdx.files.internal(maskPath));
+        this.scale = scale;
+    }
+
+    private int scale = 1;
+
     public boolean onRoad(float x, float y) {
-        int px = (int) x;
-        int py = mask.getHeight() - (int) y;
+        int px = (int) (x / scale);
+        int py = (int) ((mask.getHeight() * scale - y) / scale);
         if (px < 0 || py < 0 || px >= mask.getWidth() || py >= mask.getHeight()) {
             return false;
         }
