@@ -90,11 +90,20 @@ public class Room {
      * @param car car skin the player picked
      */
     public void join(WebSocket conn, int car) {
-        String id = "Player " + nextPlayerNumber++;
+        join(conn, car, null, null);
+    }
+
+    /**
+     * @param name the player's account name (null for a guest, who's "Player 2" etc)
+     * @param uid their account id (null for a guest)
+     */
+    public void join(WebSocket conn, int car, String name, String uid) {
+        String id = name == null ? "Player " + nextPlayerNumber++ : uniqueId(name);
         Vector2 spawn = new Vector2(200 + (players.size()) * 40, 300);
         PlayerState state = new PlayerState(id, car, spawn);
+        state.uid = uid;
 
-        conn.send("JOINED|" + code + "|" + (isPublic ? "public" : "private") + "|" + id + "|" + map.id);
+        conn.send("JOINED|" + code + "|" + (ranked ? "ranked" : isPublic ? "public" : "private") + "|" + id + "|" + map.id);
         for (PlayerState other : players.values()) {
             conn.send("READY|" + other.id + "|" + other.ready);
         }
@@ -102,6 +111,99 @@ public class Room {
         broadcast("READY|" + id + "|false");
         conn.send(settingsMessage());
         broadcast("HOST|" + hostId());
+    }
+
+    /** a name nobody else in the room has ("Vincent L", then "Vincent L 2"...) */
+    private String uniqueId(String name) {
+        String id = name;
+        for (int n = 2; ; n++) {
+            boolean taken = id.startsWith("CPU");
+            for (PlayerState p : players.values()) {
+                taken |= p.id.equals(id);
+            }
+            if (!taken) {
+                return id;
+            }
+            id = name + " " + n;
+        }
+    }
+
+    // ---------------------------------------------------------------- ranked
+
+    /** a ranked race: starts by itself, fixed settings, results change ratings */
+    private boolean ranked = false;
+    private float queueTime = 0f, fullTime = 0f;
+    private int lastQueueSecond = -1;
+    private float firstFinish = -1f;
+    private boolean resultTaken = false;
+    /** seconds to wait once two players are in, and how long one player waits before racing anyway */
+    private static final float RANKED_WAIT = 20f, SOLO_WAIT = 45f;
+
+    /**
+     * makes this a ranked room
+     */
+    public void setRanked() {
+        ranked = true;
+        laps = map.hasLaps() ? 2 : 1;
+        difficulty = 1;
+    }
+
+    public boolean isRanked() {
+        return ranked;
+    }
+
+    /** the ranked queue: counts down and starts the race by itself */
+    private void tickQueue(float delta) {
+        if (!ranked || started || countdownInProgress || players.isEmpty()) {
+            return;
+        }
+        queueTime += delta;
+        fullTime = players.size() >= 2 ? fullTime + delta : 0f;
+        float left = players.size() >= 2 ? RANKED_WAIT - fullTime : SOLO_WAIT - queueTime;
+        if (players.size() >= MAX_PLAYERS) {
+            left = Math.min(left, 3f);
+        }
+        int second = (int) Math.ceil(Math.max(0f, left));
+        if (second != lastQueueSecond) {
+            lastQueueSecond = second;
+            broadcast("QUEUE|" + players.size() + "|" + second);
+        }
+        if (left <= 0f) {
+            startCountdown();
+        }
+    }
+
+    /**
+     * Once every player has finished (or a minute after the first did), the result of a
+     * ranked race, once: the signed-in players in finishing order.
+     * @return {connection, uid, name} per player, best first; null until it's ready (and after)
+     */
+    public List<Object[]> takeRankedResult() {
+        if (!ranked || !started || resultTaken) {
+            return null;
+        }
+        boolean all = true, any = false;
+        for (PlayerState p : players.values()) {
+            boolean done = raceManager.isFinished(p.id);
+            all &= done;
+            any |= done;
+        }
+        if (any && firstFinish < 0f) {
+            firstFinish = raceTime;
+        }
+        if (!all && !(firstFinish >= 0f && raceTime - firstFinish > 60f)) {
+            return null;
+        }
+        resultTaken = true;
+        List<Object[]> result = new ArrayList<>();
+        for (RacerInfo r : raceManager.getSortedLeaderboard()) {
+            for (Map.Entry<WebSocket, PlayerState> e : players.entrySet()) {
+                if (e.getValue().id.equals(r.name) && e.getValue().uid != null) {
+                    result.add(new Object[] {e.getKey(), e.getValue().uid, e.getValue().id});
+                }
+            }
+        }
+        return result;
     }
 
     /** the host (who picks laps and difficulty) is whoever has been in the room longest */
@@ -152,7 +254,7 @@ public class Room {
             } catch (NumberFormatException e) {
                 // ignore bad position
             }
-        } else if (parts[0].equals("SETTINGS") && parts.length >= 3 && !started && !countdownInProgress
+        } else if (parts[0].equals("SETTINGS") && parts.length >= 3 && !ranked && !started && !countdownInProgress
                 && state.id.equals(hostId())) {
             try {
                 laps = Math.max(1, Math.min(10, Integer.parseInt(parts[1])));
@@ -176,10 +278,14 @@ public class Room {
      * starts the countdown once every player is ready
      */
     private void checkAllReady() {
-        if (started || countdownInProgress || players.isEmpty()) return;
+        if (ranked || started || countdownInProgress || players.isEmpty()) return;
         for (PlayerState p : players.values()) {
             if (!p.ready) return;
         }
+        startCountdown();
+    }
+
+    private void startCountdown() {
         // the settings are locked in now
         raceManager.setLaps(laps);
         for (Opponent cpu : cpuOpponents) {
@@ -201,6 +307,7 @@ public class Room {
         // cars' movement evenly however unevenly the messages arrive
         roomClock += delta;
         broadcast("TICK|" + roomClock);
+        tickQueue(delta);
         if (countdownInProgress) {
             countdownTimer += delta;
             String text;
@@ -381,6 +488,7 @@ public class Room {
         Vector2 position;
         float rotation = 0f;
         boolean ready = false;
+        String uid;
         final Vector2 lastPosition = new Vector2();
         float speed = 0f;
 

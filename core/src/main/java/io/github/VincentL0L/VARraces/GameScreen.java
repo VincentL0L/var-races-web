@@ -72,6 +72,7 @@ public class GameScreen implements Screen {
     /** follows only our own car, for the RETURN TO TRACK warning */
     private final RaceManager trackWatch;
     private final TrackMap map;
+    private boolean keepClient = false;
     private ItemRenderer itemArt;
     private final com.badlogic.gdx.graphics.g2d.SpriteBatch worldBatch = new com.badlogic.gdx.graphics.g2d.SpriteBatch();
     private final Map<String, Vector2> carCenters = new HashMap<>();
@@ -228,7 +229,9 @@ public class GameScreen implements Screen {
                     }
                     pos++;
                 }
-                game.setScreen(new EndScreen(game, car, pos, lead, map));
+                // a ranked race keeps its connection open until the rating change comes back
+                keepClient = nc.isRanked();
+                game.setScreen(new EndScreen(game, car, pos, lead, map, keepClient ? nc : null));
                 return;
             }
         }
@@ -613,7 +616,9 @@ public class GameScreen implements Screen {
             t.dispose();
         }
         player.stopEngine();
-        nc.stop();
+        if (!keepClient) {
+            nc.stop();
+        }
     }
 
     // abstract methods that arent used but have to be declared

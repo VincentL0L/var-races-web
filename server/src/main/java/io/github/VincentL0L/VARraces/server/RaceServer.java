@@ -24,6 +24,10 @@ import org.java_websocket.server.WebSocketServer;
  * to players:    ROOMS|code|count|map|code|count|map... | JOINED|code|public|playerId|map | ERROR|text
  *                READY|id|true | LEFT|id | COUNTDOWN|3 | POS|id|x|y|rotation|car
  *                LEADER|name|laps|progress|finishTime|name|laps...   (race order, finishTime -1 = racing)
+ * accounts:      AUTH|idToken -> PROFILE|name|rating|races|wins|tier|rankedOn  (or AUTHFAIL)
+ *                RANKED|car -> joins the ranked queue: QUEUE|players|seconds, then the race;
+ *                after it RANKRESULT|oldRating|newRating|tier|place
+ *                TOP -> TOP|name|rating|tier|name|rating|tier...
  *
  * Run with: ./gradlew server:run   (port 8080, or the PORT environment variable)
  */
@@ -35,6 +39,13 @@ public class RaceServer extends WebSocketServer {
     private final Map<WebSocket, Room> playerRooms = new HashMap<>();
     private final Random random = new Random();
     private long lastTick = System.currentTimeMillis();
+    // accounts and ranked (see Accounts)
+    private final Accounts accounts = new Accounts();
+    private final java.util.concurrent.ExecutorService background = Executors.newFixedThreadPool(2);
+    private final Map<WebSocket, Accounts.Account> signedIn = new HashMap<>();
+    private final Map<WebSocket, Accounts.Profile> profiles = new HashMap<>();
+    private String topCache;
+    private long topCachedAt = 0;
 
     /**
      * @param port port to listen on
@@ -54,6 +65,8 @@ public class RaceServer extends WebSocketServer {
     public void onOpen(WebSocket conn, ClientHandshake handshake) {}
 
     public synchronized void onClose(WebSocket conn, int code, String reason, boolean remote) {
+        signedIn.remove(conn);
+        profiles.remove(conn);
         Room room = playerRooms.remove(conn);
         if (room != null) {
             room.leave(conn);
@@ -66,6 +79,15 @@ public class RaceServer extends WebSocketServer {
     public synchronized void onMessage(WebSocket conn, String message) {
         String[] parts = message.split("\\|", -1);
         Room current = playerRooms.get(conn);
+        // account messages work anywhere, in a room or not
+        if (parts[0].equals("AUTH") && parts.length >= 2) {
+            authenticate(conn, parts[1]);
+            return;
+        }
+        if (parts[0].equals("TOP")) {
+            sendTop(conn);
+            return;
+        }
 
         if (current != null) {
             current.receive(conn, parts);
@@ -79,6 +101,8 @@ public class RaceServer extends WebSocketServer {
                 Room room = new Room(newCode(), parts[1].equals("public"), TrackMap.get(map));
                 rooms.put(room.getCode(), room);
                 joinRoom(conn, room, Integer.parseInt(parts[2]));
+            } else if (parts[0].equals("RANKED")) {
+                joinRanked(conn, Integer.parseInt(parts[1]));
             } else if (parts[0].equals("JOIN")) {
                 Room room = rooms.get(parts[1].toUpperCase());
                 if (room == null) {
@@ -103,7 +127,138 @@ public class RaceServer extends WebSocketServer {
      */
     private void joinRoom(WebSocket conn, Room room, int car) {
         playerRooms.put(conn, room);
-        room.join(conn, Math.max(1, Math.min(io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarModel.count(), car)));
+        Accounts.Account a = signedIn.get(conn);
+        room.join(conn, Math.max(1, Math.min(io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarModel.count(), car)),
+            a == null ? null : a.name, a == null ? null : a.uid);
+    }
+
+    // ---------------------------------------------------------------- accounts and ranked
+
+    /** checks a sign-in token (off the game loop) and sends back the player's profile */
+    private void authenticate(WebSocket conn, String token) {
+        background.execute(() -> {
+            Accounts.Account a = accounts.verify(token);
+            if (a == null) {
+                conn.send("AUTHFAIL");
+                return;
+            }
+            Accounts.Profile p = null;
+            if (accounts.rankedOn()) {
+                try {
+                    p = accounts.load(a);
+                } catch (Exception e) {
+                    System.err.println("profile: " + e.getMessage());
+                }
+            }
+            synchronized (this) {
+                signedIn.put(conn, a);
+                if (p != null) {
+                    profiles.put(conn, p);
+                }
+            }
+            int rating = p == null ? Accounts.START_RATING : p.rating;
+            conn.send("PROFILE|" + a.name + "|" + rating + "|" + (p == null ? 0 : p.races) + "|" + (p == null ? 0 : p.wins)
+                + "|" + Accounts.tier(rating) + "|" + (accounts.rankedOn() && p != null ? 1 : 0));
+        });
+    }
+
+    /** into the ranked queue: the open ranked room if there is one, or a new one on a random track */
+    private void joinRanked(WebSocket conn, int car) {
+        if (!signedIn.containsKey(conn)) {
+            conn.send("ERROR|Sign in to race ranked");
+            return;
+        }
+        if (!accounts.rankedOn() || !profiles.containsKey(conn)) {
+            conn.send("ERROR|Ranked is offline right now");
+            return;
+        }
+        Room open = null;
+        for (Room r : rooms.values()) {
+            if (r.isRanked() && r.isJoinable()) {
+                open = r;
+            }
+        }
+        if (open == null) {
+            java.util.List<TrackMap> races = new java.util.ArrayList<>();
+            for (TrackMap m : TrackMap.all()) {
+                if (!m.battle) {
+                    races.add(m);
+                }
+            }
+            open = new Room(newCode(), false, races.get(random.nextInt(races.size())));
+            open.setRanked();
+            rooms.put(open.getCode(), open);
+        }
+        joinRoom(conn, open, car);
+    }
+
+    /** a finished ranked race: new ratings for everyone in it, saved and sent to them */
+    private void rate(java.util.List<Object[]> result) {
+        if (result.size() < 2) {
+            for (Object[] r : result) {
+                ((WebSocket) r[0]).send("RANKRESULT|-1|-1|UNRANKED|1");     // nobody to race against
+            }
+            return;
+        }
+        int[] old = new int[result.size()];
+        Accounts.Profile[] ps = new Accounts.Profile[result.size()];
+        for (int i = 0; i < result.size(); i++) {
+            ps[i] = profiles.get((WebSocket) result.get(i)[0]);
+            old[i] = ps[i] == null ? Accounts.START_RATING : ps[i].rating;
+        }
+        int[] updated = Accounts.newRatings(old);
+        for (int i = 0; i < result.size(); i++) {
+            WebSocket conn = (WebSocket) result.get(i)[0];
+            String uid = (String) result.get(i)[1];
+            Accounts.Profile p = ps[i] != null ? ps[i] : new Accounts.Profile();
+            if (p.name == null) {
+                p.name = (String) result.get(i)[2];
+            }
+            p.rating = updated[i];
+            p.races++;
+            if (i == 0) {
+                p.wins++;
+            }
+            final int place = i + 1, before = old[i];
+            background.execute(() -> {
+                try {
+                    accounts.save(uid, p);
+                    topCache = null;
+                } catch (Exception e) {
+                    System.err.println("save: " + e.getMessage());
+                }
+                if (conn.isOpen()) {
+                    conn.send("RANKRESULT|" + before + "|" + p.rating + "|" + Accounts.tier(p.rating) + "|" + place);
+                    conn.send("PROFILE|" + p.name + "|" + p.rating + "|" + p.races + "|" + p.wins + "|" + Accounts.tier(p.rating) + "|1");
+                }
+            });
+        }
+    }
+
+    /** the leaderboard (cached for half a minute) */
+    private void sendTop(WebSocket conn) {
+        if (!accounts.rankedOn()) {
+            conn.send("TOP");
+            return;
+        }
+        if (topCache != null && System.currentTimeMillis() - topCachedAt < 30_000) {
+            conn.send(topCache);
+            return;
+        }
+        background.execute(() -> {
+            try {
+                StringBuilder sb = new StringBuilder("TOP");
+                for (Accounts.Profile p : accounts.top(20)) {
+                    sb.append('|').append(p.name.replace("|", "")).append('|').append(p.rating).append('|').append(Accounts.tier(p.rating));
+                }
+                topCache = sb.toString();
+                topCachedAt = System.currentTimeMillis();
+                conn.send(topCache);
+            } catch (Exception e) {
+                System.err.println("top: " + e.getMessage());
+                conn.send("TOP");
+            }
+        });
     }
 
     /**
@@ -150,6 +305,10 @@ public class RaceServer extends WebSocketServer {
                     it.remove();
                 } else {
                     room.tick(delta);
+                    java.util.List<Object[]> result = room.takeRankedResult();
+                    if (result != null) {
+                        rate(result);
+                    }
                 }
             }
         } catch (RuntimeException e) {

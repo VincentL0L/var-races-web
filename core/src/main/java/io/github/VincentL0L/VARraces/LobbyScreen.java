@@ -84,25 +84,34 @@ public class LobbyScreen implements Screen {
         Table card = Cards.card();
         boolean online = networkClient.isOnline();
 
-        kicker = Cards.kicker(online ? (networkClient.isRoomPublic() ? "PUBLIC ROOM  /  " : "PRIVATE ROOM  /  ")
-            + map.name.toUpperCase() : "SINGLE PLAYER");
+        boolean ranked = networkClient.isRanked();
+        kicker = Cards.kicker(ranked ? "RANKED  /  " + map.name.toUpperCase()
+            : online ? (networkClient.isRoomPublic() ? "PUBLIC ROOM  /  " : "PRIVATE ROOM  /  ") + map.name.toUpperCase() : "SINGLE PLAYER");
         card.add(kicker).left().row();
-        card.add(Cards.title(online ? networkClient.getRoomCode() : map.name.toUpperCase(), 44)).left().padTop(2).padBottom(16).row();
+        card.add(Cards.title(ranked ? "RANKED RACE" : online ? networkClient.getRoomCode() : map.name.toUpperCase(), 44))
+            .left().padTop(2).padBottom(16).row();
 
         card.add(Cards.kicker("DRIVERS")).left().padBottom(6).row();
         drivers = new Table();
         drivers.defaults().width(Cards.CARD_WIDTH).height(Cards.ROW_HEIGHT).padBottom(6);
         card.add(drivers).row();
 
-        // race settings: laps and how good the CPUs are (online, only the host can change them)
-        card.add(Cards.kicker("RACE SETTINGS")).left().padTop(8).padBottom(6).row();
+        // race settings: laps and how good the CPUs are (online, only the host can change them;
+        // ranked races have fixed settings)
         lapsValue = Cards.text("", true);
         difficultyValue = Cards.text("", true);
-        if (map.hasLaps()) {
+        if (!ranked) {
+            card.add(Cards.kicker("RACE SETTINGS")).left().padTop(8).padBottom(6).row();
+        }
+        if (ranked) {
+            // nothing to pick
+        } else if (map.hasLaps()) {
             // a sprint is one run from start to finish, so there's no lap count to pick
             card.add(picker("LAPS", lapsValue, -1, 0)).height(Cards.ROW_HEIGHT).padBottom(6).row();
         }
-        card.add(picker("CPU DIFFICULTY", difficultyValue, 0, -1)).height(Cards.ROW_HEIGHT).row();
+        if (!ranked) {
+            card.add(picker("CPU DIFFICULTY", difficultyValue, 0, -1)).height(Cards.ROW_HEIGHT).row();
+        }
         settingsNote = new Label("", new Label.LabelStyle(Ui.font(9), Cards.LABEL));
         card.add(settingsNote).left().padTop(4).row();
 
@@ -286,6 +295,13 @@ public class LobbyScreen implements Screen {
             kicker.setText(error != null ? error.toUpperCase() : "CONNECTING...");
             kicker.setColor(error != null ? Cards.ERROR : Cards.LABEL);
             readyButton.setDisabled(true);
+        } else if (networkClient.isRanked()) {
+            // ranked starts by itself: show the queue
+            int left = networkClient.getQueueSeconds();
+            readyButton.setText(networkClient.isFlagShown() ? "Go!" : left >= 0 ? "Starts in " + left : "Waiting");
+            readyButton.setDisabled(true);
+            settingsNote.setText(networkClient.getQueuePlayers() < 2
+                ? "Waiting for other racers... (racing alone in " + Math.max(0, left) + "s doesn't count)" : "");
         } else if (networkClient.isReady()) {
             readyButton.setText(networkClient.isOnline() && !networkClient.isFlagShown() ? "Waiting" : "Ready");
             readyButton.setDisabled(true);

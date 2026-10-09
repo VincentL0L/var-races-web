@@ -56,16 +56,55 @@ public class TeaVMBuilder {
         + "      @media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }\n"
         + "    </style>\n";
 
+    /**
+     * Google sign-in with Firebase Authentication. The game reads window.varAuth each frame.
+     * Browsers only open the sign-in window straight from a click, so the game "arms" it when
+     * its button is pressed and the click's release opens it.
+     */
+    private static final String AUTH_SCRIPT =
+        "<script src=\"https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js\"></script>\n"
+        + "<script src=\"https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js\"></script>\n"
+        + "<script>\n"
+        + "window.varAuth = {ready: false, armed: false, uid: null, name: null, token: null, error: null};\n"
+        + "try {\n"
+        + "  var host = location.hostname;\n"
+        + "  firebase.initializeApp({apiKey: 'AIzaSyBlIzA_86YzqDi3_G9BbUAVzh0ss0MIYaA',\n"
+        + "    authDomain: (host.endsWith('.web.app') || host.endsWith('.firebaseapp.com')) ? host : 'var-races.firebaseapp.com',\n"
+        + "    projectId: 'var-races', appId: '1:222306009427:web:132612da1788a9ad8a21a6', messagingSenderId: '222306009427'});\n"
+        + "  var auth = firebase.auth();\n"
+        + "  var provider = new firebase.auth.GoogleAuthProvider();\n"
+        + "  auth.onIdTokenChanged(function (u) {\n"
+        + "    if (!u) { varAuth.uid = null; varAuth.name = null; varAuth.token = null; return; }\n"
+        + "    varAuth.uid = u.uid; varAuth.name = u.displayName || 'Racer';\n"
+        + "    u.getIdToken().then(function (t) { varAuth.token = t; });\n"
+        + "  });\n"
+        + "  setInterval(function () { if (auth.currentUser) auth.currentUser.getIdToken().then(function (t) { varAuth.token = t; }); }, 600000);\n"
+        + "  varAuth.signIn = function () {\n"
+        + "    varAuth.error = null;\n"
+        + "    auth.signInWithPopup(provider).catch(function (e) {\n"
+        + "      if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') return auth.signInWithRedirect(provider);\n"
+        + "      if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') varAuth.error = e.code || String(e);\n"
+        + "    });\n"
+        + "  };\n"
+        + "  varAuth.signOut = function () { auth.signOut(); };\n"
+        + "  var fire = function () { if (varAuth.armed) { varAuth.armed = false; varAuth.signIn(); } };\n"
+        + "  document.addEventListener('pointerup', fire, true);\n"
+        + "  document.addEventListener('touchend', fire, true);\n"
+        + "  varAuth.ready = true;\n"
+        + "} catch (e) { varAuth.error = 'unavailable'; }\n"
+        + "</script>\n";
+
     private static final String ROTATE_SCREEN =
         "<div id=\"rotate\"><div class=\"phone\"></div><div>Turn your phone sideways to race</div></div>\n";
 
     private static void addMobileSupport(File index) throws IOException {
         String html = new String(Files.readAllBytes(index.toPath()), StandardCharsets.UTF_8);
-        if (html.contains("id=\"rotate\"")) {
+        if (html.contains("id=\"rotate\"") && html.contains("varAuth")) {
             return;
         }
         html = html.replace("</head>", MOBILE_HEAD + "</head>");
         html = html.replaceFirst("(<body[^>]*>)", "$1\n" + ROTATE_SCREEN);
+        html = html.replace("</body>", AUTH_SCRIPT + "</body>");
         Files.write(index.toPath(), html.getBytes(StandardCharsets.UTF_8));
     }
 }

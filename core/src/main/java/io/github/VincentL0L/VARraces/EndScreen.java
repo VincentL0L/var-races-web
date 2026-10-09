@@ -48,6 +48,16 @@ public class EndScreen implements Screen {
      * @param map the map that was raced (for the CPUs' names)
      */
     public EndScreen(Game game, int selectedCar, int finalPosition, List<RacerInfo> leaderboard, TrackMap map) {
+        this(game, selectedCar, finalPosition, leaderboard, map, null);
+    }
+
+    /**
+     * @param ranked the still-open connection after a ranked race (its rating change arrives
+     * a moment later), or null
+     */
+    public EndScreen(Game game, int selectedCar, int finalPosition, List<RacerInfo> leaderboard, TrackMap map,
+            io.github.VincentL0L.VARraces.Multiplayer.client.NetworkClient ranked) {
+        this.ranked = ranked;
         this.game = game;
         this.selectedCar = selectedCar;
         this.finalPosition = finalPosition;
@@ -115,7 +125,11 @@ public class EndScreen implements Screen {
 
         mainTable.add(titleLabel).padBottom(30).row();
         //mainTable.add(timeLabel).padBottom(10).row();
-        mainTable.add(positionLabel).padBottom(30).row();
+        mainTable.add(positionLabel).padBottom(ranked != null ? 8 : 30).row();
+        if (ranked != null) {
+            rankLabel = new Label("Working out your new rank...", new Label.LabelStyle(Ui.display(20), Ui.GOLD));
+            mainTable.add(rankLabel).padBottom(24).row();
+        }
         mainTable.add(scrollPane).width(460).height(260).padBottom(30).row();
 
         TextButton menuButton = new TextButton("Main Menu", skin);
@@ -144,6 +158,21 @@ public class EndScreen implements Screen {
         Gdx.gl.glClearColor(0.12f, 0.07f, 0.04f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         drawCheckers(delta);
+        if (ranked != null) {
+            ranked.update(delta);
+            int[] r = ranked.getRankResult();
+            if (r != null && !rankShown) {
+                rankShown = true;
+                if (r[0] < 0) {
+                    rankLabel.setText("No one else raced, so this one didn't count");
+                } else {
+                    int change = r[1] - r[0];
+                    rankLabel.setText("RATING " + r[0] + "  >  " + r[1] + "   (" + (change >= 0 ? "+" : "") + change + ")   " + ranked.getTier());
+                    rankLabel.setColor(change >= 0 ? new com.badlogic.gdx.graphics.Color(0.45f, 0.9f, 0.45f, 1f) : Cards.ERROR);
+                    Sounds.play(change >= 0 ? "final_lap" : "back", 0.5f);
+                }
+            }
+        }
         
         stage.act(delta);
         stage.draw();
@@ -189,7 +218,14 @@ public class EndScreen implements Screen {
     /**
      * clears memory
      */
+    private final io.github.VincentL0L.VARraces.Multiplayer.client.NetworkClient ranked;
+    private Label rankLabel;
+    private boolean rankShown = false;
+
     public void dispose() {
+        if (ranked != null) {
+            ranked.stop();
+        }
         checkers.dispose();
         stage.dispose();
         skin.dispose();

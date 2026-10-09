@@ -28,6 +28,35 @@ public class TeaVMLauncher {
         Ui.pixelRatio = (float) getDevicePixelRatio();
         Ui.touchScreen = isTouchScreen();
         Ui.textPrompt = TeaVMLauncher::prompt;
+        Ui.account = new Ui.Account() {
+            public boolean available() {
+                return authAvailable();
+            }
+
+            public void armSignIn() {
+                authArm();
+            }
+
+            public void signOut() {
+                authSignOut();
+            }
+
+            public String uid() {
+                return authField("uid");
+            }
+
+            public String name() {
+                return authField("name");
+            }
+
+            public String token() {
+                return authField("token");
+            }
+
+            public String error() {
+                return authField("error");
+            }
+        };
 
         // a page opened with ?server=wss://host uses that server instead
         String server = getServerParam();
@@ -39,6 +68,20 @@ public class TeaVMLauncher {
 
     @JSBody(script = "return new URLSearchParams(window.location.search).get('server');")
     private static native String getServerParam();
+
+    // ---- Google sign-in through Firebase (the page sets up window.varAuth, see TeaVMBuilder)
+
+    @JSBody(script = "return !!(window.varAuth && window.varAuth.ready);")
+    private static native boolean authAvailable();
+
+    @JSBody(script = "if (window.varAuth) window.varAuth.armed = true;")
+    private static native void authArm();
+
+    @JSBody(script = "if (window.varAuth && window.varAuth.signOut) window.varAuth.signOut();")
+    private static native void authSignOut();
+
+    @JSBody(params = "field", script = "var v = window.varAuth ? window.varAuth[field] : null; return v ? String(v) : null;")
+    private static native String authField(String field);
 
     @JSBody(script = "return ('ontouchstart' in window) || navigator.maxTouchPoints > 0;")
     private static native boolean isTouchScreen();

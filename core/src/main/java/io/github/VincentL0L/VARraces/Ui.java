@@ -59,6 +59,29 @@ public class Ui {
     /** set by the web launcher; null where a real keyboard is always available */
     public static TextPrompt textPrompt;
 
+    /** signing in with Google (for ranked races); the web version provides it through Firebase */
+    public interface Account {
+        /** @return true if signing in is possible here */
+        boolean available();
+        /**
+         * starts signing in: the browser only opens the Google window from a click, so this
+         * arms it and the click's release opens it
+         */
+        void armSignIn();
+        void signOut();
+        /** @return the account id, or null when signed out */
+        String uid();
+        /** @return the account's name ("Vincent Lo"), or null */
+        String name();
+        /** @return a current Firebase ID token to show the server, or null */
+        String token();
+        /** @return why the last sign-in failed, or null */
+        String error();
+    }
+
+    /** null where accounts aren't available (the desktop version) */
+    public static Account account;
+
     /**
      * works out the density for the current window size: on a phone the menus would not
      * fit, so everything is drawn a little smaller there

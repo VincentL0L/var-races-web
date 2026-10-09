@@ -240,6 +240,7 @@ public class NetworkClient {
         if (isOnline()) {
             readMessages();
             sendTimer += delta;
+            sendSignIn();
             return;
         }
         if (!connected) return;
@@ -354,6 +355,7 @@ public class NetworkClient {
         } else if (type.equals("JOINED")) {
             roomCode = parts[1];
             roomPublic = parts[2].equals("public");
+            roomRanked = parts[2].equals("ranked");
             playerId = parts[3];
             map = TrackMap.get(parts.length > 4 ? parts[4] : TrackMap.CLASSIC);
             playerReadyStates.put(playerId, false);
@@ -379,6 +381,26 @@ public class NetworkClient {
             if (parts[1].equals(playerId)) {
                 myEffects.add(parts[2]);
             }
+        } else if (type.equals("PROFILE")) {
+            profileName = parts[1];
+            rating = Integer.parseInt(parts[2]);
+            rankedRaces = Integer.parseInt(parts[3]);
+            rankedWins = Integer.parseInt(parts[4]);
+            tier = parts[5];
+            rankedOn = parts[6].equals("1");
+        } else if (type.equals("AUTHFAIL")) {
+            profileName = null;
+        } else if (type.equals("QUEUE")) {
+            queuePlayers = Integer.parseInt(parts[1]);
+            queueSeconds = Integer.parseInt(parts[2]);
+        } else if (type.equals("RANKRESULT")) {
+            rankResult = new int[] {Integer.parseInt(parts[1]), Integer.parseInt(parts[2]), Integer.parseInt(parts[4])};
+        } else if (type.equals("TOP")) {
+            top.clear();
+            for (int i = 1; i + 2 < parts.length; i += 3) {
+                top.add(new String[] {parts[i], parts[i + 1], parts[i + 2]});
+            }
+            topLoaded = true;
         } else if (type.equals("SETTINGS")) {
             laps = Integer.parseInt(parts[1]);
             difficulty = Integer.parseInt(parts[2]);
@@ -684,6 +706,119 @@ public class NetworkClient {
     public float getTimeTrying() {
         return tryingSince < 0f ? 0f : clock - tryingSince;
     }
+
+    // ---------------------------------------------------------------- accounts and ranked
+
+    private String sentToken;
+    private String profileName, tier = "BRONZE";
+    private int rating = 1000, rankedRaces, rankedWins;
+    private boolean rankedOn = false;
+    private int queuePlayers = 1, queueSeconds = -1;
+    private int[] rankResult;
+    private final List<String[]> top = new ArrayList<>();
+    private boolean topLoaded = false;
+
+    /** shows the server who we are whenever we're signed in (and again when the token renews) */
+    private void sendSignIn() {
+        io.github.VincentL0L.VARraces.Ui.Account a = io.github.VincentL0L.VARraces.Ui.account;
+        String token = a == null ? null : a.token();
+        if (!connected) {
+            sentToken = null;           // a new connection: send it again
+            return;
+        }
+        if (token == null) {
+            if (sentToken != null) {
+                profileName = null;     // signed out
+            }
+            sentToken = null;
+            return;
+        }
+        if (!token.equals(sentToken)) {
+            sentToken = token;
+            send("AUTH|" + token);
+        }
+    }
+
+    /**
+     * @return our ranked name once the server has checked our sign-in, or null
+     */
+    public String getProfileName() {
+        return profileName;
+    }
+
+    public int getRating() {
+        return rating;
+    }
+
+    public String getTier() {
+        return tier;
+    }
+
+    public int getRankedRaces() {
+        return rankedRaces;
+    }
+
+    public int getRankedWins() {
+        return rankedWins;
+    }
+
+    /**
+     * @return true if the server can run ranked races right now
+     */
+    public boolean isRankedOn() {
+        return rankedOn;
+    }
+
+    /**
+     * @param car our car
+     */
+    public void joinRanked(int car) {
+        send("RANKED|" + car);
+    }
+
+    /**
+     * @return true in a ranked race
+     */
+    public boolean isRanked() {
+        return roomRanked;
+    }
+
+    /**
+     * @return seconds until the ranked race starts (-1 if not counting yet), and players waiting
+     */
+    public int getQueueSeconds() {
+        return queueSeconds;
+    }
+
+    public int getQueuePlayers() {
+        return queuePlayers;
+    }
+
+    /**
+     * @return {old rating, new rating, place} after a ranked race (old = -1 if it was unranked), or null
+     */
+    public int[] getRankResult() {
+        return rankResult;
+    }
+
+    /** asks for the leaderboard */
+    public void requestTop() {
+        topLoaded = false;
+        send("TOP");
+    }
+
+    /**
+     * @return the leaderboard, {name, rating, tier} best first (empty until it arrives)
+     */
+    public List<String[]> getTop() {
+        return top;
+    }
+
+    public boolean isTopLoaded() {
+        return topLoaded;
+    }
+
+    private boolean roomRanked = false;
 
     /**
      * @return the map this race is on

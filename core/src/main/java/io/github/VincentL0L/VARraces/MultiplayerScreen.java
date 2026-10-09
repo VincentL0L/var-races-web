@@ -30,7 +30,7 @@ public class MultiplayerScreen implements Screen {
     /** the free server sleeps when nobody plays; after this long it's probably waking up */
     private static final float WAKE_HINT_TIME = 3f;
     private static final float BLOCKED_HINT_TIME = 75f;
-    private static final int MAX_ROWS = 4;
+    private static final int MAX_ROWS = 3;
 
     private final Game game;
     private final int selectedCar;
@@ -46,6 +46,8 @@ public class MultiplayerScreen implements Screen {
     private float refreshTimer = REFRESH_TIME;
     private float connectingTime = 0f;
     private boolean leaving = false;
+    private Table rankedRow;
+    private String shownRanked = null;
 
     /**
      * connects to the race server and builds the menu
@@ -88,8 +90,13 @@ public class MultiplayerScreen implements Screen {
         card.add(kicker).left().row();
         card.add(Cards.title("ONLINE RACE", 44)).left().padTop(2).padBottom(16).row();
 
+        // ranked: sign in with Google, then race for a rating
+        card.add(Cards.kicker("RANKED")).left().padBottom(6).row();
+        rankedRow = new Table();
+        card.add(rankedRow).height(Cards.ROW_HEIGHT + 8).row();
+
         // open public races
-        card.add(Cards.kicker("OPEN RACES")).left().padBottom(6).row();
+        card.add(Cards.kicker("OPEN RACES")).left().padTop(10).padBottom(6).row();
         roomsTable = new Table();
         roomsTable.top();
         roomsTable.defaults().width(Cards.CARD_WIDTH).height(Cards.ROW_HEIGHT).padBottom(6);
@@ -180,6 +187,79 @@ public class MultiplayerScreen implements Screen {
     }
 
     /**
+     * the ranked row: a Sign in button, or your rank with Find Race and Leaderboard
+     * (rebuilt only when what it shows changes)
+     */
+    private void refreshRanked() {
+        Ui.Account account = Ui.account;
+        String name = networkClient.getProfileName();
+        String state = account == null || !account.available() ? "none"
+            : account.uid() == null ? "out:" + account.error()
+            : name == null ? "checking" : name + networkClient.getRating() + networkClient.isRankedOn();
+        if (state.equals(shownRanked)) {
+            return;
+        }
+        shownRanked = state;
+        rankedRow.clear();
+        Table row = Cards.row();
+        rankedRow.add(row).width(Cards.CARD_WIDTH).height(Cards.ROW_HEIGHT + 8);
+        if (state.equals("none")) {
+            row.add(Cards.text("Ranked races need the web version", false)).expandX().left();
+            return;
+        }
+        if (account.uid() == null) {
+            String error = account.error();
+            row.add(Cards.text(error == null ? "Sign in to race for a rank" : "Sign-in failed, try again", false)).expandX().left();
+            TextButton signIn = Cards.smallButton("Sign in with Google", skin);
+            // the browser only opens Google's window straight from a click: arm it on press
+            signIn.addListener(new com.badlogic.gdx.scenes.scene2d.InputListener() {
+                public boolean touchDown(InputEvent e, float x, float y, int pointer, int button) {
+                    Ui.account.armSignIn();
+                    return true;
+                }
+            });
+            row.add(signIn).width(210).height(38);
+            return;
+        }
+        if (name == null) {
+            row.add(Cards.text("Signing in...", false)).expandX().left();
+            return;
+        }
+        // signed in: tier pill, name and rating, then the buttons
+        row.add(Cards.pill(networkClient.getTier(), tierColor(networkClient.getTier()), true)).padRight(10);
+        row.add(Cards.text(name + "  " + networkClient.getRating(), true)).expandX().left();
+        TextButton board = Cards.smallButton("Top 20", skin);
+        board.addListener(new ClickListener() {
+            public void clicked(InputEvent e, float x, float y) {
+                game.setScreen(new LeaderboardScreen(game, selectedCar, networkClient));
+            }
+        });
+        TextButton find = Cards.smallButton("Find Race", skin);
+        find.addListener(new ClickListener() {
+            public void clicked(InputEvent e, float x, float y) {
+                networkClient.joinRanked(selectedCar);
+            }
+        });
+        find.setDisabled(!networkClient.isRankedOn());
+        row.add(board).width(96).height(36).padRight(6);
+        row.add(find).width(120).height(36);
+    }
+
+    /**
+     * @return a rank's colour (shared with the leaderboard)
+     */
+    public static com.badlogic.gdx.graphics.Color tierColor(String tier) {
+        switch (tier) {
+            case "CHAMPION": return new com.badlogic.gdx.graphics.Color(1f, 0.35f, 0.55f, 1f);
+            case "DIAMOND": return new com.badlogic.gdx.graphics.Color(0.45f, 0.85f, 1f, 1f);
+            case "PLATINUM": return new com.badlogic.gdx.graphics.Color(0.75f, 0.95f, 0.9f, 1f);
+            case "GOLD": return new com.badlogic.gdx.graphics.Color(1f, 0.8f, 0.28f, 1f);
+            case "SILVER": return new com.badlogic.gdx.graphics.Color(0.82f, 0.84f, 0.88f, 1f);
+            default: return new com.badlogic.gdx.graphics.Color(0.8f, 0.55f, 0.32f, 1f);
+        }
+    }
+
+    /**
      * fills the open race list: every map's races, each row with its code, map, player
      * count and a Join button
      */
@@ -251,6 +331,8 @@ public class MultiplayerScreen implements Screen {
             refreshTimer = 0f;
             networkClient.requestRooms();
         }
+
+        refreshRanked();
 
         StringBuilder rooms = new StringBuilder(String.valueOf(networkClient.isConnected()));
         for (String[] room : networkClient.getPublicRooms()) {
