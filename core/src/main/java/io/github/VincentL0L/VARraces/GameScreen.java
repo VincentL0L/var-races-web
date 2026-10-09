@@ -121,6 +121,8 @@ public class GameScreen implements Screen {
         player = new Player(stage, car, map);
         player.setInputEnabled(false);
         player.getImage().setPosition(x, y);
+        // arenas: everyone starts facing the middle
+        player.getImage().setRotation(nc.getStartHeading() - 90f);
         // start with the camera already on our car in its grid slot
         cam.position.set(x + player.getWidth() / 2f, y + player.getHeight() / 2f, 0);
         cam.update();
@@ -195,7 +197,25 @@ public class GameScreen implements Screen {
         if (!done && rm.isFinished(nc.getPlayerId())) {
             done = true;
             end = 0f;
+            if (map.battle) {
+                // the battle's over: did we win?
+                List<RacerInfo> order = rm.getSortedLeaderboard();
+                boolean won = !order.isEmpty() && order.get(0).name.equals(nc.getPlayerId());
+                finish.setText(won ? "WINNER!" : "BATTLE OVER");
+                finish.pack();
+                finish.setPosition(Ui.width() / 2f, Ui.height() / 2f, Align.center);
+            }
             finish.setVisible(true);
+        }
+        // knocked out of a battle: the car's a wreck until the battle ends
+        boolean wrecked = map.battle && nc.isKnockedOut(nc.getPlayerId());
+        if (wrecked && !done && !finish.isVisible()) {
+            finish.setText("KNOCKED OUT");
+            finish.pack();
+            finish.setPosition(Ui.width() / 2f, Ui.height() / 2f, Align.center);
+            finish.setColor(Color.SALMON);
+            finish.setVisible(true);
+            player.getImage().setColor(0.35f, 0.33f, 0.32f, 1f);
         }
 
         if (done) {
@@ -225,6 +245,9 @@ public class GameScreen implements Screen {
                     player.spinOut();
                 } else if (effect.equals("SLOW")) {
                     player.slowDown(io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem.SLOW_TIME);
+                } else if (effect.equals("DMG")) {
+                    over.flashDamage();
+                    camControl.shake(6f);
                 }
             }
         }
@@ -239,7 +262,7 @@ public class GameScreen implements Screen {
         }
 
         // controls work while racing and not paused
-        player.setInputEnabled(start && !done && !paused && !player.isSpinning());
+        player.setInputEnabled(start && !done && !paused && !player.isSpinning() && !wrecked);
         if (touch == null) {
             player.setTouchInput(false, 0f, false, false, false, false);
         }
@@ -323,6 +346,9 @@ public class GameScreen implements Screen {
         worldBatch.begin();
         itemArt.drawAir(worldBatch, nc.getItemView(), carCenters);
         worldBatch.end();
+        if (map.battle) {
+            drawHealthBars();
+        }
         if (frosted) {
             frost.end();
             frost.draw(frostAmount);
@@ -336,10 +362,10 @@ public class GameScreen implements Screen {
         over.setRaceTime(me != null && me.isFinished() ? me.finishTime : raceClock);
         // RETURN TO TRACK: track our own car's place on the course; far from the stretch
         // we should be on means we're out on the grass or skipped part of the track
-        if (start && !done && !frozen) {
+        if (start && !done && !frozen && !map.battle) {
             trackWatch.updateRacer(nc.getPlayerId(), new Vector2(player.getX(), player.getY()), raceClock);
         }
-        over.setOffTrack(start && !done && trackWatch.distanceFromTrack(nc.getPlayerId()) > OFF_TRACK_DISTANCE);
+        over.setOffTrack(start && !done && !map.battle && trackWatch.distanceFromTrack(nc.getPlayerId()) > OFF_TRACK_DISTANCE);
         over.setPaused(paused);
         over.setCars(carCenters);
         over.render(player);
@@ -360,6 +386,37 @@ public class GameScreen implements Screen {
                 startFlag = null;
             }
         }
+    }
+
+    private com.badlogic.gdx.graphics.glutils.ShapeRenderer bars;
+
+    /** a little health bar over every car in a battle (wrecks get none) */
+    private void drawHealthBars() {
+        if (bars == null) {
+            bars = new com.badlogic.gdx.graphics.glutils.ShapeRenderer();
+        }
+        // drawn on the screen (not the rotating map) so the bars always sit level above the car
+        bars.getProjectionMatrix().setToOrtho2D(0, 0, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        com.badlogic.gdx.math.Vector3 p = new com.badlogic.gdx.math.Vector3();
+        float px = Gdx.graphics.getBackBufferWidth() / (float) Math.max(1, Gdx.graphics.getWidth());
+        bars.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Filled);
+        for (RacerInfo r : rm.getRacers()) {
+            Vector2 c = carCenters.get(r.name);
+            if (c == null || r.progress < io.github.VincentL0L.VARraces.Multiplayer.server.cpu.BattleSystem.ALIVE) {
+                continue;
+            }
+            float hp = MathUtils.clamp((r.progress - io.github.VincentL0L.VARraces.Multiplayer.server.cpu.BattleSystem.ALIVE) / 100f, 0f, 1f);
+            p.set(c.x, c.y, 0f);
+            stage.getCamera().project(p, 0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
+            float u = Ui.density / px;
+            float w = 34f * u, h = 5f * u, x = p.x / px - w / 2f, y = p.y / px + 22f * u;
+            bars.setColor(0.1f, 0.07f, 0.05f, 0.85f);
+            bars.rect(x - u, y - u, w + 2f * u, h + 2f * u);
+            bars.setColor(hp > 0.5f ? 0.35f : hp > 0.25f ? 0.95f : 0.95f, hp > 0.5f ? 0.85f : hp > 0.25f ? 0.75f : 0.3f, 0.3f, 1f);
+            bars.rect(x, y, w * hp, h);
+        }
+        bars.end();
     }
 
     /**
@@ -511,6 +568,9 @@ public class GameScreen implements Screen {
     public void dispose() {
         frost.dispose();
         lights.dispose();
+        if (bars != null) {
+            bars.dispose();
+        }
         itemArt.dispose();
         worldBatch.dispose();
         if (touch != null) {

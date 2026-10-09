@@ -52,25 +52,27 @@ public class MapSelectScreen implements Screen {
     private final List<Texture> previews = new ArrayList<>();
     private final TrackBackdrop[] backdrops;
     private int selected = 0;
-    private final TextButton[] tabs = new TextButton[2];
-    private final Table[] grids = {new Table(), new Table()};
+    private final TextButton[] tabs = new TextButton[3];
+    private final Table[] grids = {new Table(), new Table(), new Table()};
     private com.badlogic.gdx.scenes.scene2d.ui.Cell<Table> gridCell;
     private Label sprintsNote;
 
-    /** shows the circuits or the sprints; the tab that's showing is lit */
-    private void showTab(boolean sprints) {
-        gridCell.setActor(grids[sprints ? 1 : 0]);
-        tabs[0].setChecked(!sprints);
-        tabs[1].setChecked(sprints);
-        tabs[0].getLabel().setColor(sprints ? Cards.LABEL : Ui.TEXT_DARK);
-        tabs[1].getLabel().setColor(sprints ? Ui.TEXT_DARK : Cards.LABEL);
-        tabs[sprints ? 0 : 1].setColor(1f, 1f, 1f, 0.55f);
-        tabs[sprints ? 1 : 0].setColor(Color.WHITE);
-        sprintsNote.setVisible(sprints);
+    private static final String[] TAB_NOTES = {"", "One run from start to finish. No laps.",
+        "Demolition derby: ram everyone, last car driving wins. Heavy cars hit harder."};
+
+    /** shows one kind of map (CIRCUIT, SPRINT or BATTLE); its tab is lit */
+    private void showTab(int category) {
+        gridCell.setActor(grids[category]);
+        for (int t = 0; t < 3; t++) {
+            boolean on = t == category;
+            tabs[t].getLabel().setColor(on ? Ui.TEXT_DARK : Cards.LABEL);
+            tabs[t].setColor(on ? Color.WHITE : new Color(1f, 1f, 1f, 0.55f));
+        }
+        sprintsNote.setText(TAB_NOTES[category]);
         // highlight the first map of the tab unless the picked one is already on it
-        if (maps.get(selected).pointToPoint != sprints) {
+        if (maps.get(selected).category() != category) {
             for (int i = 0; i < maps.size(); i++) {
-                if (maps.get(i).pointToPoint == sprints) {
+                if (maps.get(i).category() == category) {
                     select(i);
                     break;
                 }
@@ -107,7 +109,7 @@ public class MapSelectScreen implements Screen {
         }
         createUI();
         select(selected);
-        showTab(maps.get(selected).pointToPoint);
+        showTab(maps.get(selected).category());
         Gdx.input.setInputProcessor(stage);
     }
 
@@ -120,24 +122,24 @@ public class MapSelectScreen implements Screen {
         // the title, with tabs on the right: circuits (laps) or sprints (A to B)
         Table header = new Table();
         header.add(Cards.title("CHOOSE A TRACK", 40)).left().expandX();
-        tabs[0] = Cards.smallButton("Circuits", skin);
-        tabs[1] = Cards.smallButton("Sprints", skin);
-        for (int t = 0; t < 2; t++) {
+        String[] tabNames = {"Circuits", "Sprints", "Battle"};
+        for (int t = 0; t < 3; t++) {
             final int tab = t;
+            tabs[t] = Cards.smallButton(tabNames[t], skin);
             tabs[t].addListener(new ClickListener() {
                 public void clicked(InputEvent e, float x, float y) {
-                    showTab(tab == 1);
+                    showTab(tab);
                 }
             });
-            header.add(tabs[t]).width(124).height(44).padLeft(8);
+            header.add(tabs[t]).width(118).height(44).padLeft(8);
         }
         card.add(header).padTop(2).padBottom(14).row();
 
-        // two grids of cards, four to a row; one is shown at a time
-        for (int g = 0; g < 2; g++) {
+        // a grid of cards per kind of map, four to a row; one is shown at a time
+        for (int g = 0; g < 3; g++) {
             int placed = 0;
             for (int i = 0; i < maps.size(); i++) {
-                if (maps.get(i).pointToPoint != (g == 1)) {
+                if (maps.get(i).category() != g) {
                     continue;
                 }
                 grids[g].add(tile(i)).width(TILE_WIDTH).fillY().padLeft(placed % columns == 0 ? 0 : 14).padBottom(12);
@@ -149,7 +151,7 @@ public class MapSelectScreen implements Screen {
         }
         gridCell = card.add(grids[0]);
         card.row();
-        sprintsNote = new Label("One run from start to finish. No laps.", new Label.LabelStyle(Ui.font(10), Cards.LABEL));
+        sprintsNote = new Label("", new Label.LabelStyle(Ui.font(10), Cards.LABEL));
         card.add(sprintsNote).left().padBottom(4).row();
 
         TextButton back = Cards.smallButton("Back", skin);

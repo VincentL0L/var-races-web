@@ -182,7 +182,7 @@ public class ItemSystem {
             for (Racer r : racers) {
                 if (!gone && (!r.id.equals(rocket.owner) || rocket.age > 0.4f)
                         && Vector2.dst(r.x, r.y, rocket.x, rocket.y) < HIT_RADIUS) {
-                    hit(r, "SPIN");
+                    hit(r, "SPIN", rocket.owner, BattleSystem.ROCKET_DAMAGE);
                     gone = true;
                 }
             }
@@ -198,7 +198,7 @@ public class ItemSystem {
             boolean gone = slick.age > SLICK_LIFE;
             for (Racer r : racers) {
                 if (!gone && slick.age > 0.5f && Vector2.dst(r.x, r.y, slick.x, slick.y) < SLICK_RADIUS) {
-                    hit(r, "SPIN");
+                    hit(r, "SPIN", null, BattleSystem.OIL_DAMAGE);
                     gone = true;
                 }
             }
@@ -306,7 +306,7 @@ public class ItemSystem {
                 for (Racer r : racers) {
                     int place = order.indexOf(r.id);
                     if (r != me && place >= 0 && (myPlace < 0 || place < myPlace)) {
-                        hit(r, "SLOW");
+                        hit(r, "SLOW", me.id, BattleSystem.PULSE_DAMAGE);
                     }
                 }
                 break;
@@ -316,10 +316,23 @@ public class ItemSystem {
     /**
      * spins out or slows a car, unless its bubble shield takes the hit
      */
-    private void hit(Racer r, String effect) {
+    /** battle mode: items also do damage (null in races) */
+    private BattleSystem battle;
+
+    /**
+     * @param system the battle to report item damage to
+     */
+    public void setBattle(BattleSystem system) {
+        battle = system;
+    }
+
+    private void hit(Racer r, String effect, String by, float damage) {
         if (shields.remove(r.id) != null) {
             events.add("BLOCK|" + r.id);
             return;
+        }
+        if (battle != null) {
+            battle.damage(r.id, damage, by);
         }
         if (r.cpu != null) {
             if (effect.equals("SPIN")) {

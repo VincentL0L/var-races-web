@@ -28,6 +28,11 @@ public class CameraController {
         float newX = MathUtils.lerp(camera.position.x, targetX, smoothing);
         float newY = MathUtils.lerp(camera.position.y, targetY, smoothing);
         camera.position.set(newX, newY, 0);
+        // a crash shakes the view for a moment
+        if (shake > 0.05f) {
+            camera.position.add(MathUtils.random(-shake, shake), MathUtils.random(-shake, shake), 0);
+            shake *= (float) Math.exp(-10f * delta);
+        }
 
         float currentRot = (float) Math.toDegrees(Math.atan2(camera.up.y, camera.up.x));
         float newRot = MathUtils.lerpAngleDeg(currentRot, targetRotationDegrees, rotationSmoothing);
@@ -35,6 +40,15 @@ public class CameraController {
         camera.up.set(MathUtils.cosDeg(newRot), MathUtils.sinDeg(newRot), 0);
 
         camera.update();
+    }
+
+    private float shake = 0f;
+
+    /**
+     * @param amount how hard to shake the view (map pixels)
+     */
+    public void shake(float amount) {
+        shake = Math.max(shake, amount);
     }
 
     public float getX() {

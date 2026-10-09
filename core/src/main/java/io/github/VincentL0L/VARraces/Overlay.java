@@ -162,6 +162,7 @@ public class Overlay {
         renderItemStrip(vw - MARGIN - sideWidth, stripY, sideWidth);
         renderCluster(player, standings);
         renderLapBanner(standings);
+        renderDamageFlash();
         if (offTrack && !paused) {
             renderWarning("RETURN TO TRACK");
         }
@@ -219,7 +220,7 @@ public class Overlay {
             font.draw(batch, name, x + BEZEL + tab + 10, middle + layout.height / 2f);
 
             String status = r.isFinished() ? formatTime(r.finishTime)
-                : raceManager.isSprint() ? percent(r) : "LAP " + currentLap(r) + "/" + raceManager.getLaps();
+                : map.battle ? health(r) : raceManager.isSprint() ? percent(r) : "LAP " + currentLap(r) + "/" + raceManager.getLaps();
             font.setColor(r.isFinished() ? Ui.GOLD : LABEL);
             layout.setText(font, status);
             font.draw(batch, status, x + width - BEZEL - layout.width, middle + layout.height / 2f);
@@ -305,6 +306,25 @@ public class Overlay {
             }
         }
         String ahead = "--", behind = "--";
+        if (map.battle) {
+            // a battle: how many are still in, and how many we've knocked out
+            int alive = 0, kos = 0;
+            for (RacerInfo r : standings) {
+                if (r.progress >= io.github.VincentL0L.VARraces.Multiplayer.server.cpu.BattleSystem.ALIVE) {
+                    alive++;
+                }
+                if (r.name.equals(playerId)) {
+                    kos = r.lapCount;
+                }
+            }
+            batch.begin();
+            panel.draw(batch, x, y, width, STRIP_HEIGHT);
+            batch.end();
+            float half = (width - BEZEL * 2 - 8f) / 2f;
+            renderScreen(x + BEZEL, y + BEZEL, half, "ALIVE", alive + "/" + standings.size(), Ui.CREAM, tabFont);
+            renderScreen(x + BEZEL + half + 8f, y + BEZEL, half, "KOS", String.valueOf(kos), Ui.GOLD, tabFont);
+            return;
+        }
         if (me >= 0 && raceTime > 0f && !standings.get(me).isFinished()) {
             RacerInfo mine = standings.get(me);
             if (me == 0) {
@@ -365,6 +385,14 @@ public class Overlay {
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         render.begin(ShapeRenderer.ShapeType.Filled);
+        if (map.battle) {
+            // an arena: just its floor
+            render.setColor(TRACK_EDGE);
+            render.rect(ox + 130f * scale, oy + 130f * scale, 1660f * scale, 1180f * scale);
+            render.setColor(TRACK_ROAD);
+            render.rect(ox + 140f * scale, oy + 140f * scale, 1640f * scale, 1160f * scale);
+            stretches = 0;
+        }
         for (int pass = 0; pass < 2; pass++) {
             render.setColor(pass == 0 ? TRACK_EDGE : TRACK_ROAD);
             float w = pass == 0 ? 7f : 4f;
@@ -476,6 +504,32 @@ public class Overlay {
         render.end();
     }
 
+    // ---------------------------------------------------------------- damage flash
+
+    private float damageFlash = 0f;
+
+    /** we just got hit: the screen edges flash red */
+    public void flashDamage() {
+        damageFlash = 1f;
+    }
+
+    private void renderDamageFlash() {
+        if (damageFlash <= 0f) {
+            return;
+        }
+        damageFlash -= Gdx.graphics.getDeltaTime() * 2.5f;
+        float a = Math.max(0f, damageFlash) * 0.45f;
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        render.begin(ShapeRenderer.ShapeType.Filled);
+        Color edge = new Color(0.9f, 0.1f, 0.05f, a), clear = new Color(0.9f, 0.1f, 0.05f, 0f);
+        float band = Math.min(vw, vh) * 0.18f;
+        render.rect(0, 0, vw, band, edge, edge, clear, clear);
+        render.rect(0, vh - band, vw, band, clear, clear, edge, edge);
+        render.rect(0, 0, band, vh, edge, clear, clear, edge);
+        render.rect(vw - band, 0, band, vh, clear, edge, edge, clear);
+        render.end();
+    }
+
     // ---------------------------------------------------------------- lap banner
 
     private int shownLap = 0;
@@ -486,7 +540,7 @@ public class Overlay {
     /** "LAP 2/3" or "FINAL LAP" slides across the middle as you cross the line */
     private void renderLapBanner(List<RacerInfo> standings) {
         RacerInfo me = raceManager.getRacerInfoByName(playerId);
-        if (me != null && !raceManager.isSprint() && !me.isFinished() && me.lapCount > shownLap) {
+        if (me != null && !raceManager.isSprint() && !map.battle && !me.isFinished() && me.lapCount > shownLap) {
             shownLap = me.lapCount;
             int lap = me.lapCount + 1;
             bannerText = lap == raceManager.getLaps() ? "FINAL LAP" : "LAP " + lap + "/" + raceManager.getLaps();
@@ -545,6 +599,11 @@ public class Overlay {
         return r.name.equals(playerId) ? r.name + " (YOU)" : map.displayName(r.name);
     }
 
+    /** a battle car's health, like "HP 72", or OUT once knocked out */
+    private static String health(RacerInfo r) {
+        return r.progress >= io.github.VincentL0L.VARraces.Multiplayer.server.cpu.BattleSystem.ALIVE ? "HP " + Math.round(r.progress - io.github.VincentL0L.VARraces.Multiplayer.server.cpu.BattleSystem.ALIVE) : "OUT";
+    }
+
     /** how much of a sprint this racer has driven, like "64%" */
     private String percent(RacerInfo r) {
         float done = MathUtils.clamp(r.progress / Math.max(1f, raceManager.getTrackLength()), 0f, 1f);
@@ -592,14 +651,21 @@ public class Overlay {
         // right: lap (top) and stopwatch (bottom)
         RacerInfo me = raceManager.getRacerInfoByName(playerId);
         boolean finished = me != null && me.isFinished();
-        if (raceManager.isSprint()) {
+        if (map.battle) {
+            // a battle: our health, red when it's low
+            float hp = me == null ? 100f : Math.max(0f, me.progress - io.github.VincentL0L.VARraces.Multiplayer.server.cpu.BattleSystem.ALIVE);
+            renderScreen(rightX, topRowY, moduleWidth, "HP", me != null && me.progress < io.github.VincentL0L.VARraces.Multiplayer.server.cpu.BattleSystem.ALIVE ? "OUT" : String.valueOf(Math.round(hp)),
+                hp > 50f ? Ui.CREAM : hp > 25f ? Ui.GOLD : WARNING);
+        } else if (raceManager.isSprint()) {
             // a sprint has no laps: how much of the course is done
             renderScreen(rightX, topRowY, moduleWidth, "DIST", finished ? "DONE" : me != null ? percent(me) : "0%", Ui.CREAM);
         } else {
             String lap = finished ? "DONE" : (me != null ? currentLap(me) : 1) + "/" + raceManager.getLaps();
             renderScreen(rightX, topRowY, moduleWidth, "LAP", lap, Ui.CREAM);
         }
-        renderScreen(rightX, bottomRowY, moduleWidth, "TIME", formatTime(raceTime), finished ? Ui.GOLD : Ui.CREAM);
+        // a battle counts down to its time limit
+        float shownTime = map.battle ? Math.max(0f, io.github.VincentL0L.VARraces.Multiplayer.server.cpu.BattleSystem.TIME_LIMIT - raceTime) : raceTime;
+        renderScreen(rightX, bottomRowY, moduleWidth, "TIME", formatTime(shownTime), finished ? Ui.GOLD : Ui.CREAM);
 
         // center pod: the speedometer sits high so it hangs below the housing
         renderSpeedometer(cx - gaugeSize / 2f, y + CLUSTER_HEIGHT + 6f - gaugeSize, player.getVelocity().len() * 0.4f);

@@ -142,6 +142,14 @@ public class Waypoints {
         return points(200, 300, 200, 1100, 1100, 1100, 1700, 1800, 1700, 2700, 2900, 2700, 3500, 2000, 3500, 900, 4400, 900, 4900, 1500, 4900, 2550, 4900, 2700);
     }
 
+    /**
+     * Battle arenas have no course; this loop round the inside of the arena is only used
+     * for the minimap outline and where the item boxes go (see tools/MakeArenas.java)
+     */
+    public static List<Vector2> getArenaWaypoints() {
+        return points(360, 260, 1560, 260, 1560, 1180, 360, 1180);
+    }
+
     private static List<Vector2> points(int... xy) {
         List<Vector2> waypoints = new ArrayList<>();
         for (int i = 0; i + 1 < xy.length; i += 2) {

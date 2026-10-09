@@ -272,6 +272,86 @@ public class CpuTraffic {
         return track.onRoad(p.x + dx + CarBody.WIDTH / 2f, p.y + dy + CarBody.LENGTH / 2f);
     }
 
+    // ---------------------------------------------------------------- battle mode
+
+    /** players knocked out of a battle (wrecks, not targets) */
+    private final java.util.Set<String> outPlayers = new java.util.HashSet<>();
+
+    /**
+     * @param id a player knocked out of the battle
+     */
+    public void setOut(String id) {
+        outPlayers.add(id);
+    }
+
+    /**
+     * @return true if that car is still a target for this CPU (still in, not itself)
+     */
+    boolean isTarget(String id, Opponent me) {
+        if (id.equals(me.getName())) {
+            return false;
+        }
+        for (Opponent o : cpus) {
+            if (o.getName().equals(id)) {
+                return !o.isFinished();
+            }
+        }
+        return players.containsKey(id) && !outPlayers.contains(id);
+    }
+
+    /**
+     * @param random true to pick any car still in, false for the nearest
+     * @return the id of a car for this CPU to hunt, or null if nobody's left
+     */
+    String pickTarget(Opponent me, boolean random) {
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        String nearest = null;
+        float best = Float.MAX_VALUE;
+        for (Opponent o : cpus) {
+            if (isTarget(o.getName(), me)) {
+                ids.add(o.getName());
+                float d = o.getPosition().dst(me.getPosition());
+                if (d < best) {
+                    best = d;
+                    nearest = o.getName();
+                }
+            }
+        }
+        for (Map.Entry<String, PlayerCar> e : players.entrySet()) {
+            if (isTarget(e.getKey(), me)) {
+                ids.add(e.getKey());
+                float d = Vector2.dst(e.getValue().x, e.getValue().y, me.getPosition().x, me.getPosition().y);
+                if (d < best) {
+                    best = d;
+                    nearest = e.getKey();
+                }
+            }
+        }
+        if (random && !ids.isEmpty()) {
+            return ids.get(MathUtils.random(ids.size() - 1));
+        }
+        return nearest;
+    }
+
+    /**
+     * @param lead seconds to aim ahead of where the target is going
+     * @return where to aim at a car (its center), or null if it's gone
+     */
+    Vector2 targetPosition(String id, float lead) {
+        for (Opponent o : cpus) {
+            if (o.getName().equals(id)) {
+                return new Vector2(o.getPosition().x + CarBody.WIDTH / 2f + MathUtils.cosDeg(o.getRotation()) * o.getSpeed() * lead,
+                    o.getPosition().y + CarBody.LENGTH / 2f + MathUtils.sinDeg(o.getRotation()) * o.getSpeed() * lead);
+            }
+        }
+        PlayerCar p = players.get(id);
+        if (p == null) {
+            return null;
+        }
+        return new Vector2(p.x + CarBody.WIDTH / 2f + MathUtils.cosDeg(p.heading) * p.speed * lead,
+            p.y + CarBody.LENGTH / 2f + MathUtils.sinDeg(p.heading) * p.speed * lead);
+    }
+
     /**
      * @return the CPUs in this race
      */

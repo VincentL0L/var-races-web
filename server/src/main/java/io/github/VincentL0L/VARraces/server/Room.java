@@ -9,6 +9,7 @@ import org.java_websocket.WebSocket;
 
 import com.badlogic.gdx.math.Vector2;
 
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.BattleSystem;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarBody;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarModel;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem;
@@ -35,6 +36,8 @@ public class Room {
     private final List<Vector2> waypoints;
     private final RaceManager raceManager;
     private final ItemSystem items;
+    /** battle mode (null in races) */
+    private BattleSystem battle;
     private float roomClock = 0f;
     // race settings, chosen by the host in the lobby
     private int laps = 1;
@@ -59,10 +62,23 @@ public class Room {
         waypoints = map.waypoints;
         raceManager = RaceManager.forMap(map);
         items = new ItemSystem(waypoints, map.pointToPoint);
+        if (map.battle) {
+            battle = new BattleSystem();
+            items.setBattle(battle);
+        }
         List<Vector2> grid = Waypoints.getCpuGrid();
         for (int i = 0; i < grid.size(); i++) {
-            Opponent cpu = new Opponent("CPU" + (i + 1), waypoints, grid.get(i));
+            Vector2 start = grid.get(i);
+            float heading = 90f;
+            if (map.battle) {
+                float[] spot = TrackMap.arenaSpawn(TrackMap.CPU_SPAWNS[i]);
+                start = new Vector2(spot[0], spot[1]);
+                heading = spot[2];
+            }
+            Opponent cpu = new Opponent("CPU" + (i + 1), waypoints, start);
             cpu.setSprint(map.pointToPoint);
+            cpu.setBattle(map.battle);
+            cpu.setHeading(heading);
             cpuOpponents.add(cpu);
         }
         traffic = new CpuTraffic(cpuOpponents, ImageTrack.forMap(map));
@@ -214,7 +230,7 @@ public class Room {
         // standings start once everyone is on the grid (the countdown has begun)
         boolean onGrid = started || (countdownInProgress && countdownTimer >= 0f);
         for (Opponent cpu : cpuOpponents) {
-            if (onGrid) {
+            if (onGrid && battle == null) {
                 raceManager.updateRacer(cpu.getName(), cpu.getPosition(), raceTime);
             }
             broadcast("POS|" + cpu.getName() + "|" + cpu.getPosition().x + "|"
@@ -222,7 +238,7 @@ public class Room {
         }
 
         for (PlayerState p : players.values()) {
-            if (onGrid) {
+            if (onGrid && battle == null) {
                 raceManager.updateRacer(p.id, p.position, raceTime);
             }
             broadcast("POS|" + p.id + "|" + p.position.x + "|" + p.position.y + "|"
@@ -240,6 +256,26 @@ public class Room {
         }
         broadcast("ITEMS|" + items.describe());
 
+        // battle: crashes and knockouts
+        if (onGrid && battle != null) {
+            java.util.Map<String, Float> masses = new java.util.HashMap<>();
+            for (PlayerState p : players.values()) {
+                masses.put(p.id, CarModel.of(p.car).mass);
+            }
+            battle.update(delta, racers(), masses, started);
+            for (String event : battle.takeEvents()) {
+                if (event.startsWith("OUT|")) {
+                    traffic.setOut(event.split("\\|")[1]);
+                }
+                broadcast(event);
+            }
+            StringBuilder msg = new StringBuilder("LEADER");
+            for (io.github.VincentL0L.VARraces.Multiplayer.packets.Entry e : battle.toEntries()) {
+                msg.append('|').append(e.name).append('|').append(e.lapCount).append('|')
+                    .append(e.progress).append('|').append(e.finishTime);
+            }
+            broadcast(msg.toString());
+        } else
         // leaderboard every tick: LEADER|name|laps|progress|finishTime|...
         if (onGrid) {
             StringBuilder msg = new StringBuilder("LEADER");
@@ -278,6 +314,9 @@ public class Room {
 
     /** racer ids, leader first */
     private List<String> order() {
+        if (battle != null) {
+            return battle.order();
+        }
         List<String> order = new ArrayList<>();
         for (RacerInfo r : raceManager.getSortedLeaderboard()) {
             order.add(r.name);

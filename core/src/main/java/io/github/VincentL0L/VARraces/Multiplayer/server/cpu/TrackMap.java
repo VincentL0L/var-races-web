@@ -25,6 +25,11 @@ public class TrackMap {
     public static final String RUSH_HOUR = "rushhour";
     public static final String ROOFTOP = "rooftop";
     public static final String MOON = "moon";
+    public static final String JUNKYARD = "junkyard";
+    public static final String STADIUM = "stadium";
+    public static final String RINK = "rink";
+    /** the kinds of map, as the picker's tabs */
+    public static final int CIRCUIT = 0, SPRINT = 1, BATTLE = 2;
 
     /** short id sent between the game and the server */
     public final String id;
@@ -58,6 +63,57 @@ public class TrackMap {
      * drawn scaled up (pixel art made of 3 x 3 blocks loses nothing), so big maps stay small
      */
     public int scale = 1;
+    /** a battle arena (demolition derby, see BattleSystem) instead of a race */
+    public boolean battle = false;
+
+    private TrackMap arena() {
+        width = 1920;
+        height = 1440;
+        scale = 3;
+        battle = true;
+        return this;
+    }
+
+    /**
+     * @return CIRCUIT, SPRINT or BATTLE
+     */
+    public int category() {
+        return battle ? BATTLE : pointToPoint ? SPRINT : CIRCUIT;
+    }
+
+    /**
+     * @return true if the lap count can be set (circuits only)
+     */
+    public boolean hasLaps() {
+        return !battle && !pointToPoint;
+    }
+
+    /** arena starting spots: a ring round the middle, everyone facing in */
+    private static final int SPAWNS = 10;
+
+    /**
+     * @param slot 0.. (CPUs take slots 1, 4 and 7, players the rest in join order)
+     * @return the car's start (image corner) and which way it faces, {x, y, heading}
+     */
+    public static float[] arenaSpawn(int slot) {
+        float a = 18f + 36f * (slot % SPAWNS);
+        float cx = 960f + 620f * com.badlogic.gdx.math.MathUtils.cosDeg(a);
+        float cy = 720f + 400f * com.badlogic.gdx.math.MathUtils.sinDeg(a);
+        return new float[] {cx - CarBody.WIDTH / 2f, cy - CarBody.LENGTH / 2f, a + 180f};
+    }
+
+    /** arena slots for the three CPUs */
+    public static final int[] CPU_SPAWNS = {1, 4, 7};
+    private static final int[] PLAYER_SPAWNS = {0, 5, 2, 8, 3, 6, 9};
+
+    /**
+     * @param index 0 for the first player...
+     * @return that player's arena spawn {x, y, heading}
+     */
+    public static float[] playerArenaSpawn(int index) {
+        return arenaSpawn(PLAYER_SPAWNS[Math.max(0, index) % PLAYER_SPAWNS.length]);
+    }
+
     /** tire grip and launch traction on this map (1 = normal; the moon is slippery) */
     public float grip = 1f, traction = 1f;
 
@@ -136,6 +192,13 @@ public class TrackMap {
                 Waypoints.getRooftopWaypoints(), null, "RIVAL").sprint(7200, 1800));
             maps.add(city(MOON, "Moon Base", "Low grip, big craters, and a rocket waiting at the end.",
                 Waypoints.getMoonWaypoints(), "ui/rover.png", "ROVER").sprint(5400, 3240).surface(0.45f, 0.7f));
+            // battle arenas: last car driving wins
+            maps.add(city(JUNKYARD, "Junkyard", "Scrap piles and a wall of crushed cars. Ram everyone.",
+                Waypoints.getArenaWaypoints(), null, "WRECKER").arena());
+            maps.add(city(STADIUM, "Stadium", "A packed dirt bowl. The crowd wants carnage.",
+                Waypoints.getArenaWaypoints(), null, "WRECKER").arena());
+            maps.add(city(RINK, "Ice Rink", "No grip at all. Slide into people at full speed.",
+                Waypoints.getArenaWaypoints(), null, "WRECKER").arena().surface(0.35f, 0.65f));
         }
         return maps;
     }

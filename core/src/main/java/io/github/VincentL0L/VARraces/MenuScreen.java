@@ -14,7 +14,7 @@ import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
 
 /**
  * The title screen: the 16-bit attract-mode scene (TitleBackdrop) with the VAR RACES sign,
- * and the Single Player / Multiplayer / Skin / Exit buttons
+ * and the Single Player / Multiplayer / Garage buttons
  */
 public class MenuScreen implements Screen {
 
@@ -53,28 +53,24 @@ public class MenuScreen implements Screen {
 
         TextButton play = new TextButton("Single Player", button);
         TextButton online = new TextButton("Multiplayer", button);
-        TextButton exit = new TextButton("Exit", button);
         TextButton skin = new TextButton("Garage", button);
 
         float buttonWidth = 220;
         float buttonHeight = 58;
         play.setSize(buttonWidth, buttonHeight);
         online.setSize(buttonWidth, buttonHeight);
-        exit.setSize(buttonWidth, buttonHeight);
         skin.setSize(buttonWidth, buttonHeight);
 
         // a column of buttons under the sign
         float x = Ui.width() * 0.5f - buttonWidth * 0.5f;
         float top = Math.min(Ui.height() - 250f, 380f);
-        float gap = Math.min(76f, (top - 30f) / 3f);
+        float gap = Math.min(76f, (top - 30f) / 2f);
         play.setPosition(x, top);
         online.setPosition(x, top - gap);
         skin.setPosition(x, top - gap * 2);
-        exit.setPosition(x, top - gap * 3);
 
         stage.addActor(play);
         stage.addActor(online);
-        stage.addActor(exit);
         stage.addActor(skin);
 
         play.addListener(new ClickListener() {
@@ -86,12 +82,6 @@ public class MenuScreen implements Screen {
         online.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {
                 game.setScreen(new MultiplayerScreen(game, car));
-            }
-        });
-
-        exit.addListener(new ClickListener() {
-            public void clicked(InputEvent e, float x, float y) {
-                Gdx.app.exit();
             }
         });
 

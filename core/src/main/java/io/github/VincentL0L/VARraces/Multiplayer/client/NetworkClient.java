@@ -12,6 +12,7 @@ import com.badlogic.gdx.math.Vector2;
 import io.github.VincentL0L.VARraces.Multiplayer.packets.Entry;
 import io.github.VincentL0L.VARraces.Multiplayer.packets.LeaderboardPacket;
 import io.github.VincentL0L.VARraces.Multiplayer.packets.PositionPacket;
+import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.BattleSystem;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarBody;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CarModel;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.CpuTraffic;
@@ -118,19 +119,31 @@ public class NetworkClient {
         List<Vector2> grid = Waypoints.getCpuGrid();
         for (int i = 0; i < grid.size(); i++) {
             Vector2 cpuPos = grid.get(i);
+            float cpuHeading = 90f;
+            if (map.battle) {
+                float[] spot = TrackMap.arenaSpawn(TrackMap.CPU_SPAWNS[i]);
+                cpuPos = new Vector2(spot[0], spot[1]);
+                cpuHeading = spot[2];
+            }
             Opponent cpu = new Opponent("CPU" + (i + 1), map.waypoints, cpuPos);
             cpu.setSprint(map.pointToPoint);
+            cpu.setBattle(map.battle);
+            cpu.setHeading(cpuHeading);
             cpuOpponents.add(cpu);
 
             PositionPacket packet = new PositionPacket();
             packet.playerId = cpu.getName();
             packet.x = cpuPos.x;
             packet.y = cpuPos.y;
-            packet.rotation = 90;
+            packet.rotation = cpuHeading;
             opponents.put(packet.playerId, packet);
         }
         track = new PixmapTrack(map.roadMask, map.scale);
         items = new ItemSystem(map.waypoints, map.pointToPoint);
+        if (map.battle) {
+            battle = new BattleSystem();
+            items.setBattle(battle);
+        }
         traffic = new CpuTraffic(cpuOpponents, track);
         connected = true;
     }
@@ -253,7 +266,7 @@ public class NetworkClient {
         // the standings fill in once the cars are on the grid (the countdown has begun)
         boolean onGrid = gameStarted || (countdownInProgress && countdownTimer >= 0f);
         for (Opponent cpu : cpuOpponents) {
-            if (onGrid) {
+            if (onGrid && battle == null) {
                 serverRaceManager.updateRacer(cpu.getName(), cpu.getPosition(), raceTime);
             }
             PositionPacket packet = opponents.get(cpu.getName());
@@ -261,7 +274,16 @@ public class NetworkClient {
             packet.y = cpu.getPosition().y;
             packet.rotation = cpu.getDisplayRotation();
         }
-        if (onGrid) {
+        if (onGrid && battle != null) {
+            // battle: health and knockouts instead of positions on a course
+            java.util.Map<String, Float> masses = new HashMap<>();
+            masses.put(playerId, CarModel.of(myCar).mass);
+            battle.update(delta, localRacers(), masses, gameStarted);
+            for (String event : battle.takeEvents()) {
+                handleMessage(event.split("\\|", -1));
+            }
+            setLeaderboard(new LeaderboardPacket(battle.toEntries()));
+        } else if (onGrid) {
             serverRaceManager.updateRacer(playerId, playerPos, raceTime);
             setLeaderboard(new LeaderboardPacket(serverRaceManager.toEntries()));
         }
@@ -362,6 +384,18 @@ public class NetworkClient {
             difficulty = Integer.parseInt(parts[2]);
         } else if (type.equals("HOST")) {
             hostId = parts[1];
+        } else if (type.equals("DMG")) {
+            if (parts[1].equals(playerId)) {
+                myEffects.add("DMG");
+            }
+        } else if (type.equals("OUT")) {
+            knockedOut.add(parts[1]);
+            if (traffic != null) {
+                traffic.setOut(parts[1]);
+            }
+            if (parts[1].equals(playerId)) {
+                myEffects.add("OUT");
+            }
         } else if (type.equals("FLAG")) {
             flagShown = true;
         } else if (type.equals("COUNTDOWN")) {
@@ -539,6 +573,9 @@ public class NetworkClient {
 
     /** racer ids, leader first */
     private List<String> raceOrder() {
+        if (battle != null) {
+            return battle.order();
+        }
         List<String> order = new ArrayList<>();
         for (io.github.VincentL0L.VARraces.Multiplayer.server.cpu.RacerInfo r : serverRaceManager.getSortedLeaderboard()) {
             order.add(r.name);
@@ -659,12 +696,39 @@ public class NetworkClient {
      * @return where this player's car lines up on the starting grid (image corner)
      */
     public Vector2 getStartPosition() {
+        if (map.battle) {
+            float[] spot = TrackMap.playerArenaSpawn(startIndex());
+            return new Vector2(spot[0], spot[1]);
+        }
+        return Waypoints.getPlayerStart(startIndex());
+    }
+
+    /**
+     * @return which way this player's car faces at the start (90 = up; arenas face the middle)
+     */
+    public float getStartHeading() {
+        return map.battle ? TrackMap.playerArenaSpawn(startIndex())[2] : 90f;
+    }
+
+    private int startIndex() {
         List<String> ids = new ArrayList<>(playerReadyStates.keySet());
         if (!ids.contains(playerId)) {
             ids.add(playerId);
         }
         java.util.Collections.sort(ids);
-        return Waypoints.getPlayerStart(ids.indexOf(playerId));
+        return ids.indexOf(playerId);
+    }
+
+    // battle mode
+    private BattleSystem battle;
+    private final java.util.Set<String> knockedOut = new java.util.HashSet<>();
+
+    /**
+     * @param id a racer
+     * @return true if knocked out of the battle
+     */
+    public boolean isKnockedOut(String id) {
+        return knockedOut.contains(id);
     }
     /**
      * @return boolean connected status

@@ -151,6 +151,10 @@ public class Opponent {
         }
         slowTimer -= dt;
         nitroTimer -= dt;
+        if (battle) {
+            battleDrive(dt, traffic);
+            return;
+        }
 
         // stuck off the road for a while (wedged in a corner, run wide): like a kart race's
         // rescue, it's put back on the course just before where it was heading
@@ -541,6 +545,113 @@ public class Opponent {
             turnRate *= 1.12f;
             cornerRadius *= 0.88f;
             reactionDelay *= 0.4f;
+        }
+    }
+
+    // ---------------------------------------------------------------- battle mode
+
+    /** a demolition derby: hunt the other cars instead of following the waypoints */
+    private boolean battle = false;
+    private float retargetTimer = 0f, backUpTimer = 0f, stuckTimer = 0f;
+    private String targetId;
+
+    /**
+     * @param value true in battle mode
+     */
+    public void setBattle(boolean value) {
+        battle = value;
+    }
+
+    /**
+     * @param degrees which way the car faces at the start (90 = up)
+     */
+    public void setHeading(float degrees) {
+        heading = degrees;
+    }
+
+    /** health gone: a wreck, it stops where it is */
+    public void knockOut() {
+        isFinished = true;
+        speed = 0f;
+    }
+
+    /**
+     * Battle driving: pick a target (the nearest car, sometimes a random one), aim a little
+     * ahead of where it's going and floor it. After a crash or when stuck against something
+     * it backs off and lines up again. It steers round obstacles it sees coming.
+     */
+    private void battleDrive(float dt, CpuTraffic traffic) {
+        retargetTimer -= dt;
+        if (traffic == null) {
+            return;
+        }
+        if (retargetTimer <= 0f || targetId == null || !traffic.isTarget(targetId, this)) {
+            targetId = traffic.pickTarget(this, MathUtils.random() < 0.25f);
+            retargetTimer = MathUtils.random(2.5f, 5f);
+        }
+        if (backUpTimer > 0f) {
+            // reversing out of a crash, turning as it goes
+            backUpTimer -= dt;
+            speed = Math.max(-140f, speed - braking * dt);
+            heading += turnRate * 0.6f * dt * (lineBias >= 0 ? 1f : -1f);
+            move(dt, traffic);
+            return;
+        }
+        Vector2 aim = targetId == null ? null : traffic.targetPosition(targetId, 0.35f);
+        float wanted = aim == null ? heading
+            : MathUtils.atan2(aim.y - (position.y + CarBody.LENGTH / 2f), aim.x - (position.x + CarBody.WIDTH / 2f)) * MathUtils.radiansToDegrees;
+        // something solid coming up: swing toward whichever side is clear
+        float look = 40f + speed * 0.35f;
+        if (!clearAhead(traffic, heading, look)) {
+            if (clearAhead(traffic, heading + 50f, look)) {
+                wanted = heading + 70f;
+            } else if (clearAhead(traffic, heading - 50f, look)) {
+                wanted = heading - 70f;
+            } else {
+                backUpTimer = 0.7f;
+            }
+        }
+        float diff = angleDiff(wanted, heading);
+        heading += MathUtils.clamp(diff, -turnRate * dt, turnRate * dt);
+        float desired = topSpeed * 0.82f * MathUtils.clamp(1f - Math.abs(diff) / 150f, 0.45f, 1f);
+        if (nitroTimer > 0f) {
+            desired = topSpeed * 1.25f;
+        }
+        if (slowTimer > 0f) {
+            desired *= 0.55f;
+        }
+        if (speed < desired) {
+            speed = Math.min(desired, speed + acceleration * 1.6f * dt);
+        } else {
+            speed = Math.max(desired, speed - braking * dt);
+        }
+        // a big loss of speed (a crash) or no progress: back off and try again
+        stuckTimer = speed < 40f ? stuckTimer + dt : 0f;
+        if (stuckTimer > 0.8f) {
+            stuckTimer = 0f;
+            backUpTimer = 0.6f;
+        }
+        move(dt, traffic);
+    }
+
+    private boolean clearAhead(CpuTraffic traffic, float dir, float distance) {
+        for (int i = 1; i <= 3; i++) {
+            float d = distance * i / 3f;
+            if (!traffic.carOnRoad(position.x + MathUtils.cosDeg(dir) * d, position.y + MathUtils.sinDeg(dir) * d)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** moves along the heading, stopping at walls instead of going through them */
+    private void move(float dt, CpuTraffic traffic) {
+        float nx = position.x + MathUtils.cosDeg(heading) * speed * dt;
+        float ny = position.y + MathUtils.sinDeg(heading) * speed * dt;
+        if (traffic.carOnRoad(nx, ny)) {
+            position.set(nx, ny);
+        } else {
+            speed = 0f;
         }
     }
 
