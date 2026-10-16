@@ -53,9 +53,10 @@ public class MapSelectScreen implements Screen {
     private final TrackBackdrop[] backdrops;
     private int selected = 0;
     /** Circuits, Sprints, Battle, and Soccer (a mode of its own, not a map) */
-    private static final int SOCCER = 3;
-    private final TextButton[] tabs = new TextButton[4];
-    private final Table[] grids = {new Table(), new Table(), new Table(), new Table()};
+    private static final int SOCCER = 3, PARKING = 4;
+    private final TextButton[] tabs = new TextButton[5];
+    private final Table[] grids = {new Table(), new Table(), new Table(), new Table(), new Table()};
+    private Texture lot;
     private int tab = 0;
     private Texture pitch;
     /** the maps scroll inside the card, so the title and buttons always fit (phones) */
@@ -64,7 +65,8 @@ public class MapSelectScreen implements Screen {
 
     private static final String[] TAB_NOTES = {"", "One run from start to finish. No laps.",
         "Demolition derby: ram everyone, last car driving wins. Heavy cars hit harder.",
-        "In first person, against the CPU or online: knock the ball into their goal."};
+        "In first person, against the CPU or online: knock the ball into their goal.",
+        "Six levels, from an easy first spot to parallel parking and a timed garage."};
 
     /** shows one kind of map (CIRCUIT, SPRINT or BATTLE); its tab is lit */
     private void showTab(int category) {
@@ -77,7 +79,7 @@ public class MapSelectScreen implements Screen {
             tabs[t].setColor(on ? Color.WHITE : new Color(1f, 1f, 1f, 0.55f));
         }
         sprintsNote.setText(TAB_NOTES[category]);
-        if (category == SOCCER) {
+        if (category >= SOCCER) {
             return;
         }
         // highlight the first map of the tab unless the picked one is already on it
@@ -137,9 +139,9 @@ public class MapSelectScreen implements Screen {
         card.add(Cards.title("CHOOSE A TRACK", 40)).left().padTop(2).row();
         Table header = new Table();
         header.left();
-        String[] tabNames = {"Circuits", "Sprints", "Battle", "Soccer"};
+        String[] tabNames = {"Circuits", "Sprints", "Battle", "Soccer", "Parking"};
         // soccer has its own online lobby, so it's offered when picking a mode, not when hosting a race
-        int tabCount = host == null ? 4 : 3;
+        int tabCount = host == null ? 5 : 3;
         for (int t = 0; t < tabCount; t++) {
             final int tab = t;
             tabs[t] = Cards.smallButton(tabNames[t], skin);
@@ -148,12 +150,15 @@ public class MapSelectScreen implements Screen {
                     showTab(tab);
                 }
             });
-            header.add(tabs[t]).width(118).height(40).padRight(8);
+            header.add(tabs[t]).width(110).height(40).padRight(6);
         }
         if (host != null) {
             tabs[SOCCER] = Cards.smallButton("Soccer", skin);     // not shown
+            tabs[PARKING] = Cards.smallButton("Parking", skin);
         }
         grids[SOCCER].add(soccerTile()).width(TILE_WIDTH).fillY().padBottom(12);
+        grids[PARKING].add(modeTile(lot = parkingPicture(), "PARKING",
+            "Park in the bay without a scratch. Six levels, three stars each.")).width(TILE_WIDTH).fillY().padBottom(12);
         card.add(header).left().padTop(6).padBottom(12).row();
 
         // a grid of cards per kind of map, four to a row; one is shown at a time
@@ -291,6 +296,62 @@ public class MapSelectScreen implements Screen {
         return tile;
     }
 
+    /** a card for a mode that isn't a map (double tap, or Next, to start it) */
+    private Table modeTile(Texture picture, String name, String text) {
+        Table tile = new Table();
+        tile.pad(8, 8, 10, 8);
+        tile.top();
+        tile.setTouchable(Touchable.enabled);
+        tile.setBackground(new NinePatchDrawable(Ui.frame()));
+        float imageWidth = TILE_WIDTH - 16f;
+        tile.add(new Image(picture)).size(imageWidth, imageWidth * 9f / 16f).row();
+        tile.add(new Label(name, new LabelStyle(Ui.display(18), Ui.GOLD))).left().padTop(6).row();
+        Label tagline = new Label(text, new LabelStyle(Ui.font(9), Cards.LABEL));
+        tagline.setWrap(true);
+        tile.add(tagline).width(imageWidth).left().padTop(4).row();
+        tile.addListener(new ClickListener() {
+            public void clicked(InputEvent e, float x, float y) {
+                if (getTapCount() >= 2) {
+                    go();
+                }
+            }
+        });
+        return tile;
+    }
+
+    /** the Parking card's picture: a row of bays, one empty and glowing green */
+    private static Texture parkingPicture() {
+        com.badlogic.gdx.graphics.Pixmap p = new com.badlogic.gdx.graphics.Pixmap(160, 90, com.badlogic.gdx.graphics.Pixmap.Format.RGBA8888);
+        p.setColor(0.36f, 0.36f, 0.38f, 1f);
+        p.fill();
+        Color[] cars = {new Color(0.85f, 0.25f, 0.2f, 1f), new Color(0.25f, 0.45f, 0.9f, 1f), new Color(0.95f, 0.8f, 0.2f, 1f),
+            new Color(0.9f, 0.9f, 0.9f, 1f), new Color(0.2f, 0.65f, 0.4f, 1f)};
+        for (int i = 0; i < 7; i++) {
+            int x = 6 + i * 22;
+            p.setColor(Color.WHITE);
+            p.drawLine(x, 8, x, 44);
+            p.drawLine(x + 22, 8, x + 22, 44);
+            p.drawLine(x, 8, x + 22, 8);
+            if (i == 4) {
+                p.setColor(0.2f, 0.9f, 0.4f, 1f);
+                p.fillRectangle(x + 2, 10, 19, 33);
+            } else {
+                p.setColor(cars[i % cars.length]);
+                p.fillRectangle(x + 5, 12, 12, 26);
+                p.setColor(0.1f, 0.12f, 0.16f, 1f);
+                p.fillRectangle(x + 6, 18, 10, 6);
+            }
+        }
+        // our car, lining up below
+        p.setColor(0.85f, 0.25f, 0.2f, 1f);
+        p.fillRectangle(98, 56, 12, 26);
+        p.setColor(0.1f, 0.12f, 0.16f, 1f);
+        p.fillRectangle(99, 60, 10, 6);
+        Texture t = new Texture(p);
+        p.dispose();
+        return t;
+    }
+
     /** gold frame and gold name on the highlighted map; the backdrop shows it too */
     private void select(int index) {
         selected = index;
@@ -309,6 +370,10 @@ public class MapSelectScreen implements Screen {
     private void go() {
         if (tab == SOCCER) {
             game.setScreen(new io.github.VincentL0L.VARraces.soccer.SoccerScreen(game, selectedCar));
+            return;
+        }
+        if (tab == PARKING) {
+            game.setScreen(new ParkingScreen(game, selectedCar));
             return;
         }
         TrackMap map = maps.get(selected);
@@ -374,6 +439,9 @@ public class MapSelectScreen implements Screen {
         }
         if (pitch != null) {
             pitch.dispose();
+        }
+        if (lot != null) {
+            lot.dispose();
         }
         stage.dispose();
         skin.dispose();
