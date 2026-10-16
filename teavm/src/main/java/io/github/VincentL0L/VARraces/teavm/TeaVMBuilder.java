@@ -29,7 +29,7 @@ public class TeaVMBuilder {
 
         TeaVMTool tool = TeaBuilder.config(config);
         tool.setMainClass(TeaVMLauncher.class.getName());
-        tool.setObfuscated(true);
+        tool.setObfuscated(System.getenv("TEAVM_DEBUG") == null);
         tool.setOptimizationLevel(TeaVMOptimizationLevel.ADVANCED);
         if (!TeaBuilder.build(tool)) {
             System.exit(1);

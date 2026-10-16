@@ -109,6 +109,15 @@ public class FirstPersonView {
         cam.update();
     }
 
+    /** for drawing the items in the world (ItemRenderer.draw3D) */
+    public SpriteBatch getBatch() {
+        return batch;
+    }
+
+    public ShapeRenderer getShapes() {
+        return shapes;
+    }
+
     public PerspectiveCamera getCamera() {
         return cam;
     }

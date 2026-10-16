@@ -145,6 +145,158 @@ public class ItemRenderer {
         }
     }
 
+    // ---------------------------------------------------------------- first person
+
+    private final com.badlogic.gdx.math.Matrix4 m = new com.badlogic.gdx.math.Matrix4();
+    private final com.badlogic.gdx.math.Vector3 eye = new com.badlogic.gdx.math.Vector3();
+
+    /**
+     * the items as things in the world, for the first-person view: spinning item cubes
+     * floating over their shadows, oil on the road, rocket models with spark trails,
+     * glowing blaster shots and shield bubbles round the cars
+     * @param cam the first-person camera (depth testing on, so buildings and cars hide things)
+     */
+    public void draw3D(com.badlogic.gdx.graphics.Camera cam, SpriteBatch batch,
+            com.badlogic.gdx.graphics.glutils.ShapeRenderer shapes, String view, Map<String, Vector2> cars, float delta) {
+        clock += delta;
+        String[] parts = view.split("\\|", -1);
+        if (parts.length < 4) {
+            return;
+        }
+        eye.set(cam.position);
+        batch.setProjectionMatrix(cam.combined);
+        // oil slicks, flat on the road
+        batch.setTransformMatrix(m.idt().translate(0f, 0f, 0.08f));
+        batch.begin();
+        for (String s : parts[2].split(";")) {
+            float[] p = numbers(s);
+            if (p != null) {
+                batch.draw(oil, p[0] - 14f, p[1] - 14f, 28f, 28f);
+            }
+        }
+        // the item boxes' shadows
+        batch.setColor(0f, 0f, 0f, 0.3f);
+        for (int i = 0; i < boxes.size() && i < parts[0].length(); i++) {
+            if (parts[0].charAt(i) == '1') {
+                Vector2 b = boxes.get(i);
+                batch.draw(shield, b.x - 5f, b.y - 5f, 10f, 10f);
+            }
+        }
+        batch.setColor(1f, 1f, 1f, 1f);
+        batch.end();
+
+        // item cubes: each face is the box art; only the faces turned toward us are drawn
+        float s = 8f;
+        for (int i = 0; i < boxes.size() && i < parts[0].length(); i++) {
+            if (parts[0].charAt(i) != '1') {
+                continue;
+            }
+            Vector2 b = boxes.get(i);
+            if (b.dst2(eye.x, eye.y) > 1800f * 1800f) {
+                continue;
+            }
+            float zc = 7f + MathUtils.sin(clock * 3f + i * 1.7f) * 1.2f;
+            float spin = clock * 70f + i * 40f;
+            float glint = MathUtils.sin(clock * 5f + i) > 0.92f ? 1.35f : 1f;
+            batch.setColor(glint, glint, glint, 1f);
+            for (int k = 0; k < 4; k++) {
+                float a = spin + k * 90f;
+                // the face's outward direction
+                float nx = -MathUtils.sinDeg(a), ny = MathUtils.cosDeg(a);
+                float fx = b.x + nx * s / 2f, fy = b.y + ny * s / 2f;
+                if ((eye.x - fx) * nx + (eye.y - fy) * ny <= 0f) {
+                    continue;
+                }
+                m.idt().translate(b.x, b.y, zc).rotate(0f, 0f, 1f, a).translate(0f, s / 2f, 0f).rotate(1f, 0f, 0f, 90f);
+                face(batch, box, -s);       // seen from outside, so mirrored back
+            }
+            if (eye.z > zc + s / 2f) {
+                m.idt().translate(b.x, b.y, zc + s / 2f).rotate(0f, 0f, 1f, spin);
+                face(batch, box, s);
+            }
+            batch.setColor(1f, 1f, 1f, 1f);
+        }
+
+        // rockets: a little red rocket model, nose first, with sparks streaming behind
+        shapes.setProjectionMatrix(cam.combined);
+        for (String r : parts[1].split(";")) {
+            float[] p = numbers(r);
+            if (p == null) {
+                continue;
+            }
+            m.idt().translate(p[0], p[1], 0f).rotate(0f, 0f, 1f, p[2] - 90f);
+            shapes.setTransformMatrix(m);
+            shapes.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Filled);
+            shapes.setColor(0.85f, 0.2f, 0.18f, 1f);
+            up(shapes, -1.3f, -5f, 3.2f, 2.6f, 8f, 2.6f);
+            shapes.setColor(0.97f, 0.97f, 0.95f, 1f);
+            up(shapes, -0.9f, 3f, 3.6f, 1.8f, 2f, 1.8f);
+            up(shapes, -0.9f, -1f, 3.1f, 1.8f, 1f, 2.8f);
+            shapes.setColor(0.55f, 0.12f, 0.1f, 1f);
+            up(shapes, -2.6f, -5f, 3.9f, 5.2f, 2f, 0.4f);
+            up(shapes, -0.2f, -5f, 2.0f, 0.4f, 2f, 4.6f);
+            shapes.end();
+            for (int k = 1; k <= 6; k++) {
+                float tx = p[0] - MathUtils.cosDeg(p[2]) * (4f + k * 3.5f), ty = p[1] - MathUtils.sinDeg(p[2]) * (4f + k * 3.5f);
+                batch.setColor(1f, 0.9f - k * 0.1f, 0.35f, 0.9f - k * 0.13f);
+                billboard(batch, shield, tx, ty, 4.4f + MathUtils.sin(clock * 30f + k) * 0.4f, 3.2f - k * 0.3f);
+            }
+            batch.setColor(1f, 1f, 1f, 1f);
+        }
+        // blaster shots: a glowing ice shard or fireball with a short trail
+        if (parts.length > 4) {
+            for (String sh : parts[4].split(";")) {
+                float[] p = numbers(sh);
+                if (p == null) {
+                    continue;
+                }
+                boolean fire = p[2] > 0.5f;
+                for (int k = 3; k >= 0; k--) {
+                    float a = 0.8f - k * 0.18f, size = 10f - k * 1.6f;
+                    if (fire) {
+                        batch.setColor(1f, 0.55f + k * 0.08f, 0.15f, a);
+                    } else {
+                        batch.setColor(0.6f, 0.9f, 1f, a);
+                    }
+                    billboard(batch, shield, p[0], p[1], 4.5f, size);
+                }
+                batch.setColor(1f, 1f, 1f, 1f);
+                billboard(batch, fire ? icons[6] : icons[5], p[0], p[1], 4.5f, 7f);
+            }
+        }
+        // shields: a shimmering bubble round the car
+        for (String id : parts[3].split(";")) {
+            Vector2 c = cars.get(id);
+            if (c != null && c.dst2(eye.x, eye.y) > 64f) {
+                float size = 26f * (1f + MathUtils.sin(clock * 6f) * 0.05f);
+                batch.setColor(1f, 1f, 1f, 0.85f);
+                billboard(batch, shield, c.x, c.y, 4f, size);
+                batch.setColor(1f, 1f, 1f, 1f);
+            }
+        }
+    }
+
+    /** one square face, already placed by m */
+    private void face(SpriteBatch batch, Texture t, float s) {
+        batch.setTransformMatrix(m);
+        batch.begin();
+        // a negative size draws the picture mirrored left to right
+        batch.draw(t, -s / 2f, -Math.abs(s) / 2f, s, Math.abs(s));
+        batch.end();
+    }
+
+    /** an upright square turned to face the camera */
+    private void billboard(SpriteBatch batch, Texture t, float x, float y, float z, float size) {
+        float yaw = MathUtils.atan2(eye.x - x, -(eye.y - y)) * MathUtils.radiansToDegrees;
+        m.idt().translate(x, y, z).rotate(0f, 0f, 1f, yaw).rotate(1f, 0f, 0f, 90f);
+        face(batch, t, size);
+    }
+
+    /** a box standing on z and rising d (ShapeRenderer's own box hangs down from z) */
+    private static void up(com.badlogic.gdx.graphics.glutils.ShapeRenderer sr, float x, float y, float z, float w, float h, float d) {
+        sr.box(x, y, z + d, w, h, d);
+    }
+
     private static float[] numbers(String s) {
         if (s.isEmpty()) {
             return null;

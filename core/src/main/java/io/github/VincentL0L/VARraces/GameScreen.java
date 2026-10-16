@@ -174,6 +174,9 @@ public class GameScreen implements Screen {
      */
     public void render(float delta) {
         handleMenuInput();
+        if (disposed) {
+            return;     // R or Q just swapped screens: this one's gone
+        }
         // single player freezes completely while paused; online the race goes on without us
         boolean frozen = paused && !nc.isOnline();
         float dt = frozen ? 0f : delta;
@@ -434,10 +437,6 @@ public class GameScreen implements Screen {
         bg.setShader(fp.groundShader());
         bg.render(pc, pc.position.x - r, pc.position.y - r, pc.position.x + r, pc.position.y + r);
         bg.setShader(null);
-        com.badlogic.gdx.graphics.g2d.SpriteBatch ground = fp.groundBatch();
-        ground.begin();
-        itemArt.drawGround(ground, nc.getItemView(), dt);
-        ground.end();
         // trees and buildings stand up; from here on things hide behind them
         fp.drawScenery();
         List<FirstPersonView.CarShape> others = new ArrayList<>();
@@ -446,10 +445,8 @@ public class GameScreen implements Screen {
         }
         fp.drawCars(others);
         fp.drawOwnCar(player.getImage());
-        com.badlogic.gdx.graphics.g2d.SpriteBatch air = fp.airBatch(7f);
-        air.begin();
-        itemArt.drawAir(air, nc.getItemView(), carCenters);
-        air.end();
+        // item cubes, rockets, shots and shields as things in the world
+        itemArt.draw3D(pc, fp.getBatch(), fp.getShapes(), nc.getItemView(), carCenters, dt);
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
     }
 
@@ -717,7 +714,10 @@ public class GameScreen implements Screen {
     /**
      * clears memory
      */
+    private boolean disposed = false;
+
     public void dispose() {
+        disposed = true;
         frost.dispose();
         if (fp != null) {
             fp.dispose();
