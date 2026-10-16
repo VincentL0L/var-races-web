@@ -30,6 +30,10 @@ public class MakeHeights {
         make("assets/maps/rushhour/", null, 3, "TB", preview, "rushhour");
         make("assets/maps/rooftop/", null, 3, "TB", preview, "rooftop");
         make("assets/maps/moon/", null, 3, "", preview, "moon");
+        // the Grand Prix: only the grandstands and pit garages are buildings (world x0, y0, x1, y1)
+        onlyBuildIn = new float[][] {{330, 380, 420, 1250}, {440, 450, 560, 1150}, {1200, 150, 2600, 240}};
+        make("assets/maps/gp/", null, 3, "TB", preview, "gp");
+        onlyBuildIn = null;
         make("assets/maps/junkyard/", null, 3, "B", preview, "junkyard");
         make("assets/maps/stadium/", null, 3, "B", preview, "stadium");
         make("assets/maps/rink/", null, 3, "B", preview, "rink");
@@ -115,6 +119,23 @@ public class MakeHeights {
                         kind[gx][gy] = kinds.contains("B") ? 2 : 0;
                     } else if (kind[gx][gy] == 2 && !kinds.contains("B")) {
                         kind[gx][gy] = kinds.contains("T") ? 1 : 0;
+                    }
+                }
+            }
+        }
+        if (onlyBuildIn != null) {
+            for (int gx = 0; gx < gw; gx++) {
+                for (int gy = 0; gy < gh; gy++) {
+                    if (kind[gx][gy] != 2) {
+                        continue;
+                    }
+                    float x = gx * CELL + CELL / 2f, y = worldH - gy * CELL - CELL / 2f;
+                    boolean ok = false;
+                    for (float[] r : onlyBuildIn) {
+                        ok |= x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3];
+                    }
+                    if (!ok) {
+                        kind[gx][gy] = 0;
                     }
                 }
             }
@@ -205,6 +226,8 @@ public class MakeHeights {
     }
 
     static final float GROUND_SHARE = 0.6f;
+    /** if set, buildings only stand inside these world rectangles (x0, y0, x1, y1) */
+    static float[][] onlyBuildIn;
 
     static boolean isRoad(BufferedImage mask, float x, float y) {
         int m = mask.getRGB(Math.min(mask.getWidth() - 1, (int) x), Math.min(mask.getHeight() - 1, (int) y));

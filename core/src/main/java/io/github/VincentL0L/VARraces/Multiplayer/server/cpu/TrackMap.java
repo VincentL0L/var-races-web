@@ -25,6 +25,7 @@ public class TrackMap {
     public static final String RUSH_HOUR = "rushhour";
     public static final String ROOFTOP = "rooftop";
     public static final String MOON = "moon";
+    public static final String GRAND_PRIX = "gp";
     public static final String JUNKYARD = "junkyard";
     public static final String STADIUM = "stadium";
     public static final String RINK = "rink";
@@ -122,6 +123,14 @@ public class TrackMap {
     /** tire grip and launch traction on this map (1 = normal; the moon is slippery) */
     public float grip = 1f, traction = 1f;
 
+    /** a big circuit, stored at 1/3 size like the sprints (laps as usual) */
+    private TrackMap big(int w, int h) {
+        width = w;
+        height = h;
+        scale = 3;
+        return this;
+    }
+
     private TrackMap sprint(int w, int h) {
         width = w;
         height = h;
@@ -188,6 +197,8 @@ public class TrackMap {
                 Waypoints.getParisWaypoints(), "ui/2cv.png", "2CV"));
             maps.add(city(TAIPEI, "Taipei", "Past Taipei 101 and the night market, against a swarm of scooters.",
                 Waypoints.getTaipeiWaypoints(), "ui/moto.png", "MOTO"));
+            maps.add(city(GRAND_PRIX, "Grand Prix", "A real racing circuit: esses, a hairpin, kerbs and gravel traps, against F1 cars.",
+                Waypoints.getGrandPrixWaypoints(), "ui/f1.png", "F1").big(3600, 2304));
             // sprints: one run from A to B
             maps.add(city(SUMMIT, "Summit Sprint", "Hairpins up a mountain pass. The road narrows near the top.",
                 Waypoints.getSummitWaypoints(), null, "RALLY").sprint(1920, 7200));

@@ -104,6 +104,8 @@ public final class CarModels3D {
                 return new Shape().width(0.88f).deck(3.4f).cabin(0.2f, 0.66f, 7f).wheels(3f, 0.2f);
             case "moto":       // scooter and rider
                 return new Shape().width(0.35f).deck(3.2f).cabin(0f, 0f, 0f).wheels(3f, 0.12f).extra("BIKE");
+            case "f1":         // open-wheel racer: low nose, wings front and back, cockpit and halo
+                return new Shape().width(0.6f).deck(2.4f).cabin(0f, 0f, 0f).wheels(3.2f, 0.16f).extra("F1");
             case "rover":      // moon buggy: open frame, six big wheels, gold dish
                 return new Shape().deck(4.2f).cabin(0f, 0f, 0f).wheels(3.6f, 0.14f).extra("ROVER");
             default:           // the classic racers (car1-6): a sports coupe
@@ -141,6 +143,10 @@ public final class CarModels3D {
         }
         if (s.has("BIKE")) {
             bike(sr, s, w, h, body, inside);
+            return;
+        }
+        if (s.has("F1")) {
+            formula(sr, s, w, h, body, inside);
             return;
         }
         if (inside && s.has("BUS")) {
@@ -290,6 +296,31 @@ public final class CarModels3D {
         sr.setColor(0.85f, 0.2f, 0.18f, 1f);
         box(sr, -1.2f, -h * 0.08f, 9.2f, 2.4f, 2.4f, 2.2f);
         lights(sr, 3f, h * 0.7f, 2.4f);
+    }
+
+    /** an F1 car: slim body, wide wings front and back, airbox, cockpit and halo */
+    private static void formula(ShapeRenderer sr, Shape s, float w, float h, Color body, boolean inside) {
+        float bw = w * s.width;
+        sr.setColor(body);
+        box(sr, -bw / 2f, -h / 2f + 3f, 0.6f, bw, h - 5f, 1.8f);
+        sr.setColor(body.r * 0.8f, body.g * 0.8f, body.b * 0.8f, 1f);
+        box(sr, -bw / 2f - 1.2f, -h * 0.25f, 0.6f, bw + 2.4f, h * 0.35f, 1.6f);   // sidepods
+        sr.setColor(0.1f, 0.1f, 0.11f, 1f);
+        box(sr, -w / 2f, h / 2f - 2f, 0.3f, w, 1.6f, 0.5f);                       // front wing
+        if (inside) {
+            return;
+        }
+        box(sr, -w / 2f + 0.5f, -h / 2f, 3.2f, w - 1f, 1.8f, 0.6f);               // rear wing
+        box(sr, -w / 2f + 0.8f, -h / 2f, 0.6f, 0.4f, 1.8f, 3.2f);
+        box(sr, w / 2f - 1.2f, -h / 2f, 0.6f, 0.4f, 1.8f, 3.2f);
+        sr.setColor(body);
+        box(sr, -1f, -h * 0.2f, 2.4f, 2f, 4f, 1.6f);                               // airbox
+        sr.setColor(0.08f, 0.08f, 0.09f, 1f);
+        box(sr, -1.2f, -h * 0.02f, 2.4f, 2.4f, 2.6f, 0.4f);                        // cockpit
+        sr.setColor(0.95f, 0.8f, 0.2f, 1f);
+        box(sr, -0.8f, 0.2f, 2.5f, 1.6f, 1.6f, 1.2f);                               // the driver's helmet
+        sr.setColor(0.2f, 0.2f, 0.22f, 1f);
+        box(sr, -1.3f, h * 0.08f, 3.6f, 2.6f, 0.4f, 0.4f);                         // halo
     }
 
     /** the moon rover: low frame, two seats, a gold dish on a mast */
