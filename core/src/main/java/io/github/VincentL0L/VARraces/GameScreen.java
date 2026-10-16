@@ -420,13 +420,13 @@ public class GameScreen implements Screen {
      */
     private void renderFirstPerson(float delta, float dt) {
         if (fp == null) {
-            fp = new FirstPersonView(map);
+            fp = new FirstPersonView(map, bg.getTexture());
         }
         fp.update(player.getX() + player.getWidth() / 2f, player.getY() + player.getHeight() / 2f,
             player.getRotation() + 90f, delta, camControl.getShake());
         Color sky = fp.getSky();
         Gdx.gl.glClearColor(sky.r, sky.g, sky.b, 1f);
-        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
         com.badlogic.gdx.graphics.PerspectiveCamera pc = fp.getCamera();
         float r = pc.far;
         bg.render(pc, pc.position.x - r, pc.position.y - r, pc.position.x + r, pc.position.y + r);
@@ -434,6 +434,8 @@ public class GameScreen implements Screen {
         ground.begin();
         itemArt.drawGround(ground, nc.getItemView(), dt);
         ground.end();
+        // trees and buildings stand up; from here on things hide behind them
+        fp.drawScenery();
         List<FirstPersonView.CarShape> others = new ArrayList<>();
         for (OpponentState o : nwOpp.values()) {
             others.add(new FirstPersonView.CarShape(o.img));
@@ -444,6 +446,7 @@ public class GameScreen implements Screen {
         air.begin();
         itemArt.drawAir(air, nc.getItemView(), carCenters);
         air.end();
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
     }
 
     /** the sound of using an item (the Nitro's whoosh plays when the boost arrives) */

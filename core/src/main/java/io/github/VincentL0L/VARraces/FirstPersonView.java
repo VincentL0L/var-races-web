@@ -42,7 +42,10 @@ public class FirstPersonView {
     private final Color sky;
     private float heading = Float.NaN;
 
-    public FirstPersonView(TrackMap map) {
+    private final Scenery3D scenery;
+
+    public FirstPersonView(TrackMap map, Texture mapPicture) {
+        scenery = new Scenery3D(map, mapPicture);
         cam.near = 1f;
         cam.far = FAR;
         cam.up.set(0f, 0f, 1f);
@@ -74,6 +77,12 @@ public class FirstPersonView {
         cam.direction.set(fx, fy, -0.06f).nor();
         cam.up.set(0f, 0f, 1f);
         cam.update();
+    }
+
+    /** the map's trees and buildings, in 3D */
+    public void drawScenery() {
+        scenery.render(cam);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
     }
 
     public PerspectiveCamera getCamera() {
@@ -130,11 +139,14 @@ public class FirstPersonView {
                 transform.translate(0f, 0f, ROOF + 0.05f);
                 batch.setProjectionMatrix(cam.combined);
                 batch.setTransformMatrix(transform);
+                Texture.TextureFilter min = art.getMinFilter(), mag = art.getMagFilter();
+                art.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
                 batch.begin();
                 batch.setColor(tint);
                 batch.draw(art, -w / 2f, -h / 2f, w, h);
                 batch.setColor(Color.WHITE);
                 batch.end();
+                art.setFilter(min, mag);
             }
         }
     }
@@ -238,6 +250,7 @@ public class FirstPersonView {
     }
 
     public void dispose() {
+        scenery.dispose();
         batch.dispose();
         shapes.dispose();
     }

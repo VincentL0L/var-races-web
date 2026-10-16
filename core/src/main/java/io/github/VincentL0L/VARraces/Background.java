@@ -88,6 +88,11 @@ public class Background {
         batch.draw(backgroundTexture, 0, 0, backgroundTexture.getWidth() * scale, backgroundTexture.getHeight() * scale);
         batch.end();
     }
+    /** @return the map picture */
+    public Texture getTexture() {
+        return backgroundTexture;
+    }
+
     /**
      * When switching screens, 
      */
