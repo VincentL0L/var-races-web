@@ -38,8 +38,8 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
  */
 public class CityArchitecture {
     private static final int CELL = 12;
-    /** a facade picture is 32 x 64 pixels: 4 bays of 16 units across, 8 storeys of 12 up */
-    private static final float TILE_W = 64f, TILE_H = 96f, STOREY = 12f;
+    /** a facade picture covers 4 bays of 16 units across and 8 storeys of 12 up */
+    private static final float TILE_W = 64f, TILE_H = 128f, STOREY = 12f;
 
     private static final int PARIS = 0, LONDON = 1, NYC = 2, CHICAGO = 3, TOKYO = 4, TAIPEI = 5, SF = 6, GENERIC = 7;
 
@@ -194,22 +194,28 @@ public class CityArchitecture {
 
     // ---------------------------------------------------------------- facades, pixel by pixel
 
-    /** a facade picture being drawn: 32 x 64, storey rows of 8 pixels, the ground floor at the bottom */
+    /**
+     * a facade picture being drawn: 128 x 256 pixels (sizes WebGL can repeat) covering 4 bays
+     * of 16 units across and 128 units up, so one pixel is half a unit, as fine as the cars'
+     * pixels. Storeys are 24 pixels; the ground floor is the bottom one, counted up from there.
+     */
+    private static final int PW = 128, PH = 256, BAYP = 32, STP = 24, GROUND = PH - STP;
+
     private static final class Art {
-        final Pixmap p = new Pixmap(32, 64, Pixmap.Format.RGBA8888);
+        final Pixmap p = new Pixmap(PW, PH, Pixmap.Format.RGBA8888);
 
         void px(int x, int y, Color c) {
-            if (x >= 0 && y >= 0 && x < 32 && y < 64) {
+            if (x >= 0 && y >= 0 && x < PW && y < PH) {
                 p.setColor(c);
                 p.drawPixel(x, y);
             }
         }
 
         void rect(int x, int y, int w, int h, Color c) {
-            for (int yy = y; yy < y + h; yy++) {
-                for (int xx = x; xx < x + w; xx++) {
-                    px(xx, yy, c);
-                }
+            int x0 = Math.max(0, x), y0 = Math.max(0, y), x1 = Math.min(PW, x + w), y1 = Math.min(PH, y + h);
+            if (x1 > x0 && y1 > y0) {
+                p.setColor(c);
+                p.fillRectangle(x0, y0, x1 - x0, y1 - y0);
             }
         }
 
@@ -227,247 +233,411 @@ public class CityArchitecture {
     /** an ordinary building's front: material, windows and all their trimmings, and a ground floor */
     private Texture facade(Building b, Random r) {
         Art a = new Art();
-        // the material and its colour, by city
         int material;
         Color wall;
+        int wwMin, wwMax, whMin, whMax;
         switch (family) {
             case PARIS:
                 material = r.nextFloat() < 0.6f ? STONE : STUCCO;
                 wall = pick(r, c(0xeee5cf), c(0xe6dcc3), c(0xf2ead8), c(0xdcd3c2), c(0xe9dccb), c(0xd9cdb4), c(0xefe2d0), c(0xe4d6c0));
+                wwMin = 13; wwMax = 17; whMin = 16; whMax = 19;
                 break;
             case LONDON:
                 material = r.nextFloat() < 0.65f ? BRICK : STUCCO;
                 wall = material == BRICK ? pick(r, c(0xb89a6e), c(0xa8835a), c(0x9c5a42), c(0x8e4a38), c(0xc2a578), c(0x7f5f48))
                     : pick(r, c(0xf2efe6), c(0xefe7d4), c(0xe9e4da), c(0xdfe3e6));
+                wwMin = 12; wwMax = 15; whMin = 15; whMax = 19;
                 break;
             case NYC:
                 material = r.nextFloat() < 0.6f ? BRICK : r.nextFloat() < 0.5f ? STONE : STUCCO;
                 wall = material == BRICK ? pick(r, c(0xa8452f), c(0x8a3a2a), c(0xb5684a), c(0x7a3326), c(0xc08a5e), c(0x9a5a3e), c(0x6e4a3a))
                     : material == STONE ? pick(r, c(0x8a6a50), c(0x7a5a42), c(0xc9bba0), c(0xb7a88d)) : pick(r, c(0xd8d0c0), c(0xc9c2b5));
+                wwMin = 11; wwMax = 15; whMin = 13; whMax = 17;
                 break;
             case CHICAGO:
                 material = r.nextFloat() < 0.55f ? BRICK : STONE;
                 wall = material == BRICK ? pick(r, c(0x9a4a35), c(0xb3794f), c(0x7d3e2e), c(0xa88760), c(0x6f5544))
                     : pick(r, c(0xa9a59b), c(0x8f8b82), c(0xc2bdb1));
+                wwMin = 12; wwMax = 18; whMin = 13; whMax = 16;
                 break;
             case TOKYO:
                 material = r.nextFloat() < 0.5f ? TILE : CONCRETE;
-                wall = pick(r, c(0xf0eee8), c(0xe2ded6), c(0xc9c6c0), c(0xdcd4c4), c(0xd2dde3), c(0xe8d8d6), c(0xb8b4ae), c(0xece4cf),
-                    c(0xa8aeb4));
+                wall = pick(r, c(0xf0eee8), c(0xe2ded6), c(0xc9c6c0), c(0xdcd4c4), c(0xd2dde3), c(0xe8d8d6), c(0xb8b4ae), c(0xece4cf), c(0xa8aeb4));
+                wwMin = 16; wwMax = 24; whMin = 9; whMax = 12;
                 break;
             case TAIPEI:
                 material = r.nextFloat() < 0.4f ? TILE : CONCRETE;
                 wall = pick(r, c(0xc9c4b8), c(0xb5b1a8), c(0xd8d2c4), c(0xa9a8a2), c(0xc4b9a4), c(0xd6cfc8), c(0xb9c0c2), c(0x9ea39b));
+                wwMin = 13; wwMax = 20; whMin = 11; whMax = 13;
                 break;
             case SF:
                 material = r.nextFloat() < 0.75f ? SIDING : STUCCO;
                 wall = pick(r, c(0xf7b7c4), c(0xb4e3cc), c(0xd3c0f2), c(0xfbe39a), c(0xa9d1f7), c(0xf9cba0), c(0xe9f2b0), c(0xf2f2f2),
                     c(0xc7e8f0), c(0xf0a8a0), c(0x9fd8c0));
+                wwMin = 11; wwMax = 13; whMin = 15; whMax = 19;
                 break;
             default:
                 material = r.nextInt(6);
                 wall = pick(r, c(0xd8d0c0), c(0xb8a890), c(0xa8452f), c(0xc9c6c0), c(0xe8e2d4), c(0x9a9a9a));
+                wwMin = 11; wwMax = 17; whMin = 12; whMax = 16;
                 break;
         }
         wall = jitter(wall, r, 0.05f);
-        Color dark = mul(wall, 0.82f), light = mul(wall, 1.07f);
+        Color dark = mul(wall, 0.84f), light = mul(wall, 1.07f), shadow = mul(wall, 0.62f);
         b.stone = family == SF ? c(0xfafafa) : material == BRICK ? pick(r, c(0xe6dfd0), c(0xd9cfbd), c(0xcfc6b4))
             : mul(wall, r.nextBoolean() ? 1.1f : 0.86f);
-        // fill with the material's pattern
-        for (int y = 0; y < 64; y++) {
-            for (int x = 0; x < 32; x++) {
+        Color stoneDark = mul(b.stone, 0.78f);
+        fillMaterial(a, material, wall, dark, light, r);
+
+        // window settings for this building
+        boolean ribbon = family == TOKYO && r.nextFloat() < 0.35f;
+        int bays = ribbon ? 1 : r.nextFloat() < 0.15f ? 2 : 4;
+        int bw = PW / bays;
+        int ww = bays == 2 ? 26 + r.nextInt(19) : ribbon ? PW : wwMin + r.nextInt(wwMax - wwMin + 1);
+        int wh = whMin + r.nextInt(whMax - whMin + 1);
+        int top = Math.max(2, (STP - wh) / 2 - 1);
+        boolean arch = (family == PARIS || family == LONDON || family == NYC || family == CHICAGO) && !ribbon && r.nextFloat() < 0.3f;
+        int paneCols = ribbon ? 16 : ww >= 20 ? 3 : ww >= 12 ? (r.nextBoolean() ? 2 : 1) : 1;
+        int paneRows = wh >= 16 ? (r.nextBoolean() ? 3 : 2) : wh >= 11 ? 2 : 1;
+        boolean lintel = r.nextFloat() < 0.75f, keystone = lintel && r.nextFloat() < 0.4f, sill = r.nextFloat() < 0.8f;
+        boolean shutters = (family == PARIS || family == SF || family == GENERIC) && bays == 4 && ww <= 15 && r.nextFloat() < 0.3f;
+        boolean caged = family == TAIPEI && r.nextFloat() < 0.6f;
+        boolean fireEscape = family == NYC && material != STUCCO && bays >= 2 && r.nextFloat() < 0.55f;
+        boolean balconyAll = (family == TAIPEI || family == TOKYO) && r.nextFloat() < 0.45f;
+        int balconyA = family == PARIS ? 1 : -1, balconyB = family == PARIS && r.nextBoolean() ? 4 : -1;
+        boolean flowers = (family == PARIS || family == LONDON) && r.nextFloat() < 0.3f;
+        boolean band = r.nextFloat() < 0.55f, dentils = band && (family == PARIS || family == NYC || family == LONDON) && r.nextBoolean();
+        boolean curtains = r.nextFloat() < 0.4f;
+        Color frame = family == LONDON || family == SF ? c(0xf6f4ee)
+            : pick(r, c(0x1e1a18), c(0xf6f4ee), mul(wall, 0.5f), c(0x3a3330), c(0x4a5a4a), c(0x2b3a4a));
+        Color glass = pick(r, c(0x2f3e55), c(0x26313f), c(0x354a5e), c(0x2b3a4a), c(0x3a4a58), c(0x2e4048));
+        Color glassLight = mul(glass, 1.45f), glint = c(0xa9c8e8), lit = c(0xffd36b), litDeep = c(0xe8a848);
+        Color curtain = pick(r, c(0xe8dcc0), c(0xb8463a), c(0x6a7a9a), c(0xd8d0e8), c(0x8a9a6a));
+        Color shutter = pick(r, c(0x3f6f5a), c(0x47607a), c(0x7a4a3a), c(0x5a6b7a), c(0xd9d0b8), c(0x6a8a5a));
+        Color rail = family == TAIPEI ? c(0xb8bcc0) : c(0x18181a);
+        int neonBay = (family == TOKYO || family == TAIPEI) && r.nextFloat() < 0.45f ? r.nextInt(Math.max(1, bays)) : -1;
+        Color neon = pick(r, c(0xff3d7f), c(0x33e6ff), c(0xffd23f), c(0x7dff4a), c(0xff7a26), c(0xc46bff));
+
+        // storey s = 0 is the first floor above the shops; the picture runs up from the ground floor
+        for (int s = 0; GROUND - (s + 1) * STP >= 0; s++) {
+            int y0 = GROUND - (s + 1) * STP;
+            if (band) {
+                a.rect(0, y0, PW, 2, b.stone);
+                a.rect(0, y0 + 2, PW, 1, stoneDark);
+                if (dentils) {
+                    for (int x = 0; x < PW; x += 3) {
+                        a.px(x, y0 + 1, stoneDark);
+                    }
+                }
+            }
+            for (int k = 0; k < bays; k++) {
+                int x0 = k * bw + (bw - ww) / 2;
+                int wy = y0 + top + (band ? 1 : 0);
+                int hh = wh;
+                boolean on = r.nextInt(7) == 0;
+                window(a, r, x0, wy, ww, hh, frame, glass, glassLight, glint, on ? lit : null, litDeep, paneCols, paneRows, arch,
+                    curtains && !on && r.nextBoolean() ? curtain : null, wall);
+                if (lintel) {
+                    a.rect(x0 - 2, wy - 2, ww + 4, 2, b.stone);
+                    a.rect(x0 - 2, wy - 2, ww + 4, 1, mul(b.stone, 1.05f));
+                    if (keystone) {
+                        a.rect(x0 + ww / 2 - 2, wy - 3, 4, 3, b.stone);
+                        a.rect(x0 + ww / 2 - 2, wy - 3, 1, 3, stoneDark);
+                    }
+                }
+                if (sill) {
+                    a.rect(x0 - 2, wy + hh, ww + 4, 1, b.stone);
+                    a.rect(x0 - 1, wy + hh + 1, ww + 2, 1, shadow);
+                }
+                if (shutters) {
+                    for (int side = 0; side < 2; side++) {
+                        int sx = side == 0 ? x0 - 4 : x0 + ww + 1;
+                        a.rect(sx, wy, 3, hh, shutter);
+                        for (int y = wy + 1; y < wy + hh; y += 2) {
+                            a.rect(sx, y, 3, 1, mul(shutter, 0.75f));
+                        }
+                    }
+                }
+                if (caged) {
+                    for (int cx = x0 - 1; cx <= x0 + ww; cx += 3) {
+                        a.rect(cx, wy - 1, 1, hh + 2, c(0x8a8f96));
+                    }
+                    for (int cy = wy - 1; cy <= wy + hh; cy += 4) {
+                        a.rect(x0 - 1, cy, ww + 2, 1, c(0x8a8f96));
+                    }
+                }
+                if (flowers && r.nextBoolean()) {
+                    a.rect(x0 - 1, wy + hh + 1, ww + 2, 2, c(0x5a3a2a));
+                    for (int fx = x0 - 1; fx < x0 + ww + 1; fx++) {
+                        a.px(fx, wy + hh, fx % 2 == 0 ? c(0x3f8f3a) : pick(r, c(0xd9433b), c(0xf2c84b), c(0xf08ab0), c(0xffffff)));
+                    }
+                }
+                if ((family == TAIPEI || family == TOKYO) && r.nextInt(3) == 0) {
+                    acUnit(a, x0 + ww - 6, wy + hh + 2);
+                }
+                if (family == TAIPEI && r.nextInt(4) == 0) {
+                    a.rect(x0 - 1, wy + hh + 2, ww + 2, 1, c(0x3a3a3a));
+                    for (int lx = x0; lx < x0 + ww - 2; lx += 3) {
+                        if (r.nextBoolean()) {
+                            a.rect(lx, wy + hh + 3, 2, 3, pick(r, c(0xf2f2f2), c(0x3f6fd0), c(0xd9433b), c(0xf2c84b), c(0x6cb84b), c(0xf08ab0)));
+                        }
+                    }
+                }
+            }
+            if (balconyAll || s == balconyA || s == balconyB) {
+                balcony(a, y0 + STP - 1, rail, wall, family == TAIPEI || family == TOKYO);
+            }
+            if (fireEscape) {
+                fireEscape(a, bw + bw / 2 - 12, y0, s);
+            }
+            if (neonBay >= 0) {
+                int nx = neonBay * bw + bw - 10;
+                a.rect(nx, y0, 8, STP, c(0x1a1a1e));
+                a.rect(nx + 1, y0, 6, STP, neon);
+                for (int g = 0; g < 2; g++) {
+                    glyph(a, nx + 2, y0 + 2 + g * 8, mul(neon, 0.35f), r);
+                }
+            }
+        }
+        groundFloor(a, b, r, wall, frame, glass, glint, lit, neon);
+        return a.done();
+    }
+
+    /** fill the whole picture with a material's pattern */
+    private static void fillMaterial(Art a, int material, Color wall, Color dark, Color light, Random r) {
+        for (int y = 0; y < PH; y++) {
+            for (int x = 0; x < PW; x++) {
                 Color px = wall;
                 switch (material) {
-                    case BRICK:
-                        if (y % 3 == 2) {
-                            px = light;                                     // mortar course
-                        } else if ((x + (y / 3 % 2) * 3) % 6 == 0) {
-                            px = light;                                     // header joints, offset each course
-                        } else if (r.nextInt(9) == 0) {
-                            px = dark;
+                    case BRICK: {
+                        int course = y / 3;
+                        int brick = (x + (course % 2) * 3) / 6;
+                        if (y % 3 == 2 || (x + (course % 2) * 3) % 6 == 0) {
+                            px = light;                                     // mortar
+                        } else if (Math.floorMod(brick * 7 + course * 13, 5) == 0) {
+                            px = dark;                                      // a darker brick here and there
                         }
                         break;
-                    case STONE:
-                        px = y % 6 == 5 ? dark : ((x + (y / 6 % 2) * 6) % 12 == 0 ? dark : wall);
+                    }
+                    case STONE: {
+                        int row = y / 6;
+                        if (y % 6 == 5 || (x + (row % 2) * 6) % 12 == 0) {
+                            px = dark;
+                        } else if (y % 6 == 0) {
+                            px = light;
+                        }
                         break;
+                    }
                     case SIDING:
-                        px = y % 2 == 1 ? dark : wall;
+                        px = y % 3 == 2 ? dark : y % 3 == 0 ? light : wall;
                         break;
                     case TILE:
-                        px = (x % 4 == 0 || y % 4 == 0) ? light : wall;
+                        px = (x % 3 == 0 || y % 3 == 0) ? light : wall;
                         break;
                     case CONCRETE:
-                        px = r.nextInt(10) == 0 ? dark : (x % 16 == 15 ? mul(wall, 0.92f) : wall);
+                        px = (x % 24 == 23 || y % 18 == 17) ? dark : r.nextInt(14) == 0 ? dark : wall;
                         break;
                     default:
-                        px = r.nextInt(20) == 0 ? dark : wall;
+                        px = r.nextInt(30) == 0 ? dark : wall;
                         break;
                 }
                 a.px(x, y, px);
             }
         }
-        // the windows
-        int bays = family == TOKYO && r.nextFloat() < 0.35f ? 2 : r.nextFloat() < 0.15f ? 2 : 4;
-        int bw = 32 / bays;
-        int ww = bays == 2 ? 6 + r.nextInt(7) : 2 + r.nextInt(4);
-        boolean ribbon = family == TOKYO && r.nextFloat() < 0.4f;
-        if (ribbon) {
-            bays = 1;
-            bw = 32;
-            ww = 32;
+    }
+
+    /** a window: frame, panes divided by glazing bars, glass shading and a glint (or lit), arched if asked */
+    private static void window(Art a, Random r, int x0, int y0, int w, int h, Color frame, Color glass, Color glassLight,
+            Color glint, Color lit, Color litDeep, int cols, int rows, boolean arch, Color curtain, Color wall) {
+        a.rect(x0, y0, w, h, frame);
+        for (int y = y0 + 1; y < y0 + h - 1; y++) {
+            float t = (y - y0) / (float) h;
+            Color g = lit != null ? (t < 0.5f ? lit : litDeep) : (t < 0.3f ? glassLight : glass);
+            a.rect(x0 + 1, y, w - 2, 1, g);
         }
-        int wh = 3 + r.nextInt(3);
-        int top = 1 + r.nextInt(Math.max(1, 7 - wh - 1));
-        boolean arch = (family == PARIS || family == LONDON || family == NYC || family == CHICAGO) && ww >= 3 && r.nextFloat() < 0.35f;
-        boolean mullion = ww >= 4 && r.nextFloat() < 0.6f, transom = wh >= 4 && r.nextFloat() < 0.5f;
-        boolean lintel = r.nextFloat() < 0.7f, sill = r.nextFloat() < 0.75f;
-        boolean shutters = (family == PARIS || family == SF || family == GENERIC) && ww <= 4 && r.nextFloat() < 0.25f;
-        boolean caged = family == TAIPEI && r.nextFloat() < 0.6f;
-        boolean fireEscape = family == NYC && material != STUCCO && r.nextFloat() < 0.55f;
-        boolean balconyAll = (family == TAIPEI || family == TOKYO) && r.nextFloat() < 0.45f;
-        int balconyA = family == PARIS ? (r.nextBoolean() ? 5 : 4) : -1, balconyB = family == PARIS && r.nextBoolean() ? 1 : -1;
-        boolean flowers = (family == PARIS || family == LONDON) && r.nextFloat() < 0.3f;
-        boolean band = r.nextFloat() < 0.5f;
-        Color frame = family == LONDON || family == SF ? c(0xf6f4ee) : pick(r, c(0x1e1a18), c(0xf6f4ee), mul(wall, 0.55f), c(0x3a3330), c(0x4a5a4a));
-        Color glass = pick(r, c(0x2f3e55), c(0x26313f), c(0x354a5e), c(0x2b3a4a), c(0x3a4a58));
-        Color glint = c(0x8fb3d8), lit = c(0xffd36b);
-        Color shutter = pick(r, c(0x3f6f5a), c(0x47607a), c(0x7a4a3a), c(0x5a6b7a), c(0xd9d0b8));
-        Color rail = family == TAIPEI ? c(0xb8bcc0) : c(0x18181a);
-        int neonBay = (family == TOKYO || family == TAIPEI) && r.nextFloat() < 0.45f ? r.nextInt(Math.max(1, bays)) : -1;
-        Color neon = pick(r, c(0xff3d7f), c(0x33e6ff), c(0xffd23f), c(0x7dff4a), c(0xff7a26), c(0xc46bff));
-        for (int s = 0; s < 7; s++) {
-            int y0 = s * 8;
-            if (band) {
-                a.rect(0, y0, 32, 1, b.stone);
-            }
-            for (int k = 0; k < bays; k++) {
-                int x0 = k * bw + (bw - ww) / 2;
-                int wy = y0 + top, hh = wh - (s == 0 && r.nextBoolean() ? 1 : 0);
-                boolean on = r.nextInt(7) == 0;
-                if (lintel) {
-                    a.rect(x0 - 1, wy - 1, ww + 2, 1, b.stone);
-                }
-                a.rect(x0, wy, ww, hh, frame);
-                if (ww > 2 && hh > 2) {
-                    a.rect(x0 + 1, wy + 1, ww - 2, hh - 2, on ? lit : glass);
-                    if (!on) {
-                        a.px(x0 + 1, wy + 1, glint);
-                    }
-                    if (mullion && !ribbon) {
-                        a.rect(x0 + ww / 2, wy + 1, 1, hh - 2, frame);
-                    }
-                    if (ribbon) {
-                        for (int m = 3; m < 31; m += 4) {
-                            a.rect(m, wy + 1, 1, hh - 2, frame);
-                        }
-                    }
-                    if (transom) {
-                        a.rect(x0 + 1, wy + 2, ww - 2, 1, frame);
-                    }
-                    if (caged) {
-                        for (int cx = x0; cx < x0 + ww; cx += 2) {
-                            a.rect(cx, wy, 1, hh, c(0x8a8f96));
-                        }
-                    }
-                } else {
-                    a.rect(x0, wy, ww, hh, on ? lit : glass);
-                }
-                if (arch) {
-                    a.px(x0, wy, b.stone);
-                    a.px(x0 + ww - 1, wy, b.stone);
-                }
-                if (sill) {
-                    a.rect(x0 - 1, wy + hh, ww + 2, 1, b.stone);
-                }
-                if (shutters) {
-                    a.rect(x0 - 2, wy, 1, hh, shutter);
-                    a.rect(x0 + ww + 1, wy, 1, hh, shutter);
-                }
-                if (flowers && r.nextBoolean()) {
-                    for (int fx = x0; fx < x0 + ww; fx++) {
-                        a.px(fx, wy + hh, fx % 2 == 0 ? c(0x3f8f3a) : pick(r, c(0xd9433b), c(0xf2c84b), c(0xf08ab0)));
-                    }
-                }
-                // AC boxes and laundry hanging out (Tokyo, Taipei)
-                if ((family == TAIPEI || family == TOKYO) && r.nextInt(3) == 0) {
-                    a.rect(x0 + ww - 2, wy + hh, 2, 2, c(0xe4e6e8));
-                    a.px(x0 + ww - 2, wy + hh + 1, c(0x8a8f96));
-                }
-                if (family == TAIPEI && r.nextInt(4) == 0) {
-                    for (int lx = x0; lx < x0 + ww; lx++) {
-                        if (r.nextBoolean()) {
-                            a.px(lx, wy + hh + 1, pick(r, c(0xf2f2f2), c(0x3f6fd0), c(0xd9433b), c(0xf2c84b), c(0x6cb84b)));
-                        }
-                    }
-                }
-            }
-            // balconies across the whole storey
-            if (balconyAll || s == balconyA || s == balconyB) {
-                int ry = y0 + 7;
-                for (int x = 0; x < 32; x++) {
-                    a.px(x, ry, x % 2 == 0 ? rail : (family == TAIPEI ? mul(wall, 0.9f) : rail));
-                    if (x % 2 == 0) {
-                        a.px(x, ry - 1, rail);
-                    }
-                }
-            }
-            // a fire escape zigzagging down one bay
-            if (fireEscape) {
-                int fx = (bays > 1 ? bw : 0) + 1;
-                a.rect(fx - 1, y0 + 6, 9, 1, c(0x141414));
-                for (int d = 0; d < 6; d++) {
-                    a.px(fx + d + (s % 2 == 0 ? 0 : 1), y0 + 6 - d, c(0x141414));
-                }
-            }
-            if (neonBay >= 0 && s >= 1) {
-                int nx = neonBay * bw + (bw > 8 ? bw - 4 : 0);
-                a.rect(nx, y0, 3, 8, neon);
-                a.px(nx + 1, y0 + 2 + r.nextInt(4), c(0x1a1a1a));
-                a.px(nx + 1, y0 + 1 + r.nextInt(5), mul(neon, 0.6f));
+        if (lit == null) {
+            for (int d = 0; d < 3; d++) {
+                a.px(x0 + 2 + d, y0 + 4 - d, glint);
             }
         }
-        // the ground floor (bottom 8 rows)
-        int gy = 56;
+        if (curtain != null) {
+            a.rect(x0 + 1, y0 + 1, 2, h - 2, curtain);
+            a.rect(x0 + w - 3, y0 + 1, 2, h - 2, curtain);
+        }
+        for (int cI = 1; cI < cols; cI++) {
+            a.rect(x0 + cI * w / cols, y0, 1, h, frame);
+        }
+        for (int rI = 1; rI < rows; rI++) {
+            a.rect(x0, y0 + rI * h / rows, w, 1, frame);
+        }
+        if (arch && w >= 6) {
+            // round the top corners off into an arch, wall showing outside it
+            float rad = w / 2f;
+            for (int y = 0; y < (int) rad; y++) {
+                for (int x = 0; x < w; x++) {
+                    float dx = x + 0.5f - rad, dy = rad - y - 0.5f;
+                    if (dx * dx + dy * dy > rad * rad) {
+                        a.px(x0 + x, y0 + y, wall);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void acUnit(Art a, int x, int y) {
+        a.rect(x, y, 6, 4, c(0xe4e6e8));
+        a.rect(x, y + 3, 6, 1, c(0xa8acb2));
+        for (int gx = x + 1; gx < x + 5; gx += 2) {
+            a.rect(gx, y + 1, 1, 2, c(0x8a8f96));
+        }
+        a.px(x + 4, y + 4, c(0x6a6e74));
+        a.px(x + 4, y + 6, c(0x6a6e74));
+    }
+
+    /** a balcony across a storey: a slab, a top rail, balusters (or a solid parapet) */
+    private static void balcony(Art a, int y, Color rail, Color wall, boolean solid) {
+        a.rect(0, y, PW, 1, mul(wall, 0.7f));
+        if (solid) {
+            a.rect(0, y - 4, PW, 4, mul(wall, 0.92f));
+            a.rect(0, y - 4, PW, 1, mul(wall, 1.08f));
+            return;
+        }
+        a.rect(0, y - 5, PW, 1, rail);
+        for (int x = 0; x < PW; x += 2) {
+            a.rect(x, y - 4, 1, 4, rail);
+        }
+    }
+
+    /** one storey of a New York fire escape: platform, railing, and the stair down */
+    private static void fireEscape(Art a, int x, int y0, int s) {
+        Color iron = c(0x141414);
+        int py = y0 + STP - 2;
+        a.rect(x, py, 26, 2, iron);
+        a.rect(x, py - 6, 26, 1, iron);
+        for (int k = x; k <= x + 25; k += 4) {
+            a.rect(k, py - 6, 1, 6, iron);
+        }
+        boolean right = s % 2 == 0;
+        for (int d = 0; d < STP - 2; d++) {
+            int sx = right ? x + 4 + d : x + 21 - d;
+            a.px(sx, py - d, iron);
+            a.px(sx, py - d - 1, iron);
+            if (d % 3 == 0) {
+                a.rect(sx - 1, py - d, 3, 1, iron);
+            }
+        }
+    }
+
+    /** a tiny made-up sign character: a few pixels in a 4 x 5 box */
+    private static void glyph(Art a, int x, int y, Color c, Random r) {
+        for (int gy = 0; gy < 5; gy++) {
+            for (int gx = 0; gx < 4; gx++) {
+                if (r.nextInt(5) < 2 || gx == 0 || gy == 2) {
+                    a.px(x + gx, y + gy, c);
+                }
+            }
+        }
+    }
+
+    /** the ground floor: a shop, a front door with its fanlight and steps, a garage, or an arcade */
+    private void groundFloor(Art a, Building b, Random r, Color wall, Color frame, Color glass, Color glint, Color lit, Color neon) {
+        int gy = GROUND;
         if (b.shop) {
-            Color stripe = family == PARIS || family == LONDON ? b.awning : pick(r, b.awning, c(0xf2f2f2));
-            for (int x = 0; x < 32; x++) {
-                a.px(x, gy, x % 4 < 2 ? b.awning : stripe);                    // awning edge
-            }
-            Color sign = pick(r, c(0x1e1a18), b.awning, c(0xf2f0e8), c(0x2b3a6b));
-            a.rect(0, gy + 1, 32, 1, sign);
-            for (int x = 2; x < 30; x += 2) {
-                if (r.nextInt(3) > 0) {
-                    a.px(x, gy + 1, family == TOKYO || family == TAIPEI ? neon : c(0xf2c84b));   // the shop's name
+            // the awning: stripes with a scalloped edge
+            Color stripe = family == PARIS || family == LONDON ? mul(b.awning, 1.35f) : pick(r, mul(b.awning, 1.35f), c(0xf2f2f2));
+            for (int x = 0; x < PW; x++) {
+                Color col = (x / 4) % 2 == 0 ? b.awning : stripe;
+                a.rect(x, gy, 1, 5, col);
+                if (x % 4 != 3) {
+                    a.px(x, gy + 5, col);
                 }
             }
-            Color shopGlass = r.nextBoolean() ? c(0x3a4a58) : lit;
-            a.rect(0, gy + 2, 32, 5, frame);
+            a.rect(0, gy, PW, 1, mul(b.awning, 0.6f));
+            // the sign, with letters
+            Color sign = pick(r, c(0x1e1a18), mul(b.awning, 0.7f), c(0xf2f0e8), c(0x2b3a6b));
+            Color letters = sign.r + sign.g + sign.b > 2f ? c(0x1e1a18) : (family == TOKYO || family == TAIPEI ? neon : c(0xf2c84b));
+            a.rect(0, gy + 6, PW, 5, sign);
+            for (int x = 8; x < PW - 8; x += 5) {
+                if (r.nextInt(5) > 0) {
+                    for (int y2 = 0; y2 < 3; y2++) {
+                        for (int x2 = 0; x2 < 3; x2++) {
+                            if (r.nextInt(3) > 0) {
+                                a.px(x + x2, gy + 7 + y2, letters);
+                            }
+                        }
+                    }
+                }
+            }
+            // shop windows with goods in them, and the door
+            a.rect(0, gy + 11, PW, 12, frame);
+            Color display = r.nextBoolean() ? glass : mul(lit, 0.9f);
             for (int k = 0; k < 4; k++) {
+                int x0 = k * BAYP;
                 if (k == 1) {
-                    a.rect(k * 8 + 2, gy + 2, 4, 6, mul(b.awning, 0.6f));      // the door
+                    a.rect(x0 + 10, gy + 11, 12, 13, mul(b.awning, 0.55f));
+                    a.rect(x0 + 12, gy + 13, 8, 5, glass);
+                    a.px(x0 + 19, gy + 19, c(0xf2c84b));
                 } else {
-                    a.rect(k * 8 + 1, gy + 3, 6, 3, shopGlass);
-                    a.px(k * 8 + 1, gy + 3, glint);
+                    a.rect(x0 + 2, gy + 12, BAYP - 4, 10, display);
+                    a.rect(x0 + BAYP / 2, gy + 12, 1, 10, frame);
+                    for (int d = 0; d < 3; d++) {
+                        a.px(x0 + 3 + d, gy + 15 - d, glint);
+                    }
+                    for (int g = x0 + 4; g < x0 + BAYP - 4; g += 3) {
+                        if (r.nextBoolean()) {
+                            a.rect(g, gy + 19, 2, 3, pick(r, c(0xd9433b), c(0xf2c84b), c(0x3f6fd0), c(0xf2f2f2), c(0x6cb84b)));
+                        }
+                    }
                 }
             }
-            a.rect(0, gy + 7, 32, 1, mul(wall, 0.55f));
+            a.rect(0, gy + 23, PW, 1, mul(wall, 0.5f));
         } else if (family == SF && r.nextBoolean()) {
-            a.rect(2, gy + 1, 12, 7, c(0xf2f0ea));                               // a garage door
-            for (int y = gy + 2; y < gy + 8; y += 2) {
-                a.rect(2, y, 12, 1, c(0xcfccc4));
+            a.rect(6, gy + 6, 48, 18, c(0xf2f0ea));
+            for (int y = gy + 9; y < gy + 24; y += 3) {
+                a.rect(6, y, 48, 1, c(0xcfccc4));
             }
-            a.rect(20, gy + 2, 4, 6, mul(wall, 0.5f));
+            a.rect(8, gy + 7, 44, 2, c(0x3a4a58));
+            for (int x = 8; x < 52; x += 11) {
+                a.rect(x, gy + 7, 1, 2, c(0xf2f0ea));
+            }
+            door(a, 80, gy + 2, mul(wall, 0.5f), c(0xfafafa), glass, false, r);
         } else if (family == TAIPEI) {
-            a.rect(0, gy, 32, 8, c(0x2a2a2e));                                  // the shaded arcade
-            for (int x = 0; x < 32; x += 8) {
-                a.rect(x, gy, 2, 8, wall);
+            a.rect(0, gy, PW, STP, c(0x26262a));
+            for (int x = 0; x < PW; x += BAYP) {
+                a.rect(x, gy, 5, STP, wall);
+                a.rect(x + 4, gy, 1, STP, mul(wall, 0.7f));
+            }
+            for (int k = 0; k < 4; k++) {
+                a.rect(k * BAYP + 9, gy + 4, 16, 4, pick(r, neon, c(0xf2c84b), c(0xf2f2f2), c(0xd9433b)));
+                a.px(k * BAYP + 16, gy + 1, c(0xffe8a0));
             }
         } else {
-            a.rect(0, gy + 7, 32, 1, mul(wall, 0.6f));
-            a.rect(13, gy + 2, 5, 6, pick(r, c(0x1e1a18), c(0x8c2b2b), c(0x1f3b6b), c(0x2b5c3a), c(0x5a3a2a)));   // the front door
-            a.rect(12, gy + 1, 7, 1, b.stone);
+            a.rect(0, gy + STP - 1, PW, 1, mul(wall, 0.55f));
+            Color doorColour = pick(r, c(0x1e1a18), c(0x8c2b2b), c(0x1f3b6b), c(0x2b5c3a), c(0x5a3a2a), c(0xc9792b), c(0x3f8f8f));
+            door(a, 58, gy + 2, doorColour, b.stone, glass, family == LONDON || family == PARIS || family == NYC, r);
+            for (int k : new int[] {0, 3}) {
+                window(a, r, k * BAYP + 8, gy + 4, 16, 15, c(0xf6f4ee), glass, mul(glass, 1.45f), glint, null, null,
+                    2, 2, false, null, wall);
+            }
         }
-        return a.done();
+    }
+
+    /** a front door: panelled, with a fanlight over it if asked, a stone surround and steps */
+    private static void door(Art a, int x, int gy, Color colour, Color stone, Color glass, boolean fanlight, Random r) {
+        a.rect(x - 2, gy + 2, 16, 16, stone);
+        a.rect(x, gy + 5, 12, 13, colour);
+        a.rect(x + 2, gy + 7, 3, 4, mul(colour, 0.75f));
+        a.rect(x + 7, gy + 7, 3, 4, mul(colour, 0.75f));
+        a.rect(x + 2, gy + 12, 3, 4, mul(colour, 0.75f));
+        a.rect(x + 7, gy + 12, 3, 4, mul(colour, 0.75f));
+        a.px(x + 10, gy + 11, c(0xf2c84b));
+        if (fanlight) {
+            a.rect(x, gy + 3, 12, 2, glass);
+            for (int k = x + 1; k < x + 12; k += 2) {
+                a.px(k, gy + 3, stone);
+            }
+        }
+        a.rect(x - 3, gy + 17, 18, 1, mul(stone, 0.8f));
     }
 
     /** a skyscraper's skin: a glass curtain wall, or Art Deco stone piers with recessed windows */
@@ -478,49 +648,75 @@ public class CityArchitecture {
             Color glass = pick(r, c(0x2b3a4a), c(0x33302a), c(0x26313f));
             Color spandrel = pick(r, c(0x5a4a3a), c(0x3a3a3e), c(0x6b5a40));
             b.stone = mul(stone, 1.05f);
-            for (int y = 0; y < 64; y++) {
-                for (int x = 0; x < 32; x++) {
-                    boolean pier = x % 4 < 2;
-                    Color px = pier ? (x % 4 == 0 ? mul(stone, 1.06f) : stone)
-                        : (y % 8 >= 6 ? spandrel : (r.nextInt(8) == 0 ? c(0xffd36b) : glass));
-                    a.px(x, y, px);
-                }
-            }
-        } else {
-            Color glass = pick(r, c(0x3f6f9a), c(0x2f7f7f), c(0x4a7a5a), c(0x8a6a40), c(0x9aa4ae), c(0x2a3038), c(0x5a8ab8), c(0x6a5a8a));
-            Color mull = pick(r, c(0xd8dde2), c(0xf2f2f2), c(0x1e1e22), c(0xb08a50), c(0x8a9096));
-            Color spandrel = r.nextBoolean() ? mul(glass, 0.7f) : mull;
-            int every = pick(r, 2, 4, 4, 8);
-            boolean bands = r.nextBoolean();
-            b.stone = mull;
-            for (int y = 0; y < 64; y++) {
-                for (int x = 0; x < 32; x++) {
-                    int row = y % 8;
+            for (int y = 0; y < PH; y++) {
+                for (int x = 0; x < PW; x++) {
+                    int cx = x % 16, cy = y % STP;
                     Color px;
-                    if (x % every == 0) {
-                        px = mull;
-                    } else if (bands && row >= 6) {
-                        px = spandrel;
+                    if (cx < 5) {
+                        px = cx == 0 ? mul(stone, 1.08f) : cx == 4 ? mul(stone, 0.82f) : stone;     // the piers
+                    } else if (cy >= STP - 6) {
+                        // decorated spandrel panels: a little zigzag
+                        px = ((cx + cy) % 4 == 0) ? mul(spandrel, 1.4f) : spandrel;
                     } else {
-                        float t = row / 8f;
-                        px = mul(glass, 1.15f - t * 0.3f);
-                        if (row == 1 && x % every == 1) {
-                            px = mul(glass, 1.6f);
-                        }
-                        if (r.nextInt(20) == 0) {
-                            px = c(0xffd36b);
+                        px = cy < 4 ? mul(glass, 1.4f) : glass;
+                        if (cx == 5 || cx == 15) {
+                            px = mul(stone, 0.6f);
                         }
                     }
                     a.px(x, y, px);
                 }
             }
+            for (int y = GROUND - STP; y >= 0; y -= STP) {
+                for (int x = 5; x < PW; x += 16) {
+                    if (r.nextInt(7) == 0) {
+                        a.rect(x + 1, y + 4, 9, STP - 10, c(0xffd36b));
+                    }
+                }
+            }
+        } else {
+            Color glass = pick(r, c(0x3f6f9a), c(0x2f7f7f), c(0x4a7a5a), c(0x8a6a40), c(0x9aa4ae), c(0x2a3038), c(0x5a8ab8), c(0x6a5a8a));
+            Color mull = pick(r, c(0xd8dde2), c(0xf2f2f2), c(0x1e1e22), c(0xb08a50), c(0x8a9096));
+            Color spandrel = r.nextBoolean() ? mul(glass, 0.65f) : mull;
+            int every = pick(r, 4, 8, 8, 16);
+            int spandrelRows = pick(r, 1, 3, 4);
+            b.stone = mull;
+            for (int y = 0; y < PH; y++) {
+                for (int x = 0; x < PW; x++) {
+                    int row = Math.floorMod(y - GROUND, STP);
+                    Color px;
+                    if (x % every == 0) {
+                        px = mull;
+                    } else if (row >= STP - spandrelRows) {
+                        px = spandrel;
+                    } else {
+                        float t = row / (float) STP;
+                        px = mul(glass, 1.2f - t * 0.35f);
+                        // a sky reflection sweeping diagonally across the whole face
+                        if (Math.floorMod(x + y, 64) < 6) {
+                            px = mul(glass, 1.55f);
+                        }
+                    }
+                    a.px(x, y, px);
+                }
+            }
+            for (int y = GROUND - STP; y >= 0; y -= STP) {
+                for (int x = 0; x < PW; x += every) {
+                    if (r.nextInt(9) == 0) {
+                        a.rect(x + 1, y + 1, every - 1, STP - spandrelRows - 1, c(0xffd36b));
+                    }
+                }
+            }
         }
-        // the lobby
-        a.rect(0, 56, 32, 8, c(0x1e2228));
-        for (int x = 0; x < 32; x += 6) {
-            a.rect(x, 57, 1, 7, b.stone);
+        // the lobby: tall glass, doors and a canopy
+        int gy = GROUND;
+        a.rect(0, gy, PW, STP, c(0x1e2228));
+        for (int x = 0; x < PW; x += 16) {
+            a.rect(x, gy, 2, STP, b.stone);
         }
-        a.rect(0, 56, 32, 1, b.stone);
+        a.rect(0, gy, PW, 3, b.stone);
+        a.rect(48, gy + 8, 32, 16, c(0x3a5068));
+        a.rect(63, gy + 8, 2, 16, b.stone);
+        a.rect(40, gy + 4, 48, 3, c(0x2a2a2e));
         return a.done();
     }
 
@@ -576,8 +772,8 @@ public class CityArchitecture {
                 }
                 // iron balconies as real ledges on Paris facades (matching the drawn ones)
                 if (family == PARIS && !b.tall) {
-                    for (int row = 4; row <= 5; row++) {
-                        float z = TILE_H - (row + 1) * STOREY + 0.4f;
+                    for (int floor = 1; floor <= 4; floor += 3) {
+                        float z = (floor + 1) * STOREY + 0.4f;
                         if (z > low + 2 && z < h - 4) {
                             moulding(e, ox, oy, z, z + 0.5f, 1.2f, c(0x1c1c1e), sh, true);
                         }
