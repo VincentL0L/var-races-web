@@ -155,10 +155,10 @@ public class Scenery3D {
                 roofB.quad(x0, y0, h, x1, y0, h, x1, y1, h, x0, y1, h, u0, v0, u1, v0, u1, v1, u0, v1, Color.WHITE);
                 // walls of windows, painted like the roof (lighter), shaded by which way they face
                 Color paint = new Color(avg).lerp(Color.WHITE, 0.35f);
-                wall(wallB, height, gx + 1, gy, gw, gh, h, x1, y0, x1, y1, paint, 0.92f);
-                wall(wallB, height, gx - 1, gy, gw, gh, h, x0, y1, x0, y0, paint, 0.68f);
-                wall(wallB, height, gx, gy - 1, gw, gh, h, x1, y1, x0, y1, paint, 1f);
-                wall(wallB, height, gx, gy + 1, gw, gh, h, x0, y0, x1, y0, paint, 0.6f);
+                wall(wallB, height, gx + 1, gy, gw, gh, h, x1, y0, x1, y1, 1, 0, paint, 0.92f);
+                wall(wallB, height, gx - 1, gy, gw, gh, h, x0, y1, x0, y0, -1, 0, paint, 0.68f);
+                wall(wallB, height, gx, gy - 1, gw, gh, h, x1, y1, x0, y1, 0, 1, paint, 1f);
+                wall(wallB, height, gx, gy + 1, gw, gh, h, x0, y0, x1, y0, 0, -1, paint, 0.6f);
             }
         }
         colours.dispose();
@@ -201,9 +201,17 @@ public class Scenery3D {
         }
     }
 
-    /** one wall, from the neighbour's height (or the ground) up to ours */
+    /** texture spots in the facade that are one flat colour: the dark outline, and near-white */
+    static final float OUTLINE_U = 1.5f / 32f, OUTLINE_V = 2.5f / 32f, WHITE_U = 0.5f / 32f, WHITE_V = 0.5f / 32f;
+
+    /**
+     * one wall, from the neighbour's height (or the ground) up to ours, with a dark pixel
+     * outline along its top (the cornice) and a dark plinth at street level, like the
+     * outlines round the cars' sprites
+     * @param ox, oy which way the wall faces
+     */
     private static void wall(Builder b, int[][] height, int nx, int ny, int gw, int gh, int h,
-            float ax, float ay, float bx, float by, Color paint, float shade) {
+            float ax, float ay, float bx, float by, float ox, float oy, Color paint, float shade) {
         int low = nx >= 0 && ny >= 0 && nx < gw && ny < gh ? height[nx][ny] : 0;
         if (low >= h) {
             return;
@@ -213,7 +221,17 @@ public class Scenery3D {
         Color c = new Color(paint.r * shade, paint.g * shade, paint.b * shade, 1f);
         b.quad(ax, ay, low, bx, by, low, bx, by, h, ax, ay, h,
             ua / 4f, -low / STOREY / 4f, ub / 4f, -low / STOREY / 4f, ub / 4f, -h / STOREY / 4f, ua / 4f, -h / STOREY / 4f, c);
+        float out = 0.3f, ou = OUTLINE_U, ov = OUTLINE_V;
+        Color line = new Color(0.13f, 0.1f, 0.09f, 1f);
+        b.quad(ax + ox * out, ay + oy * out, h - 1.6f, bx + ox * out, by + oy * out, h - 1.6f,
+            bx + ox * out, by + oy * out, h + 0.15f, ax + ox * out, ay + oy * out, h + 0.15f, ou, ov, ou, ov, ou, ov, ou, ov, line);
+        if (low == 0) {
+            b.quad(ax + ox * out, ay + oy * out, 0f, bx + ox * out, by + oy * out, 0f,
+                bx + ox * out, by + oy * out, 1.8f, ax + ox * out, ay + oy * out, 1.8f, ou, ov, ou, ov, ou, ov, ou, ov,
+                new Color(c).mul(0.45f, 0.45f, 0.45f, 1f));
+        }
     }
+
 
     /** builds meshes of quads, starting a new one when it gets full */
     static class Builder {
@@ -260,39 +278,53 @@ public class Scenery3D {
     }
 
     /**
-     * 4 x 4 window bays: white wall, glass with a sky reflection, some windows lit warm,
-     * a ledge under each row, and a darker band at street level
+     * the building walls, in the same chunky 16-bit style as the car sprites: 4 x 4 window
+     * bays of 8 x 8 big pixels each, with a highlight along the top, a shadow underneath,
+     * dark outlined frames, two-tone glass with a glint, a sill, and a few lit windows.
+     * The wall pixels are near-white so each building's paint colour tints them.
+     * (Pixel (0, 0) is plain near-white and (1, 2) is the outline colour: see WHITE_U, OUTLINE_U.)
      */
     static Texture makeFacade() {
-        Pixmap p = new Pixmap(64, 64, Pixmap.Format.RGBA8888);
-        p.setColor(0.93f, 0.93f, 0.93f, 1f);
-        p.fill();
+        Pixmap p = new Pixmap(32, 32, Pixmap.Format.RGBA8888);
         java.util.Random rnd = new java.util.Random(7);
-        for (int bx = 0; bx < 4; bx++) {
-            for (int by = 0; by < 4; by++) {
-                int x = bx * 16 + 3, y = by * 16 + 3;
-                boolean lit = rnd.nextInt(5) == 0;
-                // glass: darker at the bottom, a pale sky reflection at the top
-                for (int yy = 0; yy < 9; yy++) {
-                    float t = yy / 9f;
-                    if (lit) {
-                        p.setColor(1f, 0.86f - t * 0.1f, 0.55f - t * 0.1f, 1f);
-                    } else {
-                        p.setColor(0.32f + (1f - t) * 0.25f, 0.42f + (1f - t) * 0.25f, 0.55f + (1f - t) * 0.22f, 1f);
+        Color wall = new Color(0.92f, 0.92f, 0.9f, 1f), light = new Color(0.98f, 0.98f, 0.97f, 1f),
+            dark = new Color(0.66f, 0.66f, 0.68f, 1f), outline = new Color(0.16f, 0.13f, 0.12f, 1f),
+            glass = new Color(0.27f, 0.38f, 0.55f, 1f), glint = new Color(0.62f, 0.78f, 0.95f, 1f),
+            lit = new Color(1f, 0.85f, 0.42f, 1f), litDim = new Color(0.95f, 0.68f, 0.3f, 1f), sill = new Color(0.82f, 0.82f, 0.8f, 1f);
+        for (int by = 0; by < 4; by++) {
+            for (int bx = 0; bx < 4; bx++) {
+                boolean on = rnd.nextInt(5) == 0;
+                for (int y = 0; y < 8; y++) {
+                    for (int x = 0; x < 8; x++) {
+                        Color c;
+                        if (y == 0) {
+                            c = light;                                  // highlight along the top of the storey
+                        } else if (y == 7) {
+                            c = dark;                                   // shadow under it
+                        } else if (y == 6) {
+                            c = x >= 1 && x <= 6 ? sill : wall;         // the sill
+                        } else if (x == 0) {
+                            c = light;
+                        } else if (x == 7) {
+                            c = dark;
+                        } else if (x == 1 || x == 6 || y == 1 || y == 5) {
+                            c = outline;                                // the frame
+                        } else if (on) {
+                            c = y == 2 ? lit : litDim;
+                        } else {
+                            c = (y == 2 && x < 4) ? glint : glass;      // glass with a glint in the corner
+                        }
+                        p.setColor(c);
+                        p.drawPixel(bx * 8 + x, by * 8 + y);
                     }
-                    p.drawLine(x, y + yy, x + 9, y + yy);
                 }
-                // frame, sill and a mullion
-                p.setColor(0.45f, 0.45f, 0.47f, 1f);
-                p.drawRectangle(x - 1, y - 1, 12, 11);
-                p.drawLine(x + 5, y, x + 5, y + 8);
-                p.setColor(0.75f, 0.75f, 0.77f, 1f);
-                p.drawLine(x - 2, y + 11, x + 11, y + 11);
-                // the ledge between storeys
-                p.setColor(0.8f, 0.8f, 0.8f, 1f);
-                p.drawLine(bx * 16, by * 16 + 15, bx * 16 + 15, by * 16 + 15);
             }
         }
+        // the two flat colours the cornices and plinths use
+        p.setColor(light);
+        p.drawPixel(0, 0);
+        p.setColor(outline);
+        p.drawPixel(1, 2);
         Texture t = new Texture(p);
         p.dispose();
         t.setWrap(Texture.TextureWrap.Repeat, Texture.TextureWrap.Repeat);
