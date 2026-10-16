@@ -45,6 +45,14 @@ This copy adds:
   first-person view. The overhead view shows the same collision boundary as a yellow
   curb. `V` switches views during a race; battle arenas keep their existing layout.
 - Multiplayer lists public races, creates public or private races, or joins one with a 4-letter code.
+- **Race Car Soccer** is a separate, first-person-only online mode. Create a 1v1 or
+  2v2 room from the main menu and share its five-letter room code. Matches start when
+  all 2 or 4 players join, with balanced blue/orange teams. Drive with WASD/arrows,
+  boost with Shift, and jump with Space (touch controls are also provided).
+  The server simulates the cars and bouncing ball, validates goals, and broadcasts
+  one shared score. First to five goals wins, or the leader after three minutes;
+  ties use sudden-death overtime. The host can start a rematch after the result.
+  A disconnect returns the room to waiting for a replacement.
 - Sharp text on Retina screens (`Ui`). Titles use the game's own racing font drawn by
   `tools/make_speed_font.py`; small text uses Michroma (SIL OFL, see `tools/`).
 - Gilded 16-bit buttons and panels (`tools/make_ui.py`).
@@ -62,4 +70,8 @@ Commands:
 - Desktop: `./gradlew lwjgl3:run` (add `-Dvarraces.server=wss://...` to use another server)
 - Deploy the website: `firebase deploy --only hosting`
 - Deploy the server: Render builds `Dockerfile` (see `render.yaml`)
+- Test soccer multiplayer against a running local server (Node 22+):
+  `node tools/test_soccer_server.mjs ws://localhost:8080`. This plays a complete
+  1v1 match through normal inputs, checks goal synchronization, rematches and
+  disconnects, then checks a four-player 2v2 match.
 - Live at https://var-races.web.app (any page accepts `?server=wss://host` to pick a server)

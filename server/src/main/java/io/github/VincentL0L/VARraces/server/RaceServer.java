@@ -37,6 +37,7 @@ public class RaceServer extends WebSocketServer {
 
     private final Map<String, Room> rooms = new HashMap<>();
     private final Map<WebSocket, Room> playerRooms = new HashMap<>();
+    private final SoccerRooms soccer = new SoccerRooms();
     private final Random random = new Random();
     private long lastTick = System.currentTimeMillis();
     // accounts and ranked (see Accounts)
@@ -65,6 +66,7 @@ public class RaceServer extends WebSocketServer {
     public void onOpen(WebSocket conn, ClientHandshake handshake) {}
 
     public synchronized void onClose(WebSocket conn, int code, String reason, boolean remote) {
+        soccer.leave(conn);
         signedIn.remove(conn);
         profiles.remove(conn);
         Room room = playerRooms.remove(conn);
@@ -77,6 +79,7 @@ public class RaceServer extends WebSocketServer {
     }
 
     public synchronized void onMessage(WebSocket conn, String message) {
+        if (!playerRooms.containsKey(conn) && soccer.handle(conn, message)) return;
         String[] parts = message.split("\\|", -1);
         Room current = playerRooms.get(conn);
         // account messages work anywhere, in a room or not
@@ -298,6 +301,7 @@ public class RaceServer extends WebSocketServer {
         float delta = (now - lastTick) / 1000f;
         lastTick = now;
         try {
+            soccer.tick(delta);
             Iterator<Room> it = rooms.values().iterator();
             while (it.hasNext()) {
                 Room room = it.next();
