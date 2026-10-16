@@ -840,9 +840,10 @@ public class CityArchitecture {
                     continue;                                  // the map itself
                 }
                 float dist = Math.max(Math.max(-bx - step, bx - mapW), Math.max(-by - step, by - mapH));
-                quad(bx, by, 0.03f, bx + step, by, 0.03f, bx + step, by + step, 0.03f, bx, by + step, 0.03f, asphalt);
+                // lifted a touch: these big flat pieces bow less than the hills under them
+                quad(bx, by, 1.2f, bx + step, by, 1.2f, bx + step, by + step, 1.2f, bx, by + step, 1.2f, asphalt);
                 float x0 = bx + street / 2f, y0 = by + street / 2f, x1 = bx + step - street / 2f, y1 = by + step - street / 2f;
-                quad(x0, y0, 0.25f, x1, y0, 0.25f, x1, y1, 0.25f, x0, y1, 0.25f, pavement);
+                quad(x0, y0, 1.5f, x1, y0, 1.5f, x1, y1, 1.5f, x0, y1, 1.5f, pavement);
                 // one building, two side by side, or four, set back a little from the kerb
                 int split = dist > 1100 ? 1 : r.nextInt(3) == 0 ? 1 : r.nextBoolean() ? 2 : 4;
                 float in = 4f;

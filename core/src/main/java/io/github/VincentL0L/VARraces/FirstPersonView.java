@@ -330,7 +330,11 @@ public class FirstPersonView {
         groundShader();
         fog.setUniformMatrix("u_projTrans", cam.combined);
         fog.setUniformi("u_texture", 0);
-        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
+        // depth-tested: with hills, ground behind a crest must stay hidden behind the road in front
+        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+        Gdx.gl.glDepthFunc(GL20.GL_LEQUAL);
+        Gdx.gl.glDepthMask(true);
+        Gdx.gl.glDisable(GL20.GL_BLEND);
         mapPicture.bind(0);
         for (com.badlogic.gdx.graphics.Mesh mesh : ground) {
             mesh.render(fog, GL20.GL_TRIANGLES);
