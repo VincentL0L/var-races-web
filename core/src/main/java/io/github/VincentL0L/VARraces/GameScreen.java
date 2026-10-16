@@ -427,9 +427,13 @@ public class GameScreen implements Screen {
         Color sky = fp.getSky();
         Gdx.gl.glClearColor(sky.r, sky.g, sky.b, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+        fp.drawSky();
         com.badlogic.gdx.graphics.PerspectiveCamera pc = fp.getCamera();
         float r = pc.far;
+        // the ground fades into the haze toward the horizon
+        bg.setShader(fp.groundShader());
         bg.render(pc, pc.position.x - r, pc.position.y - r, pc.position.x + r, pc.position.y + r);
+        bg.setShader(null);
         com.badlogic.gdx.graphics.g2d.SpriteBatch ground = fp.groundBatch();
         ground.begin();
         itemArt.drawGround(ground, nc.getItemView(), dt);
@@ -488,7 +492,7 @@ public class GameScreen implements Screen {
             float lift = 22f * u;
             if (firstPerson && fp != null) {
                 // first person: the bar floats over the roof, smaller with distance
-                if (r.name.equals(nc.getPlayerId()) || !fp.project(c.x, c.y, 13f, p)) {
+                if (r.name.equals(nc.getPlayerId()) || !fp.project(c.x, c.y, 9f, p)) {
                     continue;
                 }
                 lift = 0f;

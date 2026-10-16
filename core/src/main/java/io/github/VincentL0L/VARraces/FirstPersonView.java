@@ -1,6 +1,5 @@
 package io.github.VincentL0L.VARraces;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,6 +12,7 @@ import com.badlogic.gdx.graphics.PerspectiveCamera;
 import com.badlogic.gdx.graphics.Pixmap;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Matrix4;
@@ -22,41 +22,71 @@ import com.badlogic.gdx.scenes.scene2d.ui.Image;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 
 /**
- * First-person driving: the same flat track, seen from the driver's seat through a
- * perspective camera (the SNES "Mode 7" trick). The map lies on the ground (z = 0), the
- * other cars are little boxes with their top-down art on the roof, and our own car's
- * hood sits at the bottom of the view. Purely a way of looking: the race is the same.
+ * First-person driving: the flat map seen from the driver's seat through a perspective
+ * camera, with the trees and buildings stood up (Scenery3D), a sky with clouds and a sun,
+ * haze toward the horizon, and the cars built as little models: wheels, body, glass cabin,
+ * roof and lights, with their top-down paint job on the bonnet and boot. We sit inside our
+ * own car, looking out over the bonnet under the roof. Purely a way of looking: the race
+ * is the same.
  */
 public class FirstPersonView {
-    /** how high the roof of a car is (a car is 10 wide and 20 long) */
-    private static final float ROOF = 6f;
-    /** the driver's eyes: above the roof, toward the front, so just the end of the hood shows */
-    private static final float EYE_HEIGHT = 10f, EYE_BACK = -4f;
+    /** the bonnet camera: just above the roof line, at the front of the cabin */
+    private static final float EYE_HEIGHT = 6.3f, EYE_BACK = -3.5f;
     private static final float FAR = 2600f;
+    /** car model heights (a car is 10 wide and 20 long) */
+    private static final float BODY_LOW = 0.9f, DECK = 3.6f, CABIN_TOP = 5.8f;
 
-    private final PerspectiveCamera cam = new PerspectiveCamera(70f, 640f, 360f);
+    private final PerspectiveCamera cam = new PerspectiveCamera(72f, 640f, 360f);
     private final SpriteBatch batch = new SpriteBatch();
     private final ShapeRenderer shapes = new ShapeRenderer();
+    private final ShaderProgram fog;
     private final Matrix4 transform = new Matrix4();
+    private final Matrix4 screen = new Matrix4();
     private final Map<Texture, Color> bodyColors = new HashMap<>();
-    private final Color sky;
+    /** sky at the top, and at the horizon (also the haze colour) */
+    private final Color skyTop, skyLow;
+    private final boolean space;
     private float heading = Float.NaN;
-
     private final Scenery3D scenery;
+    /** clouds (or stars): direction, height above the horizon (degrees), size */
+    private final float[][] clouds;
 
     public FirstPersonView(TrackMap map, Texture mapPicture) {
-        scenery = new Scenery3D(map, mapPicture);
-        cam.near = 1f;
+        fog = new ShaderProgram(Scenery3D.VERTEX, Scenery3D.FRAGMENT);
+        if (!fog.isCompiled()) {
+            Gdx.app.error("FirstPersonView", fog.getLog());
+        }
+        scenery = new Scenery3D(map, mapPicture, fog);
+        cam.near = 0.3f;
         cam.far = FAR;
         cam.up.set(0f, 0f, 1f);
-        sky = map.id.equals(TrackMap.MOON) ? new Color(0.02f, 0.02f, 0.07f, 1f)
-            : map.battle ? new Color(0.55f, 0.66f, 0.82f, 1f) : new Color(0.47f, 0.72f, 0.96f, 1f);
+        space = map.id.equals(TrackMap.MOON);
+        if (space) {
+            skyTop = new Color(0.01f, 0.01f, 0.04f, 1f);
+            skyLow = new Color(0.07f, 0.07f, 0.13f, 1f);
+        } else if (map.id.equals(TrackMap.ROOFTOP)) {
+            skyTop = new Color(0.23f, 0.25f, 0.55f, 1f);       // dusk over the rooftops
+            skyLow = new Color(0.98f, 0.66f, 0.5f, 1f);
+        } else {
+            skyTop = new Color(0.27f, 0.52f, 0.9f, 1f);
+            skyLow = new Color(0.74f, 0.86f, 0.97f, 1f);
+        }
+        java.util.Random rnd = new java.util.Random(map.id.hashCode());
+        clouds = new float[space ? 160 : 16][];
+        for (int i = 0; i < clouds.length; i++) {
+            clouds[i] = space
+                ? new float[] {rnd.nextFloat() * 360f, rnd.nextFloat() * 50f, 1f + rnd.nextFloat() * 1.5f}
+                : new float[] {rnd.nextFloat() * 360f, 3f + rnd.nextFloat() * 16f, 0.6f + rnd.nextFloat() * 0.9f};
+        }
         resize(Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
     }
 
     public void resize(int width, int height) {
         cam.viewportWidth = Math.max(1, width);
         cam.viewportHeight = Math.max(1, height);
+        // about 90 degrees across, whatever the shape of the screen (a tall phone sees less sky and bonnet)
+        float aspect = cam.viewportWidth / cam.viewportHeight;
+        cam.fieldOfView = MathUtils.clamp(2f * (float) Math.toDegrees(Math.atan(1f / aspect)), 40f, 75f);
         cam.update();
     }
 
@@ -71,27 +101,122 @@ public class FirstPersonView {
         heading = Float.isNaN(heading) ? headingDeg
             : MathUtils.lerpAngleDeg(heading, headingDeg, 1f - (float) Math.exp(-18f * delta));
         float fx = MathUtils.cosDeg(heading), fy = MathUtils.sinDeg(heading);
-        float sx = shake > 0.05f ? MathUtils.random(-shake, shake) * 0.4f : 0f;
-        float sz = shake > 0.05f ? MathUtils.random(-shake, shake) * 0.3f : 0f;
+        float sx = shake > 0.05f ? MathUtils.random(-shake, shake) * 0.15f : 0f;
+        float sz = shake > 0.05f ? MathUtils.random(-shake, shake) * 0.1f : 0f;
         cam.position.set(x - fx * EYE_BACK - fy * sx, y - fy * EYE_BACK + fx * sx, EYE_HEIGHT + sz);
-        cam.direction.set(fx, fy, -0.06f).nor();
+        cam.direction.set(fx, fy, -0.045f).nor();
         cam.up.set(0f, 0f, 1f);
         cam.update();
-    }
-
-    /** the map's trees and buildings, in 3D */
-    public void drawScenery() {
-        scenery.render(cam);
-        Gdx.gl.glEnable(GL20.GL_BLEND);
     }
 
     public PerspectiveCamera getCamera() {
         return cam;
     }
 
+    /** @return the haze colour (the sky at the horizon) */
     public Color getSky() {
-        return sky;
+        return skyLow;
     }
+
+    /**
+     * the haze shader, ready for drawing the ground (hand it to the ground's SpriteBatch)
+     */
+    public ShaderProgram groundShader() {
+        fog.bind();
+        fog.setUniformf("u_eye", cam.position);
+        fog.setUniformf("u_fogRange", Scenery3D.FOG_START, Scenery3D.FOG_END);
+        fog.setUniformf("u_fogColor", skyLow.r, skyLow.g, skyLow.b);
+        fog.setUniformf("u_cutout", 0f);
+        return fog;
+    }
+
+    // ---------------------------------------------------------------- sky
+
+    /** the sky: a gradient down to the horizon, clouds (stars on the moon) and the sun */
+    public void drawSky() {
+        int w = Gdx.graphics.getBackBufferWidth(), h = Gdx.graphics.getBackBufferHeight();
+        // where the horizon is on screen: a point far ahead at eye level
+        Vector3 p = new Vector3(cam.position.x + cam.direction.x * 5000f, cam.position.y + cam.direction.y * 5000f, cam.position.z);
+        cam.project(p, 0, 0, w, h);
+        float horizon = MathUtils.clamp(p.y, -h, h * 2f);
+        screen.setToOrtho2D(0, 0, w, h);
+        Gdx.gl.glViewport(0, 0, w, h);
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        shapes.setProjectionMatrix(screen);
+        shapes.setTransformMatrix(transform.idt());
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
+        shapes.rect(0, Math.max(0, horizon), w, h - Math.max(0, horizon), skyLow, skyLow, skyTop, skyTop);
+        shapes.setColor(skyLow);
+        shapes.rect(0, 0, w, Math.max(0, horizon));
+        float pxPerDeg = w / (2f * hfov());
+        // the sun (or the Earth, from the moon)
+        float sunAz = 35f, sunEl = space ? 22f : 30f;
+        float rel = wrap(sunAz - heading);
+        if (Math.abs(rel) < hfov() + 20f) {
+            float sx = w / 2f - rel * pxPerDeg, sy = horizon + sunEl * pxPerDeg;
+            float r = (space ? 34f : 26f) * w / 1280f;
+            if (space) {
+                shapes.setColor(0.2f, 0.45f, 0.95f, 1f);
+                shapes.circle(sx, sy, r, 40);
+                shapes.setColor(0.25f, 0.65f, 0.3f, 1f);
+                shapes.circle(sx - r * 0.3f, sy + r * 0.2f, r * 0.4f, 20);
+                shapes.circle(sx + r * 0.35f, sy - r * 0.3f, r * 0.3f, 20);
+            } else {
+                shapes.setColor(1f, 0.97f, 0.8f, 0.25f);
+                shapes.circle(sx, sy, r * 2.2f, 40);
+                shapes.setColor(1f, 0.98f, 0.88f, 1f);
+                shapes.circle(sx, sy, r, 40);
+            }
+        }
+        for (float[] c : clouds) {
+            rel = wrap(c[0] - heading);
+            if (Math.abs(rel) > hfov() + 30f) {
+                continue;
+            }
+            float cx = w / 2f - rel * pxPerDeg, cy = horizon + c[1] * pxPerDeg;
+            if (space) {
+                shapes.setColor(1f, 1f, 1f, 0.5f + c[2] * 0.3f);
+                shapes.rect(cx, cy, c[2] * 1.5f, c[2] * 1.5f);
+                continue;
+            }
+            float s = c[2] * w / 9f;
+            // a flat-bottomed cloud: shaded underside, then the bright puffs
+            shapes.setColor(skyLow.r * 0.92f, skyLow.g * 0.93f, skyLow.b * 0.97f, 0.95f);
+            shapes.ellipse(cx - s * 0.55f, cy - s * 0.06f, s * 1.1f, s * 0.2f, 24);
+            shapes.setColor(1f, 1f, 1f, 0.95f);
+            shapes.ellipse(cx - s * 0.45f, cy, s * 0.5f, s * 0.22f, 24);
+            shapes.ellipse(cx - s * 0.15f, cy + s * 0.04f, s * 0.5f, s * 0.3f, 24);
+            shapes.ellipse(cx + s * 0.1f, cy, s * 0.42f, s * 0.2f, 24);
+        }
+        shapes.end();
+    }
+
+    private float hfov() {
+        // half the horizontal field of view, in degrees
+        float aspect = cam.viewportWidth / cam.viewportHeight;
+        return (float) Math.toDegrees(Math.atan(Math.tan(Math.toRadians(cam.fieldOfView / 2f)) * aspect));
+    }
+
+    private static float wrap(float deg) {
+        deg %= 360f;
+        if (deg > 180f) {
+            deg -= 360f;
+        } else if (deg < -180f) {
+            deg += 360f;
+        }
+        return deg;
+    }
+
+    /** the map's trees and buildings, in 3D (depth testing stays on for the cars) */
+    public void drawScenery() {
+        groundShader();
+        scenery.render(cam);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+    }
+
+    // ---------------------------------------------------------------- cars
 
     /** one car to draw: where it is, which way it points, its art and tint */
     public static class CarShape {
@@ -107,70 +232,102 @@ public class FirstPersonView {
     }
 
     /**
-     * the other cars as boxes, farthest first so nearer ones cover them
+     * the other cars, as models (the depth buffer sorts out what hides what)
      * @param others every car but ours
      */
     public void drawCars(List<CarShape> others) {
-        List<CarShape> order = new ArrayList<>(others);
-        final Vector3 eye = cam.position;
-        order.sort((a, b) -> Float.compare(dist2(b, eye), dist2(a, eye)));
-        Gdx.gl.glEnable(GL20.GL_BLEND);
-        for (CarShape c : order) {
-            if (dist2(c, eye) > FAR * FAR) {
+        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+        Gdx.gl.glDepthMask(true);
+        for (CarShape c : others) {
+            float dx = c.x - cam.position.x, dy = c.y - cam.position.y;
+            if (dx * dx + dy * dy > FAR * FAR) {
                 continue;
             }
-            Texture art = artOf(c.img);
-            Color tint = c.img.getColor();
-            Color body = art == null ? Color.DARK_GRAY : bodyColor(art);
-            float w = c.img.getWidth(), h = c.img.getHeight();
-            transform.idt().translate(c.x, c.y, 0f).rotate(0f, 0f, 1f, c.rotation);
-            // a soft shadow, then the sides (darker toward the bottom), then the roof art
-            shapes.setProjectionMatrix(cam.combined);
-            shapes.setTransformMatrix(transform);
-            shapes.begin(ShapeRenderer.ShapeType.Filled);
-            shapes.setColor(0f, 0f, 0f, 0.3f);
-            shapes.rect(-w / 2f - 1.5f, -h / 2f - 1.5f, w + 3f, h + 3f);
-            shapes.setColor(body.r * 0.35f * tint.r, body.g * 0.35f * tint.g, body.b * 0.35f * tint.b, 1f);
-            shapes.box(-w / 2f, -h / 2f, 0.6f, w, h, 2.4f);
-            shapes.setColor(body.r * 0.75f * tint.r, body.g * 0.75f * tint.g, body.b * 0.75f * tint.b, 1f);
-            shapes.box(-w / 2f, -h / 2f, 3f, w, h, ROOF - 3f);
-            shapes.end();
-            if (art != null) {
-                transform.translate(0f, 0f, ROOF + 0.05f);
-                batch.setProjectionMatrix(cam.combined);
-                batch.setTransformMatrix(transform);
-                Texture.TextureFilter min = art.getMinFilter(), mag = art.getMagFilter();
-                art.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-                batch.begin();
-                batch.setColor(tint);
-                batch.draw(art, -w / 2f, -h / 2f, w, h);
-                batch.setColor(Color.WHITE);
-                batch.end();
-                art.setFilter(min, mag);
-            }
+            drawModel(c.img, c.x, c.y, c.rotation, false);
         }
     }
 
-    /** our own car: just its roof and hood, under the eyes */
+    /** our own car: just the bonnet in front of us */
     public void drawOwnCar(Image img) {
+        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+        Gdx.gl.glDepthMask(true);
+        drawModel(img, img.getX() + img.getWidth() / 2f, img.getY() + img.getHeight() / 2f, img.getRotation(), true);
+    }
+
+    /**
+     * one car: shadow, wheels, body, glass cabin, roof, lights, then the paint job on top
+     * (local x across the car, y toward its nose)
+     */
+    private void drawModel(Image img, float x, float y, float rotation, boolean inside) {
         Texture art = artOf(img);
-        if (art == null) {
-            return;
-        }
+        Color tint = img.getColor();
+        Color body = art == null ? new Color(0.5f, 0.5f, 0.55f, 1f) : new Color(bodyColor(art));
+        body.mul(tint.r, tint.g, tint.b, 1f);
         float w = img.getWidth(), h = img.getHeight();
-        transform.idt().translate(img.getX() + w / 2f, img.getY() + h / 2f, ROOF)
-            .rotate(0f, 0f, 1f, img.getRotation());
-        batch.setProjectionMatrix(cam.combined);
-        batch.setTransformMatrix(transform);
-        // this close up, crisp pixels look far better than a blur
-        Texture.TextureFilter min = art.getMinFilter(), mag = art.getMagFilter();
-        art.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
-        batch.begin();
-        batch.setColor(img.getColor());
-        batch.draw(art, -w / 2f, -h / 2f, w, h);
-        batch.setColor(Color.WHITE);
-        batch.end();
-        art.setFilter(min, mag);
+        transform.idt().translate(x, y, 0f).rotate(0f, 0f, 1f, rotation);
+        shapes.setProjectionMatrix(cam.combined);
+        shapes.setTransformMatrix(transform);
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
+        if (!inside) {
+            shapes.setColor(0f, 0f, 0f, 0.35f);
+            shapes.rect(-w / 2f - 1f, -h / 2f - 1f, w + 2f, h + 2f);
+            // wheels, poking out a little past the body
+            shapes.setColor(0.07f, 0.07f, 0.08f, 1f);
+            for (int sx = -1; sx <= 1; sx += 2) {
+                for (int sy = -1; sy <= 1; sy += 2) {
+                    float wx = sx * (w / 2f - 0.6f), wy = sy * (h / 2f - 4.3f);
+                    up(wx - 1.1f, wy - 2.2f, 0f, 2.2f, 4.4f, 2.6f);
+                }
+            }
+            // hubcaps
+            shapes.setColor(0.6f, 0.6f, 0.62f, 1f);
+            for (int sx = -1; sx <= 1; sx += 2) {
+                for (int sy = -1; sy <= 1; sy += 2) {
+                    float wx = sx * (w / 2f - 0.6f + 1.15f), wy = sy * (h / 2f - 4.3f);
+                    up(wx - 0.05f, wy - 0.8f, 0.5f, 0.1f, 1.6f, 1.6f);
+                }
+            }
+        }
+        // the body: darker low down, the paint colour higher up
+        shapes.setColor(body.r * 0.45f, body.g * 0.45f, body.b * 0.45f, 1f);
+        up(-w / 2f, -h / 2f, BODY_LOW, w, h, 1.2f);
+        shapes.setColor(body.r * 0.85f, body.g * 0.85f, body.b * 0.85f, 1f);
+        up(-w / 2f, -h / 2f, BODY_LOW + 1.2f, w, h, DECK - BODY_LOW - 1.2f);
+        float cabinBack = -h * 0.24f, cabinLen = h * 0.44f;
+        if (!inside) {
+            // glass all round the cabin, then the roof
+            shapes.setColor(0.13f, 0.17f, 0.24f, 1f);
+            up(-w / 2f + 1.2f, cabinBack, DECK, w - 2.4f, cabinLen, CABIN_TOP - DECK - 0.4f);
+            shapes.setColor(body);
+            up(-w / 2f + 1.5f, cabinBack + 1.2f, CABIN_TOP - 0.45f, w - 3f, cabinLen - 2.6f, 0.5f);
+            // lights: white-gold at the front, red at the back
+            shapes.setColor(1f, 0.95f, 0.72f, 1f);
+            up(-w / 2f + 0.8f, h / 2f - 0.2f, 2.2f, 2.2f, 0.4f, 0.9f);
+            up(w / 2f - 3f, h / 2f - 0.2f, 2.2f, 2.2f, 0.4f, 0.9f);
+            shapes.setColor(0.9f, 0.08f, 0.08f, 1f);
+            up(-w / 2f + 0.8f, -h / 2f - 0.2f, 2.3f, 2.2f, 0.4f, 0.8f);
+            up(w / 2f - 3f, -h / 2f - 0.2f, 2.3f, 2.2f, 0.4f, 0.8f);
+        }
+        shapes.end();
+        if (art != null) {
+            // the top-down paint job across the bonnet and boot (the cabin hides its middle)
+            transform.translate(0f, 0f, DECK + 0.02f);
+            batch.setProjectionMatrix(cam.combined);
+            batch.setTransformMatrix(transform);
+            Texture.TextureFilter min = art.getMinFilter(), mag = art.getMagFilter();
+            art.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
+            batch.begin();
+            batch.setColor(tint);
+            batch.draw(art, -w / 2f, -h / 2f, w, h);
+            batch.setColor(Color.WHITE);
+            batch.end();
+            art.setFilter(min, mag);
+        }
+    }
+
+    /** a solid box standing on z and rising d (ShapeRenderer's own box hangs down from z) */
+    private void up(float x, float y, float z, float w, float h, float d) {
+        shapes.box(x, y, z + d, w, h, d);
     }
 
     /** a batch lifted off the ground, for things in the air (rockets, shots, shields) */
@@ -200,11 +357,6 @@ public class FirstPersonView {
             && out.y >= 0 && out.y <= Gdx.graphics.getBackBufferHeight();
     }
 
-    private static float dist2(CarShape c, Vector3 eye) {
-        float dx = c.x - eye.x, dy = c.y - eye.y;
-        return dx * dx + dy * dy;
-    }
-
     private static Texture artOf(Image img) {
         if (img.getDrawable() instanceof com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable) {
             return ((com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable) img.getDrawable())
@@ -225,10 +377,11 @@ public class FirstPersonView {
                 Pixmap p = new Pixmap(((com.badlogic.gdx.graphics.glutils.FileTextureData) art.getTextureData()).getFileHandle());
                 float r = 0, g = 0, b = 0;
                 int n = 0;
+                Color px = new Color();
                 // sample the middle band (the doors), ignoring see-through and near-black pixels
                 for (int yy = p.getHeight() / 3; yy < p.getHeight() * 2 / 3; yy++) {
                     for (int xx = 0; xx < p.getWidth(); xx++) {
-                        Color px = new Color(p.getPixel(xx, yy));
+                        Color.rgba8888ToColor(px, p.getPixel(xx, yy));
                         if (px.a > 0.5f && px.r + px.g + px.b > 0.25f) {
                             r += px.r;
                             g += px.g;
@@ -253,6 +406,7 @@ public class FirstPersonView {
         scenery.dispose();
         batch.dispose();
         shapes.dispose();
+        fog.dispose();
     }
 
     // ---- the setting, remembered between visits ----

@@ -88,6 +88,11 @@ public class Background {
         batch.draw(backgroundTexture, 0, 0, backgroundTexture.getWidth() * scale, backgroundTexture.getHeight() * scale);
         batch.end();
     }
+    /** draws the ground with a different shader (null = the usual one) */
+    public void setShader(com.badlogic.gdx.graphics.glutils.ShaderProgram shader) {
+        batch.setShader(shader);
+    }
+
     /** @return the map picture */
     public Texture getTexture() {
         return backgroundTexture;
