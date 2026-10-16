@@ -142,7 +142,7 @@ public class LobbyScreen implements Screen {
         uiStage.addActor(Cards.center(card));
     }
 
-    private static final String[] DIFFICULTIES = {"EASY", "NORMAL", "HARD"};
+    private static final String[] DIFFICULTIES = {"EASY", "NORMAL", "HARD", "EXTRA HARD"};
     private Label lapsValue, difficultyValue, settingsNote;
     private final List<TextButton> settingButtons = new ArrayList<>();
 
@@ -205,7 +205,7 @@ public class LobbyScreen implements Screen {
         }
         // colour code the difficulty
         int d = networkClient.getDifficulty();
-        difficultyValue.setColor(d == 0 ? Cards.READY : d == 2 ? Cards.ERROR : Ui.GOLD);
+        difficultyValue.setColor(d == 0 ? Cards.READY : d == 3 ? new com.badlogic.gdx.graphics.Color(0.85f, 0.4f, 1f, 1f) : d == 2 ? Cards.ERROR : Ui.GOLD);
         settingsNote.setText(networkClient.isOnline() && !canChange && !networkClient.isFlagShown()
             ? "The host picks the laps and CPU difficulty" : "");
     }

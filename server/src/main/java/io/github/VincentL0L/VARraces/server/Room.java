@@ -258,7 +258,7 @@ public class Room {
                 && state.id.equals(hostId())) {
             try {
                 laps = Math.max(1, Math.min(10, Integer.parseInt(parts[1])));
-                difficulty = Math.max(0, Math.min(2, Integer.parseInt(parts[2])));
+                difficulty = Math.max(0, Math.min(3, Integer.parseInt(parts[2])));
                 broadcast(settingsMessage());
             } catch (NumberFormatException e) {
                 // ignore bad settings

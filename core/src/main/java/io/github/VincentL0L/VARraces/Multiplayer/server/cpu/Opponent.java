@@ -560,7 +560,7 @@ public class Opponent {
 
     /**
      * Makes this CPU a weaker or stronger driver. Call once, right after creating it.
-     * @param difficulty 0 easy, 1 normal, 2 hard
+     * @param difficulty 0 easy, 1 normal, 2 hard, 3 extra hard
      */
     public void setDifficulty(int difficulty) {
         if (difficulty == 0) {
@@ -578,6 +578,15 @@ public class Opponent {
             turnRate *= 1.12f;
             cornerRadius *= 0.88f;
             reactionDelay *= 0.4f;
+        } else if (difficulty >= 3) {
+            // extra hard: faster than any car in the garage, launches like a dragster,
+            // brakes late, carries speed through the corners and reacts instantly
+            topSpeed *= 1.18f;
+            acceleration *= 1.65f;
+            braking *= 1.3f;
+            turnRate *= 1.22f;
+            cornerRadius *= 0.78f;
+            reactionDelay *= 0.1f;
         }
     }
 

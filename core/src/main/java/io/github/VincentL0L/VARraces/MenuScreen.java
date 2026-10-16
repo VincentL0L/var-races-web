@@ -55,33 +55,24 @@ public class MenuScreen implements Screen {
         TextButton play = new TextButton("Single Player", button);
         TextButton online = new TextButton("Multiplayer", button);
         TextButton skin = new TextButton("Garage", button);
-        TextButton soccer = new TextButton("Race Car Soccer", button);
 
         float buttonWidth = 270;
         float buttonHeight = 58;
         play.setSize(buttonWidth, buttonHeight);
         online.setSize(buttonWidth, buttonHeight);
         skin.setSize(buttonWidth, buttonHeight);
-        soccer.setSize(buttonWidth, buttonHeight);
 
         // a column of buttons under the sign
         float x = Ui.width() * 0.5f - buttonWidth * 0.5f;
         float top = Math.min(Ui.height() - 250f, 380f);
-        float gap = Math.min(76f, (top - 30f) / 3f);
+        float gap = Math.min(76f, (top - 30f) / 2f);
         play.setPosition(x, top);
         online.setPosition(x, top - gap);
         skin.setPosition(x, top - gap * 2);
-        soccer.setPosition(x, top - gap * 3);
 
         stage.addActor(play);
         stage.addActor(online);
         stage.addActor(skin);
-        stage.addActor(soccer);
-        soccer.addListener(new ClickListener() {
-            public void clicked(InputEvent e, float x, float y) {
-                game.setScreen(new io.github.VincentL0L.VARraces.soccer.SoccerScreen(game, car));
-            }
-        });
 
         play.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {

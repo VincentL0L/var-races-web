@@ -669,14 +669,14 @@ public class NetworkClient {
         return out;
     }
 
-    // race settings: laps and CPU difficulty (0 easy, 1 normal, 2 hard)
+    // race settings: laps and CPU difficulty (0 easy, 1 normal, 2 hard, 3 extra hard)
     private int laps = 1;
     private int difficulty = 1;
     private String hostId;
 
     /**
      * changes the race settings (online only the host can, and the server tells everyone)
-     * @param lapCount laps   @param cpuDifficulty 0 easy, 1 normal, 2 hard
+     * @param lapCount laps   @param cpuDifficulty 0 easy, 1 normal, 2 hard, 3 extra hard
      */
     public void setRaceSettings(int lapCount, int cpuDifficulty) {
         if (!canChangeSettings()) {
@@ -705,7 +705,7 @@ public class NetworkClient {
     }
 
     /**
-     * @return CPU difficulty: 0 easy, 1 normal, 2 hard
+     * @return CPU difficulty: 0 easy, 1 normal, 2 hard, 3 extra hard
      */
     public int getDifficulty() {
         return difficulty;

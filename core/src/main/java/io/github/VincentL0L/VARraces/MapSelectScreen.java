@@ -31,7 +31,7 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
  * highlighted map.
  */
 public class MapSelectScreen implements Screen {
-    private static final float TILE_WIDTH = 210f;
+    private static final float TILE_WIDTH = 184f;
     /** maps per row of the grid */
     private static final int COLUMNS = 4;
     /** the last map picked, highlighted first next time */
@@ -52,23 +52,32 @@ public class MapSelectScreen implements Screen {
     private final List<Texture> previews = new ArrayList<>();
     private final TrackBackdrop[] backdrops;
     private int selected = 0;
-    private final TextButton[] tabs = new TextButton[3];
-    private final Table[] grids = {new Table(), new Table(), new Table()};
+    /** Circuits, Sprints, Battle, and Soccer (a mode of its own, not a map) */
+    private static final int SOCCER = 3;
+    private final TextButton[] tabs = new TextButton[4];
+    private final Table[] grids = {new Table(), new Table(), new Table(), new Table()};
+    private int tab = 0;
+    private Texture pitch;
     private com.badlogic.gdx.scenes.scene2d.ui.Cell<Table> gridCell;
     private Label sprintsNote;
 
     private static final String[] TAB_NOTES = {"", "One run from start to finish. No laps.",
-        "Demolition derby: ram everyone, last car driving wins. Heavy cars hit harder."};
+        "Demolition derby: ram everyone, last car driving wins. Heavy cars hit harder.",
+        "Online, in first person: knock the ball into their goal. Boost pads and power-ups."};
 
     /** shows one kind of map (CIRCUIT, SPRINT or BATTLE); its tab is lit */
     private void showTab(int category) {
+        tab = category;
         gridCell.setActor(grids[category]);
-        for (int t = 0; t < 3; t++) {
+        for (int t = 0; t < tabs.length; t++) {
             boolean on = t == category;
             tabs[t].getLabel().setColor(on ? Ui.TEXT_DARK : Cards.LABEL);
             tabs[t].setColor(on ? Color.WHITE : new Color(1f, 1f, 1f, 0.55f));
         }
         sprintsNote.setText(TAB_NOTES[category]);
+        if (category == SOCCER) {
+            return;
+        }
         // highlight the first map of the tab unless the picked one is already on it
         if (maps.get(selected).category() != category) {
             for (int i = 0; i < maps.size(); i++) {
@@ -122,10 +131,14 @@ public class MapSelectScreen implements Screen {
         kicker = Cards.kicker(host == null ? "SINGLE PLAYER" : hostPublic ? "HOST A PUBLIC RACE" : "HOST A PRIVATE RACE");
         card.add(kicker).left().row();
         // the title, with tabs on the right: circuits (laps) or sprints (A to B)
+        // the title, then the kinds of race in a row of tabs underneath
+        card.add(Cards.title("CHOOSE A TRACK", 40)).left().padTop(2).row();
         Table header = new Table();
-        header.add(Cards.title("CHOOSE A TRACK", 40)).left().expandX();
-        String[] tabNames = {"Circuits", "Sprints", "Battle"};
-        for (int t = 0; t < 3; t++) {
+        header.left();
+        String[] tabNames = {"Circuits", "Sprints", "Battle", "Soccer"};
+        // soccer has its own online lobby, so it's offered when picking a mode, not when hosting a race
+        int tabCount = host == null ? 4 : 3;
+        for (int t = 0; t < tabCount; t++) {
             final int tab = t;
             tabs[t] = Cards.smallButton(tabNames[t], skin);
             tabs[t].addListener(new ClickListener() {
@@ -133,9 +146,13 @@ public class MapSelectScreen implements Screen {
                     showTab(tab);
                 }
             });
-            header.add(tabs[t]).width(118).height(44).padLeft(8);
+            header.add(tabs[t]).width(118).height(40).padRight(8);
         }
-        card.add(header).padTop(2).padBottom(14).row();
+        if (host != null) {
+            tabs[SOCCER] = Cards.smallButton("Soccer", skin);     // not shown
+        }
+        grids[SOCCER].add(soccerTile()).width(TILE_WIDTH).fillY().padBottom(12);
+        card.add(header).left().padTop(6).padBottom(12).row();
 
         // a grid of cards per kind of map, four to a row; one is shown at a time
         for (int g = 0; g < 3; g++) {
@@ -223,6 +240,48 @@ public class MapSelectScreen implements Screen {
         return tile;
     }
 
+    /** the Soccer tab's one card: a pitch with two goals, the ball on the centre spot */
+    private Table soccerTile() {
+        com.badlogic.gdx.graphics.Pixmap p = new com.badlogic.gdx.graphics.Pixmap(160, 90, com.badlogic.gdx.graphics.Pixmap.Format.RGBA8888);
+        for (int x = 0; x < 160; x++) {
+            p.setColor((x / 16) % 2 == 0 ? new Color(0.3f, 0.62f, 0.25f, 1f) : new Color(0.27f, 0.57f, 0.22f, 1f));
+            p.drawLine(x, 0, x, 89);
+        }
+        p.setColor(Color.WHITE);
+        p.drawRectangle(8, 8, 144, 74);
+        p.drawLine(80, 8, 80, 81);
+        p.drawCircle(80, 45, 14);
+        p.drawRectangle(8, 28, 16, 34);
+        p.drawRectangle(136, 28, 16, 34);
+        p.setColor(new Color(0.85f, 0.25f, 0.2f, 1f));
+        p.fillRectangle(2, 36, 6, 18);
+        p.setColor(new Color(0.25f, 0.45f, 0.9f, 1f));
+        p.fillRectangle(152, 36, 6, 18);
+        p.setColor(Color.WHITE);
+        p.fillCircle(80, 45, 4);
+        pitch = new Texture(p);
+        p.dispose();
+        Table tile = new Table();
+        tile.pad(8, 8, 10, 8);
+        tile.top();
+        tile.setTouchable(Touchable.enabled);
+        tile.setBackground(new NinePatchDrawable(Ui.frame()));
+        float imageWidth = TILE_WIDTH - 16f;
+        tile.add(new Image(pitch)).size(imageWidth, imageWidth * 9f / 16f).row();
+        tile.add(new Label("RACE CAR SOCCER", new LabelStyle(Ui.display(18), Ui.GOLD))).left().padTop(6).row();
+        Label tagline = new Label("1v1 or 2v2 online. Cars, a giant ball, two goals.", new LabelStyle(Ui.font(9), Cards.LABEL));
+        tagline.setWrap(true);
+        tile.add(tagline).width(imageWidth).left().padTop(4).row();
+        tile.addListener(new ClickListener() {
+            public void clicked(InputEvent e, float x, float y) {
+                if (getTapCount() >= 2) {
+                    go();
+                }
+            }
+        });
+        return tile;
+    }
+
     /** gold frame and gold name on the highlighted map; the backdrop shows it too */
     private void select(int index) {
         selected = index;
@@ -239,6 +298,10 @@ public class MapSelectScreen implements Screen {
     }
 
     private void go() {
+        if (tab == SOCCER) {
+            game.setScreen(new io.github.VincentL0L.VARraces.soccer.SoccerScreen(game, selectedCar));
+            return;
+        }
         TrackMap map = maps.get(selected);
         lastMap = map.id;
         if (host != null) {
@@ -299,6 +362,9 @@ public class MapSelectScreen implements Screen {
         }
         for (Texture t : previews) {
             t.dispose();
+        }
+        if (pitch != null) {
+            pitch.dispose();
         }
         stage.dispose();
         skin.dispose();
