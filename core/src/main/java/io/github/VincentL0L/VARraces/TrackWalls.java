@@ -37,12 +37,19 @@ public final class TrackWalls {
             float ox = -w.nx * THICKNESS, oy = -w.ny * THICKNESS;
             float length = Math.abs(w.bx - w.ax) + Math.abs(w.by - w.ay);
             Color shade = new Color(0.86f + w.nx * 0.08f, 0.89f + w.ny * 0.06f, 0.95f, 1f);
-            face(wallBuilder, w.ax, w.ay, w.bx, w.by, 0, HEIGHT, length / 64f, shade);
-            face(wallBuilder, w.bx + ox, w.by + oy, w.ax + ox, w.ay + oy, 0, HEIGHT,
-                length / 64f, shade);
-            wallBuilder.quad(w.ax, w.ay, HEIGHT, w.bx, w.by, HEIGHT,
-                w.bx + ox, w.by + oy, HEIGHT, w.ax + ox, w.ay + oy, HEIGHT,
-                0, 0, length / 64f, 0, length / 64f, 0.07f, 0, 0.07f, Color.WHITE);
+            // in short sections, so the barrier follows the hills the road runs over
+            int pieces = Math.max(1, (int) Math.ceil(length / 16f));
+            for (int k = 0; k < pieces; k++) {
+                float t0 = k / (float) pieces, t1 = (k + 1) / (float) pieces;
+                float ax = w.ax + (w.bx - w.ax) * t0, ay = w.ay + (w.by - w.ay) * t0;
+                float bx = w.ax + (w.bx - w.ax) * t1, by = w.ay + (w.by - w.ay) * t1;
+                float u0 = length * t0 / 64f, u1 = length * t1 / 64f;
+                wallBuilder.quad(ax, ay, 0, bx, by, 0, bx, by, HEIGHT, ax, ay, HEIGHT, u0, 1, u1, 1, u1, 0, u0, 0, shade);
+                wallBuilder.quad(bx + ox, by + oy, 0, ax + ox, ay + oy, 0, ax + ox, ay + oy, HEIGHT, bx + ox, by + oy, HEIGHT,
+                    u1, 1, u0, 1, u0, 0, u1, 0, shade);
+                wallBuilder.quad(ax, ay, HEIGHT, bx, by, HEIGHT, bx + ox, by + oy, HEIGHT, ax + ox, ay + oy, HEIGHT,
+                    u0, 0, u1, 0, u1, 0.07f, u0, 0.07f, Color.WHITE);
+            }
         }
         wallBuilder.finish();
         Scenery3D.Builder wallBuilder2 = new Scenery3D.Builder(walls);
