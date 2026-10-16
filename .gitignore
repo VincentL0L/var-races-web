@@ -164,6 +164,8 @@ Thumbs.db
 **/resource-config.json
 
 ## Web / server
+.env.local
+.gradle-local/
 .firebase/
 /teavm/build/
 .claude/

@@ -200,7 +200,7 @@ public class Scenery3D {
     }
 
     /** builds meshes of quads, starting a new one when it gets full */
-    private static class Builder {
+    static class Builder {
         final List<Mesh> out;
         final FloatArray verts = new FloatArray();
         int quads = 0;

@@ -1,0 +1,7 @@
+{
+  "name": "var-races-local",
+  "private": true,
+  "scripts": {
+    "dev": "bash tools/dev.sh"
+  }
+}

@@ -41,6 +41,9 @@ This copy adds:
   replaced the KryoNet `GameServer`. Players connect over WebSockets, so both the
   browser and desktop versions can race each other.
 - Single Player runs the same race logic locally against 3 CPU cars (`NetworkClient`).
+- Race courses have raised track walls and yellow chevron boards at turns in the
+  first-person view. The overhead view shows the same collision boundary as a yellow
+  curb. `V` switches views during a race; battle arenas keep their existing layout.
 - Multiplayer lists public races, creates public or private races, or joins one with a 4-letter code.
 - Sharp text on Retina screens (`Ui`). Titles use the game's own racing font drawn by
   `tools/make_speed_font.py`; small text uses Michroma (SIL OFL, see `tools/`).
@@ -48,6 +51,11 @@ This copy adds:
 - A pixel-art speedometer (`tools/make_speedometer.py`).
 
 Commands:
+
+- Local preview (JDK 17+, Python 3, Node/npm): `npm run dev`. This builds and tests
+  the updated game, starts the race server, and serves the website at
+  `http://localhost:8000`. Press Ctrl+C to stop both servers. Optional settings
+  in `.env.local`: `JAVA_HOME`, `GRADLE_BIN`, `WEB_PORT` (8000), and `PORT` (8080).
 
 - Play locally: `./gradlew server:run`, then `./gradlew teavm:buildJavaScript` and serve
   `teavm/build/dist/webapp` (on localhost the game uses `ws://localhost:8080`)

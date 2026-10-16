@@ -88,6 +88,11 @@ public class TrackMap {
         return !battle && !pointToPoint;
     }
 
+    /** All racing courses are enclosed; arenas keep their original open layout. */
+    public boolean hasBarriers() {
+        return barriers || !battle;
+    }
+
     /** arena starting spots: a ring round the middle, everyone facing in */
     private static final int SPAWNS = 10;
 
@@ -161,7 +166,7 @@ public class TrackMap {
     public static List<TrackMap> all() {
         if (maps == null) {
             maps = new ArrayList<>();
-            maps.add(new TrackMap(CLASSIC, "Classic", "The original circuit. Cut across the grass if you dare.",
+            maps.add(new TrackMap(CLASSIC, "Classic", "The original circuit. Follow the chevrons through the turns.",
                 "ui/", "road_mask.png", Waypoints.getWaypoints(), false, null, "CPU"));
             maps.add(new TrackMap(SAN_FRANCISCO, "San Francisco",
                 "Over the Golden Gate and down the Embarcadero, against Waymos.",

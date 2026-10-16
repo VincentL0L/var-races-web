@@ -2,6 +2,8 @@ package io.github.VincentL0L.VARraces;
 
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Pixmap;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Walls around the track on maps that have them (San Francisco: the buildings), so
@@ -31,6 +33,17 @@ public class Barriers {
     private static int cellSize = CELL;
     /** distance from each cell to the road, in chamfer steps (3 per cell) */
     private static int[] distance;
+    private static List<Wall> walls;
+
+    /** A straight section of the collision boundary; n points toward the road. */
+    public static class Wall {
+        public final float ax, ay, bx, by, nx, ny;
+
+        Wall(float ax, float ay, float bx, float by, float nx, float ny) {
+            this.ax = ax; this.ay = ay; this.bx = bx; this.by = by;
+            this.nx = nx; this.ny = ny;
+        }
+    }
 
     /**
      * works out the distances once from the road mask
@@ -91,6 +104,7 @@ public class Barriers {
             }
         }
         distance = d;
+        walls = null;
     }
 
     /**
@@ -98,6 +112,7 @@ public class Barriers {
      * @return how far that spot is from the road, in map pixels
      */
     public static float distanceToRoad(float x, float y) {
+        if (x < 0 || y < 0) return Float.MAX_VALUE;
         int gx = (int) (x / cellSize);
         int gy = (int) ((mapHeight - y) / cellSize);
         if (distance == null || gx < 0 || gy < 0 || gx >= gridWidth || gy >= gridHeight) {
@@ -111,5 +126,55 @@ public class Barriers {
      */
     public static boolean drivable(float x, float y) {
         return distanceToRoad(x, y) <= RUNOFF;
+    }
+
+    /** Leave room for the whole car rather than letting its center touch the wall. */
+    public static boolean drivable(float x, float y, float radius) {
+        if (!drivable(x, y)) return false;
+        for (int i = 0; i < 16; i++) {
+            double angle = i * Math.PI / 8;
+            if (!drivable(x + radius * (float) Math.cos(angle),
+                    y + radius * (float) Math.sin(angle))) return false;
+        }
+        return true;
+    }
+
+    private static boolean cellDrivable(int x, int y) {
+        return x >= 0 && y >= 0 && x < gridWidth && y < gridHeight
+            && distance[y * gridWidth + x] * (float) cellSize / STRAIGHT <= RUNOFF;
+    }
+
+    /** Merge adjacent boundary edges into straight walls, using the same grid as collision. */
+    public static List<Wall> walls() {
+        if (walls != null) return walls;
+        walls = new ArrayList<>();
+        if (distance == null) return walls;
+        for (int x = 0; x <= gridWidth; x++) {
+            int start = 0, previous = 0;
+            for (int y = 0; y <= gridHeight; y++) {
+                int side = y == gridHeight ? 0
+                    : (cellDrivable(x, y) ? 1 : 0) - (cellDrivable(x - 1, y) ? 1 : 0);
+                if (side != previous) {
+                    if (previous != 0) walls.add(new Wall(x * cellSize, mapHeight - start * cellSize,
+                        x * cellSize, mapHeight - y * cellSize, previous, 0));
+                    start = y;
+                    previous = side;
+                }
+            }
+        }
+        for (int y = 0; y <= gridHeight; y++) {
+            int start = 0, previous = 0;
+            for (int x = 0; x <= gridWidth; x++) {
+                int side = x == gridWidth ? 0
+                    : (cellDrivable(x, y - 1) ? 1 : 0) - (cellDrivable(x, y) ? 1 : 0);
+                if (side != previous) {
+                    if (previous != 0) walls.add(new Wall(start * cellSize, mapHeight - y * cellSize,
+                        x * cellSize, mapHeight - y * cellSize, 0, previous));
+                    start = x;
+                    previous = side;
+                }
+            }
+        }
+        return walls;
     }
 }

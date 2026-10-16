@@ -205,7 +205,7 @@ public class Player {
 
         roadMask = new Pixmap(Gdx.files.internal(map.roadMask));
         maskScale = map.scale;
-        barriers = map.barriers;
+        barriers = map.hasBarriers();
         surfaceGrip = map.grip;
         surfaceTraction = map.traction;
         if (barriers) {
@@ -545,7 +545,7 @@ public class Player {
         float cx = x + width / 2, cy = y + height / 2;
         return cx >= MAP_MARGIN && cy >= MAP_MARGIN
             && cx < roadMask.getWidth() * maskScale - MAP_MARGIN && cy < roadMask.getHeight() * maskScale - MAP_MARGIN
-            && (!barriers || Barriers.drivable(cx, cy));
+            && (!barriers || Barriers.drivable(cx, cy, Math.max(width, height) / 2f));
     }
 
     /**

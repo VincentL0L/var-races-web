@@ -61,6 +61,7 @@ public class GameScreen implements Screen {
     private CameraController camControl;
     private Overlay over;
     private Player player;
+    private TrackWalls trackWalls;
     private float end = 0f;
     /** stopwatch: seconds since GO */
     private float raceClock = 0f;
@@ -121,6 +122,7 @@ public class GameScreen implements Screen {
         Sounds.stopMusic();
 
         player = new Player(stage, car, map);
+        trackWalls = new TrackWalls(map);
         player.setInputEnabled(false);
         player.getImage().setPosition(x, y);
         // arenas: everyone starts facing the middle
@@ -260,7 +262,6 @@ public class GameScreen implements Screen {
                     Sounds.play("block", 0.6f);
                 } else if (effect.equals("DMG")) {
                     over.flashDamage();
-                    camControl.shake(6f);
                     Sounds.play("hit", 0.6f, MathUtils.random(0.9f, 1.1f));
                 } else if (effect.equals("OUT")) {
                     Sounds.play("knockout", 0.8f);
@@ -294,7 +295,7 @@ public class GameScreen implements Screen {
             player.render(delta);
         }
         camControl.update(player.getX() + player.getWidth() / 2f,
-        player.getY() + player.getHeight() / 2f, player.getRotation() + 90f, delta);
+            player.getY() + player.getHeight() / 2f, delta);
 
         if (!frozen) {
             nc.sendPos(player.getX(), player.getY(), player.getRotation());
@@ -367,6 +368,7 @@ public class GameScreen implements Screen {
             // item boxes and oil under the cars; rockets and shields over them
             worldBatch.setProjectionMatrix(stage.getCamera().combined);
             worldBatch.begin();
+            trackWalls.renderTopDown(worldBatch);
             itemArt.drawGround(worldBatch, nc.getItemView(), dt);
             worldBatch.end();
             stage.draw();
@@ -426,7 +428,7 @@ public class GameScreen implements Screen {
             fp = new FirstPersonView(map, bg.getTexture());
         }
         fp.update(player.getX() + player.getWidth() / 2f, player.getY() + player.getHeight() / 2f,
-            player.getRotation() + 90f, delta, camControl.getShake());
+            player.getRotation() + 90f, delta, 0f);
         Color sky = fp.getSky();
         Gdx.gl.glClearColor(sky.r, sky.g, sky.b, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
@@ -439,6 +441,7 @@ public class GameScreen implements Screen {
         bg.setShader(null);
         // trees and buildings stand up; from here on things hide behind them
         fp.drawScenery();
+        trackWalls.render3D(pc, fp.groundShader());
         List<FirstPersonView.CarShape> others = new ArrayList<>();
         for (OpponentState o : nwOpp.values()) {
             others.add(new FirstPersonView.CarShape(o.img));
@@ -719,6 +722,7 @@ public class GameScreen implements Screen {
     public void dispose() {
         disposed = true;
         frost.dispose();
+        trackWalls.dispose();
         if (fp != null) {
             fp.dispose();
         }
