@@ -76,6 +76,9 @@ public class GameScreen implements Screen {
     private ItemRenderer itemArt;
     private final com.badlogic.gdx.graphics.g2d.SpriteBatch worldBatch = new com.badlogic.gdx.graphics.g2d.SpriteBatch();
     private final Map<String, Vector2> carCenters = new HashMap<>();
+    /** first person: the driver's-seat camera (V switches views mid-race) */
+    private boolean firstPerson = FirstPersonView.isEnabled();
+    private FirstPersonView fp;
     /** how far from the track counts as off it (the road is about 125 wide) */
     private static final float OFF_TRACK_DISTANCE = 95f;
 
@@ -347,23 +350,27 @@ public class GameScreen implements Screen {
         if (frosted) {
             frost.begin();
         }
-        bg.render(stage.getCamera());
-        // item boxes and oil under the cars; rockets and shields over them
-        worldBatch.setProjectionMatrix(stage.getCamera().combined);
-        worldBatch.begin();
-        itemArt.drawGround(worldBatch, nc.getItemView(), dt);
-        worldBatch.end();
         stage.act(dt);
-        stage.draw();
         carCenters.clear();
         carCenters.put(nc.getPlayerId(), new Vector2(player.getX() + player.getWidth() / 2f, player.getY() + player.getHeight() / 2f));
         for (Map.Entry<String, OpponentState> e : nwOpp.entrySet()) {
             Image img = e.getValue().img;
             carCenters.put(e.getKey(), new Vector2(img.getX() + img.getWidth() / 2f, img.getY() + img.getHeight() / 2f));
         }
-        worldBatch.begin();
-        itemArt.drawAir(worldBatch, nc.getItemView(), carCenters);
-        worldBatch.end();
+        if (firstPerson) {
+            renderFirstPerson(delta, dt);
+        } else {
+            bg.render(stage.getCamera());
+            // item boxes and oil under the cars; rockets and shields over them
+            worldBatch.setProjectionMatrix(stage.getCamera().combined);
+            worldBatch.begin();
+            itemArt.drawGround(worldBatch, nc.getItemView(), dt);
+            worldBatch.end();
+            stage.draw();
+            worldBatch.begin();
+            itemArt.drawAir(worldBatch, nc.getItemView(), carCenters);
+            worldBatch.end();
+        }
         if (map.battle) {
             drawHealthBars();
             drawOpponentArrows();
@@ -407,6 +414,38 @@ public class GameScreen implements Screen {
         }
     }
 
+    /**
+     * the world from the driver's seat: sky, the map stretching to the horizon, the other
+     * cars as boxes, our hood, then whatever's flying through the air
+     */
+    private void renderFirstPerson(float delta, float dt) {
+        if (fp == null) {
+            fp = new FirstPersonView(map);
+        }
+        fp.update(player.getX() + player.getWidth() / 2f, player.getY() + player.getHeight() / 2f,
+            player.getRotation() + 90f, delta, camControl.getShake());
+        Color sky = fp.getSky();
+        Gdx.gl.glClearColor(sky.r, sky.g, sky.b, 1f);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+        com.badlogic.gdx.graphics.PerspectiveCamera pc = fp.getCamera();
+        float r = pc.far;
+        bg.render(pc, pc.position.x - r, pc.position.y - r, pc.position.x + r, pc.position.y + r);
+        com.badlogic.gdx.graphics.g2d.SpriteBatch ground = fp.groundBatch();
+        ground.begin();
+        itemArt.drawGround(ground, nc.getItemView(), dt);
+        ground.end();
+        List<FirstPersonView.CarShape> others = new ArrayList<>();
+        for (OpponentState o : nwOpp.values()) {
+            others.add(new FirstPersonView.CarShape(o.img));
+        }
+        fp.drawCars(others);
+        fp.drawOwnCar(player.getImage());
+        com.badlogic.gdx.graphics.g2d.SpriteBatch air = fp.airBatch(7f);
+        air.begin();
+        itemArt.drawAir(air, nc.getItemView(), carCenters);
+        air.end();
+    }
+
     /** the sound of using an item (the Nitro's whoosh plays when the boost arrives) */
     private static void playItemSound(io.github.VincentL0L.VARraces.Multiplayer.server.cpu.ItemSystem.Item item) {
         if (item == null) {
@@ -442,10 +481,19 @@ public class GameScreen implements Screen {
                 continue;
             }
             float hp = MathUtils.clamp((r.progress - io.github.VincentL0L.VARraces.Multiplayer.server.cpu.BattleSystem.ALIVE) / 100f, 0f, 1f);
-            p.set(c.x, c.y, 0f);
-            stage.getCamera().project(p, 0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
             float u = Ui.density / px;
-            float w = 34f * u, h = 5f * u, x = p.x / px - w / 2f, y = p.y / px + 22f * u;
+            float lift = 22f * u;
+            if (firstPerson && fp != null) {
+                // first person: the bar floats over the roof, smaller with distance
+                if (r.name.equals(nc.getPlayerId()) || !fp.project(c.x, c.y, 13f, p)) {
+                    continue;
+                }
+                lift = 0f;
+            } else {
+                p.set(c.x, c.y, 0f);
+                stage.getCamera().project(p, 0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
+            }
+            float w = 34f * u, h = 5f * u, x = p.x / px - w / 2f, y = p.y / px + lift;
             bars.setColor(0.1f, 0.07f, 0.05f, 0.85f);
             bars.rect(x - u, y - u, w + 2f * u, h + 2f * u);
             bars.setColor(hp > 0.5f ? 0.35f : hp > 0.25f ? 0.95f : 0.95f, hp > 0.5f ? 0.85f : hp > 0.25f ? 0.75f : 0.3f, 0.3f, 1f);
@@ -478,10 +526,14 @@ public class GameScreen implements Screen {
                     || r.progress < io.github.VincentL0L.VARraces.Multiplayer.server.cpu.BattleSystem.ALIVE) {
                 continue;
             }
+            if (firstPerson && fp != null && fp.project(c.x, c.y, 4f, p)) {
+                continue;     // in sight through the windscreen
+            }
+            // the overhead camera (still following us, turned with the car) gives the direction
             p.set(c.x, c.y, 0f);
             stage.getCamera().project(p, 0, 0, Gdx.graphics.getBackBufferWidth(), Gdx.graphics.getBackBufferHeight());
             float sx = p.x / px, sy = p.y / px;
-            if (sx > margin && sx < w - margin && sy > margin && sy < top) {
+            if (!firstPerson && sx > margin && sx < w - margin && sy > margin && sy < top) {
                 continue;     // on screen: no arrow needed
             }
             // pin it to the edge along the line from the middle of the screen
@@ -515,6 +567,10 @@ public class GameScreen implements Screen {
             restart();
         } else if (paused && Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
             quit();
+        } else if (Gdx.input.isKeyJustPressed(Input.Keys.V)) {
+            // V: driver's seat <-> overhead (remembered for the next race)
+            firstPerson = !firstPerson;
+            FirstPersonView.setEnabled(firstPerson);
         } else if (Gdx.input.justTouched()) {
             int row = over.menuRowAt(Gdx.input.getX(), Gdx.input.getY());
             if (row == 0) {
@@ -636,6 +692,9 @@ public class GameScreen implements Screen {
         // false: keep the camera on the car instead of jumping to the middle of the map
         stage.getViewport().update(width, height, false);
         uiStage.getViewport().update(width, height, true);
+        if (fp != null) {
+            fp.resize(width, height);
+        }
         finish.setPosition(Ui.width() / 2f, Ui.height() / 2f, Align.center);
     }
 
@@ -653,6 +712,9 @@ public class GameScreen implements Screen {
      */
     public void dispose() {
         frost.dispose();
+        if (fp != null) {
+            fp.dispose();
+        }
         lights.dispose();
         if (bars != null) {
             bars.dispose();

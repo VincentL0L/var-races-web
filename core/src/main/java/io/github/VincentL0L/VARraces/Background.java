@@ -43,18 +43,21 @@ public class Background {
      * @param camera Camera view for user
      */
     public void render(com.badlogic.gdx.graphics.Camera camera) {
-        batch.setProjectionMatrix(camera.combined);
-        batch.begin();
-        
         Vector3 camPos = camera.position;
         float viewportWidth = camera.viewportWidth;
         float viewportHeight = camera.viewportHeight;
- 
-        float leftEdge = camPos.x - viewportWidth/2;
-        float bottomEdge = camPos.y - viewportHeight/2;
-        float rightEdge = camPos.x + viewportWidth/2;
-        float topEdge = camPos.y + viewportHeight/2;
-        
+        render(camera, camPos.x - viewportWidth/2, camPos.y - viewportHeight/2,
+            camPos.x + viewportWidth/2, camPos.y + viewportHeight/2);
+    }
+
+    /**
+     * draws the ground over a given stretch of the map (first person sees far beyond the
+     * screen-sized patch the overhead camera does)
+     */
+    public void render(com.badlogic.gdx.graphics.Camera camera, float leftEdge, float bottomEdge, float rightEdge, float topEdge) {
+        batch.setProjectionMatrix(camera.combined);
+        batch.begin();
+
         float tileSize = 256;
         
         int startX = (int)(leftEdge / tileSize) - 1;
@@ -65,7 +68,7 @@ public class Background {
         if (scale > 1) {
             // big maps: past the edges, the map's own edge carries on (stretched), not grass
             int tw = backgroundTexture.getWidth(), th = backgroundTexture.getHeight();
-            float mw = tw * scale, mh = th * scale, far = 4000f;
+            float mw = tw * scale, mh = th * scale, far = Math.max(4000f, Math.max(Math.max(rightEdge - mw, -leftEdge), Math.max(topEdge - mh, -bottomEdge)) + 600f);
             batch.draw(backgroundTexture, -far, 0, far, mh, 0, 0, 1, th, false, false);
             batch.draw(backgroundTexture, mw, 0, far, mh, tw - 1, 0, 1, th, false, false);
             batch.draw(backgroundTexture, -far, mh, mw + far * 2, far, 0, 0, tw, 1, false, false);

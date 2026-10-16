@@ -51,6 +51,11 @@ public class CameraController {
         shake = Math.max(shake, amount);
     }
 
+    /** @return how hard the view is shaking right now */
+    public float getShake() {
+        return shake;
+    }
+
     public float getX() {
         return camera.position.x;
     }

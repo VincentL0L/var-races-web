@@ -172,9 +172,18 @@ public class MapSelectScreen implements Screen {
                 go();
             }
         });
+        // how to watch the race: from above, or from the driver's seat (V switches mid-race too)
+        final TextButton view = Cards.smallButton(viewText(), skin);
+        view.addListener(new ClickListener() {
+            public void clicked(InputEvent e, float x, float y) {
+                FirstPersonView.setEnabled(!FirstPersonView.isEnabled());
+                view.setText(viewText());
+            }
+        });
         Table footer = new Table();
         footer.add(back).width(130).height(52);
         footer.add().expandX();
+        footer.add(view).width(230).height(52).padRight(14);
         footer.add(next).width(200).height(60);
         card.add(footer).padTop(8).row();
         stage.addActor(Cards.center(card));
@@ -223,6 +232,10 @@ public class MapSelectScreen implements Screen {
                 : new NinePatchDrawable(Ui.patch("field", 3, 3, 3, 3)));
             names.get(i).setColor(on ? Ui.GOLD : Ui.CREAM);
         }
+    }
+
+    private static String viewText() {
+        return FirstPersonView.isEnabled() ? "View: 1st Person" : "View: Overhead";
     }
 
     private void go() {
