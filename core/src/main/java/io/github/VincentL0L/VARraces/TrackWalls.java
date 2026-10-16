@@ -14,9 +14,14 @@ import com.badlogic.gdx.graphics.g2d.Batch;
 import com.badlogic.gdx.graphics.glutils.ShaderProgram;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 
-/** Raised track walls and large yellow chevron boards, generated from the collision boundary. */
+/**
+ * The track's edge in first person, generated from the collision boundary: a knee-high
+ * concrete barrier topped with the same red and white kerb stripes the map paints, low
+ * enough to see the city over, and small chevron boards on posts at the corners.
+ */
 public final class TrackWalls {
-    private static final float HEIGHT = 32f, THICKNESS = 3f;
+    /** a car's bonnet is 3.6 high and our eyes about 6.3: the barrier stays under the view */
+    private static final float HEIGHT = 4.2f, THICKNESS = 2.5f;
     private final List<Barriers.Wall> boundary;
     private final List<Mesh> walls = new ArrayList<>(), left = new ArrayList<>(), right = new ArrayList<>();
     private final Texture concrete, leftArrow, rightArrow;
@@ -40,15 +45,23 @@ public final class TrackWalls {
                 0, 0, length / 64f, 0, length / 64f, 0.07f, 0, 0.07f, Color.WHITE);
         }
         wallBuilder.finish();
+        Scenery3D.Builder wallBuilder2 = new Scenery3D.Builder(walls);
         Scenery3D.Builder leftBuilder = new Scenery3D.Builder(left);
         Scenery3D.Builder rightBuilder = new Scenery3D.Builder(right);
         for (TrackGuidance.Sign sign : TrackGuidance.signs(map)) {
-            float half = 36f;
+            // a small board on two posts, its bottom at the barrier's top
+            float half = 20f;
             face(sign.turnRight ? rightBuilder : leftBuilder,
                 sign.x - sign.rightX * half, sign.y - sign.rightY * half,
                 sign.x + sign.rightX * half, sign.y + sign.rightY * half,
-                7f, 31f, 1f, Color.WHITE);
+                HEIGHT + 1.5f, HEIGHT + 12f, 1f, Color.WHITE);
+            for (int side = -1; side <= 1; side += 2) {
+                float px = sign.x + side * sign.rightX * (half - 3f), py = sign.y + side * sign.rightY * (half - 3f);
+                face(wallBuilder2, px - sign.rightX * 0.6f, py - sign.rightY * 0.6f,
+                    px + sign.rightX * 0.6f, py + sign.rightY * 0.6f, 0f, HEIGHT + 1.5f, 0.02f, new Color(0.35f, 0.36f, 0.4f, 1f));
+            }
         }
+        wallBuilder2.finish();
         leftBuilder.finish();
         rightBuilder.finish();
     }
@@ -88,16 +101,30 @@ public final class TrackWalls {
         }
     }
 
+    /**
+     * a concrete barrier: red and white kerb blocks along the top (as the map paints its
+     * kerbs), pale concrete below with joints, darker where it meets the road
+     */
     private static Texture wallTexture() {
         Pixmap p = new Pixmap(128, 64, Pixmap.Format.RGBA8888);
-        p.setColor(0.18f, 0.23f, 0.3f, 1f); p.fill();
-        p.setColor(0.29f, 0.35f, 0.43f, 1f); p.fillRectangle(2, 10, 124, 44);
-        p.setColor(0.1f, 0.14f, 0.19f, 1f);
-        p.fillRectangle(0, 8, 3, 48); p.fillRectangle(63, 8, 3, 48);
-        p.setColor(1f, 0.76f, 0.12f, 1f);
-        p.fillRectangle(0, 0, 128, 7); p.fillRectangle(0, 57, 128, 7);
+        p.setColor(0.78f, 0.78f, 0.76f, 1f); p.fill();
+        for (int y = 40; y < 64; y++) {
+            float f = 0.78f - (y - 40) * 0.012f;
+            p.setColor(f, f, f * 0.98f, 1f);
+            p.drawLine(0, y, 127, y);
+        }
+        p.setColor(0.6f, 0.6f, 0.59f, 1f);
+        p.drawLine(63, 14, 63, 63);
+        p.drawLine(127, 14, 127, 63);
+        for (int k = 0; k < 4; k++) {
+            p.setColor(k % 2 == 0 ? new Color(0.85f, 0.2f, 0.17f, 1f) : new Color(0.96f, 0.96f, 0.94f, 1f));
+            p.fillRectangle(k * 32, 0, 32, 13);
+        }
+        p.setColor(0.45f, 0.45f, 0.45f, 1f);
+        p.drawLine(0, 13, 127, 13);
         Texture t = new Texture(p); p.dispose();
         t.setWrap(Texture.TextureWrap.Repeat, Texture.TextureWrap.ClampToEdge);
+        t.setFilter(Texture.TextureFilter.Nearest, Texture.TextureFilter.Nearest);
         return t;
     }
 
