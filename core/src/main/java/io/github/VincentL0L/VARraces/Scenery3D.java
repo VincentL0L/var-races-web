@@ -81,9 +81,13 @@ public class Scenery3D {
     /**
      * @param map the map   @param picture its picture (already loaded for the ground)
      */
+    private final Landmarks3D landmarks;
+
     public Scenery3D(TrackMap map, Texture picture, ShaderProgram shader) {
         this.picture = picture;
         this.shader = shader;
+        landmarks = new Landmarks3D(map);
+        java.util.List<float[]> clear = landmarks.clearAreas();
         String file = map.background.replace("background.png", "heights.png");
         Pixmap hp, colours;
         try {
@@ -122,6 +126,9 @@ public class Scenery3D {
                 // the picture's rows run top down; the map's y runs up
                 float x0 = gx * CELL, x1 = Math.min(worldW, x0 + CELL);
                 float y1 = worldH - gy * CELL, y0 = Math.max(0f, y1 - CELL);
+                if (inside(clear, (x0 + x1) / 2f, (y0 + y1) / 2f)) {
+                    continue;     // a landmark stands here, built properly (Landmarks3D)
+                }
                 average(colours, gx * CELL / scale, gy * CELL / scale, CELL / scale, avg, kind[gx][gy] == 1);
                 int seed = gx * 73856093 ^ gy * 19349663;
                 if (kind[gx][gy] == 1) {
@@ -158,6 +165,15 @@ public class Scenery3D {
         roofB.finish();
         wallB.finish();
         treeB.finish();
+    }
+
+    private static boolean inside(java.util.List<float[]> areas, float x, float y) {
+        for (float[] a : areas) {
+            if (x >= a[0] && x <= a[2] && y >= a[1] && y <= a[3]) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** the colour of a patch of the map picture (just the leafy pixels for a tree) */
@@ -332,7 +348,7 @@ public class Scenery3D {
 
     /** @return true if this map has anything standing up */
     public boolean isEmpty() {
-        return roofs.isEmpty() && walls.isEmpty() && trees.isEmpty();
+        return roofs.isEmpty() && walls.isEmpty() && trees.isEmpty() && landmarks.isEmpty();
     }
 
     /**
@@ -354,6 +370,7 @@ public class Scenery3D {
         shader.setUniformf("u_cutout", 0f);
         draw(roofs, picture);
         draw(walls, facade);
+        draw(landmarks.meshes(), landmarks.texture());
         shader.setUniformf("u_cutout", 0.5f);
         draw(trees, tree);
         shader.setUniformf("u_cutout", 0f);
@@ -375,6 +392,7 @@ public class Scenery3D {
                 m.dispose();
             }
         }
+        landmarks.dispose();
         if (facade != null) {
             facade.dispose();
             tree.dispose();
