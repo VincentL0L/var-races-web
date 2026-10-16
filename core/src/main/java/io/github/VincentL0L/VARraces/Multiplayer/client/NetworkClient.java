@@ -367,6 +367,8 @@ public class NetworkClient {
         } else if (type.equals("LEFT")) {
             playerReadyStates.remove(parts[1]);
             opponents.remove(parts[1]);
+            opponentCars.remove(parts[1]);
+            poseHistory.remove(parts[1]);
         } else if (type.equals("ITEMS")) {
             itemView = parts[1] + "|" + parts[2] + "|" + parts[3] + "|" + parts[4] + "|" + (parts.length > 5 ? parts[5] : "");
         } else if (type.equals("GOT")) {
@@ -413,6 +415,7 @@ public class NetworkClient {
         } else if (type.equals("SETTINGS")) {
             laps = Integer.parseInt(parts[1]);
             difficulty = Integer.parseInt(parts[2]);
+            botsEnabled = parts.length < 4 || Boolean.parseBoolean(parts[3]);
         } else if (type.equals("HOST")) {
             hostId = parts[1];
         } else if (type.equals("DMG")) {
@@ -672,6 +675,7 @@ public class NetworkClient {
     // race settings: laps and CPU difficulty (0 easy, 1 normal, 2 hard, 3 extra hard)
     private int laps = 1;
     private int difficulty = 1;
+    private boolean botsEnabled = true;
     private String hostId;
 
     /**
@@ -679,11 +683,16 @@ public class NetworkClient {
      * @param lapCount laps   @param cpuDifficulty 0 easy, 1 normal, 2 hard, 3 extra hard
      */
     public void setRaceSettings(int lapCount, int cpuDifficulty) {
+        setRaceSettings(lapCount, cpuDifficulty, botsEnabled);
+    }
+
+    /** The online host may remove the CPU cars before the countdown starts. */
+    public void setRaceSettings(int lapCount, int cpuDifficulty, boolean withBots) {
         if (!canChangeSettings()) {
             return;
         }
         if (isOnline()) {
-            send("SETTINGS|" + lapCount + "|" + cpuDifficulty);
+            send("SETTINGS|" + lapCount + "|" + cpuDifficulty + "|" + withBots);
         } else {
             laps = lapCount;
             difficulty = cpuDifficulty;
@@ -694,7 +703,11 @@ public class NetworkClient {
      * @return true if this player may change the laps and difficulty (single player, or the online host)
      */
     public boolean canChangeSettings() {
-        return !flagShown && !gameStarted && (!isOnline() || (playerId != null && playerId.equals(hostId)));
+        return !isRanked() && !flagShown && !gameStarted && (!isOnline() || (playerId != null && playerId.equals(hostId)));
+    }
+
+    public boolean areBotsEnabled() {
+        return botsEnabled;
     }
 
     /**

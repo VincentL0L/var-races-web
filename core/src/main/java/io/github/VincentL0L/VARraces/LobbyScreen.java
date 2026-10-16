@@ -109,6 +109,19 @@ public class LobbyScreen implements Screen {
             // a sprint is one run from start to finish, so there's no lap count to pick
             card.add(picker("LAPS", lapsValue, -1, 0)).height(Cards.ROW_HEIGHT).padBottom(6).row();
         }
+        if (online && !ranked) {
+            Table row = Cards.row();
+            row.add(Cards.text("BOTS", false)).left().expandX();
+            botsButton = Cards.smallButton("ON", skin);
+            botsButton.addListener(new ClickListener() {
+                public void clicked(InputEvent event, float x, float y) {
+                    networkClient.setRaceSettings(networkClient.getLaps(), networkClient.getDifficulty(),
+                        !networkClient.areBotsEnabled());
+                }
+            });
+            row.add(botsButton).width(196).height(32);
+            card.add(row).height(Cards.ROW_HEIGHT).padBottom(6).row();
+        }
         if (!ranked) {
             card.add(picker("CPU DIFFICULTY", difficultyValue, 0, -1)).height(Cards.ROW_HEIGHT).row();
         }
@@ -144,6 +157,7 @@ public class LobbyScreen implements Screen {
 
     private static final String[] DIFFICULTIES = {"EASY", "NORMAL", "HARD", "EXTRA HARD"};
     private Label lapsValue, difficultyValue, settingsNote;
+    private TextButton botsButton;
     private final List<TextButton> settingButtons = new ArrayList<>();
 
     /**
@@ -199,6 +213,10 @@ public class LobbyScreen implements Screen {
         lapsValue.setText(laps + (laps == 1 ? " LAP" : " LAPS"));
         difficultyValue.setText(DIFFICULTIES[networkClient.getDifficulty()]);
         boolean canChange = networkClient.canChangeSettings();
+        if (botsButton != null) {
+            botsButton.setText(networkClient.areBotsEnabled() ? "ON" : "OFF");
+            botsButton.setDisabled(!canChange);
+        }
         for (TextButton b : settingButtons) {
             b.setDisabled(!canChange);
             b.setVisible(canChange);
@@ -207,7 +225,7 @@ public class LobbyScreen implements Screen {
         int d = networkClient.getDifficulty();
         difficultyValue.setColor(d == 0 ? Cards.READY : d == 3 ? new com.badlogic.gdx.graphics.Color(0.85f, 0.4f, 1f, 1f) : d == 2 ? Cards.ERROR : Ui.GOLD);
         settingsNote.setText(networkClient.isOnline() && !canChange && !networkClient.isFlagShown()
-            ? "The host picks the laps and CPU difficulty" : "");
+            ? "The host picks the race settings" : "");
     }
 
     /**
@@ -216,7 +234,7 @@ public class LobbyScreen implements Screen {
     private void refreshDrivers() {
         String me = networkClient.getPlayerId();
         List<String> ids = new ArrayList<>(networkClient.getPlayerReadyStates().keySet());
-        StringBuilder key = new StringBuilder();
+        StringBuilder key = new StringBuilder().append(networkClient.areBotsEnabled());
         for (String id : ids) {
             key.append(id).append(networkClient.isPlayerReady(id)).append(networkClient.getOpponentCar(id)).append(';');
         }
@@ -234,7 +252,7 @@ public class LobbyScreen implements Screen {
                     networkClient.isPlayerReady(id) ? "READY" : null)).row();
             }
         }
-        if (networkClient.isOnline()) {
+        if (networkClient.isOnline() && networkClient.areBotsEnabled()) {
             // online the list can get long, so the CPUs share one row
             Table row = Cards.row();
             for (int i = 0; i < CPU_COUNT; i++) {
@@ -243,7 +261,7 @@ public class LobbyScreen implements Screen {
             row.add(Cards.text("+ " + CPU_COUNT + " " + map.cpuName + "S", false)).left().expandX().padLeft(8);
             row.add(Cards.pill(map.cpuName, Cards.CPU, true));
             drivers.add(row).row();
-        } else {
+        } else if (!networkClient.isOnline()) {
             for (int i = 0; i < CPU_COUNT; i++) {
                 drivers.add(driverRow(cars[3 + i], map.displayName("CPU" + (i + 1)), false, "CPU")).row();
             }

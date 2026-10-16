@@ -31,6 +31,8 @@ public class Room {
     private final boolean isPublic;
     private final Map<WebSocket, PlayerState> players = new LinkedHashMap<>();
     private final List<Opponent> cpuOpponents = new ArrayList<>();
+    private final List<Opponent> allCpuOpponents = new ArrayList<>();
+    private boolean botsEnabled = true;
     private final CpuTraffic traffic;
     private final TrackMap map;
     private final List<Vector2> waypoints;
@@ -81,6 +83,7 @@ public class Room {
             cpu.setHeading(heading);
             cpuOpponents.add(cpu);
         }
+        allCpuOpponents.addAll(cpuOpponents);
         traffic = new CpuTraffic(cpuOpponents, ImageTrack.forMap(map));
     }
 
@@ -215,7 +218,7 @@ public class Room {
     }
 
     private String settingsMessage() {
-        return "SETTINGS|" + laps + "|" + difficulty;
+        return "SETTINGS|" + laps + "|" + difficulty + "|" + botsEnabled;
     }
 
     /**
@@ -257,8 +260,22 @@ public class Room {
         } else if (parts[0].equals("SETTINGS") && parts.length >= 3 && !ranked && !started && !countdownInProgress
                 && state.id.equals(hostId())) {
             try {
-                laps = Math.max(1, Math.min(10, Integer.parseInt(parts[1])));
-                difficulty = Math.max(0, Math.min(3, Integer.parseInt(parts[2])));
+                int newLaps = Math.max(1, Math.min(10, Integer.parseInt(parts[1])));
+                int newDifficulty = Math.max(0, Math.min(3, Integer.parseInt(parts[2])));
+                boolean newBots = parts.length < 4 ? botsEnabled : Boolean.parseBoolean(parts[3]);
+                laps = newLaps;
+                difficulty = newDifficulty;
+                if (botsEnabled != newBots) {
+                    botsEnabled = newBots;
+                    cpuOpponents.clear();
+                    if (botsEnabled) {
+                        cpuOpponents.addAll(allCpuOpponents);
+                    } else {
+                        for (Opponent cpu : allCpuOpponents) {
+                            broadcast("LEFT|" + cpu.getName());
+                        }
+                    }
+                }
                 broadcast(settingsMessage());
             } catch (NumberFormatException e) {
                 // ignore bad settings

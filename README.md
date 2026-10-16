@@ -45,6 +45,9 @@ This copy adds:
   first-person view. The overhead view shows the same collision boundary as a yellow
   curb. `V` switches views during a race; battle arenas keep their existing layout.
 - Multiplayer lists public races, creates public or private races, or joins one with a 4-letter code.
+  The host can switch **Bots** off in the lobby for a players-only race; the setting
+  is shared with everyone joining the room and locks when the countdown starts.
+  Ranked races keep their fixed bot settings.
 - **Race Car Soccer** is a separate, first-person-only online mode. Create a 1v1 or
   2v2 room from the main menu and share its five-letter room code. Matches start when
   all 2 or 4 players join, with balanced blue/orange teams. Drive with WASD/arrows,
