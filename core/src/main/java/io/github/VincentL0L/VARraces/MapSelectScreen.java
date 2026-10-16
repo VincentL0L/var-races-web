@@ -58,17 +58,19 @@ public class MapSelectScreen implements Screen {
     private final Table[] grids = {new Table(), new Table(), new Table(), new Table()};
     private int tab = 0;
     private Texture pitch;
-    private com.badlogic.gdx.scenes.scene2d.ui.Cell<Table> gridCell;
+    /** the maps scroll inside the card, so the title and buttons always fit (phones) */
+    private com.badlogic.gdx.scenes.scene2d.ui.ScrollPane scroller;
     private Label sprintsNote;
 
     private static final String[] TAB_NOTES = {"", "One run from start to finish. No laps.",
         "Demolition derby: ram everyone, last car driving wins. Heavy cars hit harder.",
-        "Online, in first person: knock the ball into their goal. Boost pads and power-ups."};
+        "In first person, against the CPU or online: knock the ball into their goal."};
 
     /** shows one kind of map (CIRCUIT, SPRINT or BATTLE); its tab is lit */
     private void showTab(int category) {
         tab = category;
-        gridCell.setActor(grids[category]);
+        scroller.setActor(grids[category]);
+        scroller.setScrollY(0f);
         for (int t = 0; t < tabs.length; t++) {
             boolean on = t == category;
             tabs[t].getLabel().setColor(on ? Ui.TEXT_DARK : Cards.LABEL);
@@ -168,8 +170,15 @@ public class MapSelectScreen implements Screen {
                 }
             }
         }
-        gridCell = card.add(grids[0]);
+        // as much height as the screen leaves after the title, tabs and buttons
+        scroller = new com.badlogic.gdx.scenes.scene2d.ui.ScrollPane(grids[0]);
+        scroller.setFadeScrollBars(false);
+        scroller.setScrollingDisabled(true, false);
+        scroller.setOverscroll(false, false);
+        float gridHeight = Math.max(200f, Math.min(610f, Ui.height() - 300f));
+        card.add(scroller).height(gridHeight);
         card.row();
+        stage.setScrollFocus(scroller);
         sprintsNote = new Label("", new Label.LabelStyle(Ui.font(10), Cards.LABEL));
         card.add(sprintsNote).left().padBottom(4).row();
 
@@ -269,7 +278,7 @@ public class MapSelectScreen implements Screen {
         float imageWidth = TILE_WIDTH - 16f;
         tile.add(new Image(pitch)).size(imageWidth, imageWidth * 9f / 16f).row();
         tile.add(new Label("RACE CAR SOCCER", new LabelStyle(Ui.display(18), Ui.GOLD))).left().padTop(6).row();
-        Label tagline = new Label("1v1 or 2v2 online. Cars, a giant ball, two goals.", new LabelStyle(Ui.font(9), Cards.LABEL));
+        Label tagline = new Label("1v1 or 2v2 against the CPU or friends online. Cars, a giant ball, two goals.", new LabelStyle(Ui.font(9), Cards.LABEL));
         tagline.setWrap(true);
         tile.add(tagline).width(imageWidth).left().padTop(4).row();
         tile.addListener(new ClickListener() {

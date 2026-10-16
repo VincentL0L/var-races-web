@@ -54,12 +54,26 @@ public class Cards {
     }
 
     /**
-     * @return a full-screen table holding the card in the middle
+     * @return a full-screen table holding the card in the middle; a card taller or wider
+     * than the screen (a phone on its side) is shrunk to fit instead of running off it
      */
-    public static Table center(Table card) {
-        Table holder = new Table();
+    public static Table center(final Table card) {
+        Table holder = new Table() {
+            @Override
+            public void layout() {
+                card.pack();
+                float margin = 8f;
+                float s = Math.min(1f, Math.min((getWidth() - margin * 2) / card.getWidth(),
+                    (getHeight() - margin * 2) / card.getHeight()));
+                card.setTransform(s < 0.999f);
+                card.setOrigin(0f, 0f);
+                card.setScale(s);
+                card.setPosition(Math.round((getWidth() - card.getWidth() * s) / 2f),
+                    Math.round((getHeight() - card.getHeight() * s) / 2f));
+            }
+        };
         holder.setFillParent(true);
-        holder.add(card);
+        holder.addActor(card);
         return holder;
     }
 

@@ -21,7 +21,11 @@ import com.badlogic.gdx.utils.JsonValue;
 import io.github.VincentL0L.VARraces.*;
 import io.github.VincentL0L.VARraces.Multiplayer.client.GameSocket;
 
-/** Soccer lobby and match HUD. All driving and scoring are simulated on the server. */
+/**
+ * Soccer lobby and match HUD. Online, all driving and scoring are simulated on the server;
+ * against the CPU the same SoccerMatch runs right here, with CPU drivers ({@link #cpuInput})
+ * in every seat but ours.
+ */
 public final class SoccerScreen extends ScreenAdapter {
     private final Game game;
     private final int selectedCar;
@@ -52,15 +56,21 @@ public final class SoccerScreen extends ScreenAdapter {
     private float toastTime;
     private int lastPickupSerial;
     private String event = "";
+    /** a match against the CPU, simulated here instead of on the server (null when online) */
+    private SoccerMatch local;
 
     public SoccerScreen(Game game, int selectedCar) {
         this.game = game; this.selectedCar = selectedCar;
         Gdx.input.setInputProcessor(stage); Sounds.stopMusic();
         Table card = Cards.card();
-        card.add(Cards.kicker("FIRST PERSON  /  ONLINE MULTIPLAYER")).left().row();
+        card.add(Cards.kicker("FIRST PERSON  /  VS CPU OR ONLINE")).left().row();
         card.add(Cards.title("RACE CAR SOCCER", 29)).padBottom(14).left().row();
         Label rules = Cards.text("First to 5, or lead after 3 minutes. Ties go to overtime.\nDrive over pickups - they activate automatically.\nGOLD: boost  |  CYAN: nitro  |  PINK: power shot\nPURPLE: magnet - pull a nearby ball to your bumper.", false);
         rules.setWrap(true); card.add(rules).height(104).left().row();
+        Table solo = new Table();
+        solo.add(button("VS CPU 1v1", () -> startLocal(1))).width(220).height(54).padRight(12);
+        solo.add(button("VS CPU 2v2", () -> startLocal(2))).width(220).height(54);
+        card.add(solo).padBottom(10).row();
         Table modes = new Table();
         modes.add(button("CREATE 1v1", () -> send("SOCCER|CREATE|1"))).width(220).height(54).padRight(12);
         modes.add(button("CREATE 2v2", () -> send("SOCCER|CREATE|2"))).width(220).height(54);
@@ -156,7 +166,67 @@ public final class SoccerScreen extends ScreenAdapter {
         });
     }
 
+    /** single player: you on blue against CPU orange (a CPU team-mate too in 2v2) */
+    private void startLocal(int teamSize) {
+        local = new SoccerMatch(teamSize);
+        for (int i = 0; i < teamSize * 2; i++) {
+            local.add(i);
+        }
+        code = "CPU";
+        slot = 0;
+        lastPickupSerial = 0;
+        toastTime = 0;
+        phase = -1;
+        setup.setVisible(false);
+        stage.setKeyboardFocus(null);
+        receive(localState());
+    }
+
+    private String localState() {
+        String snapshot = local.snapshot();
+        return "SOCCER_STATE|" + snapshot.substring(0, snapshot.length() - 1) + ",\"host\":0}";
+    }
+
+    /**
+     * a CPU driver: get goal-side of the ball and drive through it toward their goal; in
+     * 2v2 the back CPU (slots 2 and 3) holds near its own goal while the ball is far away
+     */
+    private void cpuInput(SoccerMatch m, SoccerMatch.Car car) {
+        SoccerMatch.Ball b = m.ball;
+        float attackX = car.team == 0 ? SoccerMatch.WIDTH + 60 : -60, ownX = car.team == 0 ? 0 : SoccerMatch.WIDTH;
+        float gx = attackX - b.x, gy = SoccerMatch.HEIGHT / 2 - b.y, gl = (float) Math.sqrt(gx * gx + gy * gy);
+        gx /= gl;
+        gy /= gl;
+        float tx, ty;
+        boolean behind = (car.x - b.x) * gx + (car.y - b.y) * gy < -10;
+        boolean keeper = m.teamSize == 2 && car.slot >= 2 && Math.abs(b.x - ownX) > SoccerMatch.WIDTH * 0.45f;
+        if (keeper) {
+            tx = ownX + (car.team == 0 ? 150 : -150);
+            ty = MathUtils.clamp(b.y, SoccerMatch.HEIGHT / 2 - 160, SoccerMatch.HEIGHT / 2 + 160);
+        } else if (behind) {
+            tx = b.x + gx * 20;                     // lined up: drive straight through it
+            ty = b.y + gy * 20;
+        } else {
+            tx = b.x - gx * 70;                     // get round behind the ball first
+            ty = b.y - gy * 70 + (car.y < b.y ? -40 : 40);
+        }
+        float dx = tx - car.x, dy = ty - car.y, dist = (float) Math.sqrt(dx * dx + dy * dy);
+        float rel = ((MathUtils.atan2(dy, dx) * MathUtils.radiansToDegrees - car.heading) % 360 + 540) % 360 - 180;
+        float steer = MathUtils.clamp(rel / 28f, -1f, 1f);
+        float throttle = keeper && dist < 40 ? 0f : Math.abs(rel) > 120 && dist < 140 ? -1f : 1f;
+        boolean boost = Math.abs(rel) < 14 && dist > 220 && car.boost > 25 && !keeper;
+        float bdx = b.x - car.x, bdy = b.y - car.y;
+        boolean jump = b.z > 45 && bdx * bdx + bdy * bdy < 70 * 70;
+        m.input(car.slot, throttle, steer, boost, jump);
+    }
+
     private void send(String message) {
+        if (local != null) {
+            if (message.equals("SOCCER|REMATCH")) {
+                local.restart();
+            }
+            return;
+        }
         if (connected) socket.send(message);
         else status.setText("Not connected yet. Check the server and try Reconnect.");
     }
@@ -209,6 +279,16 @@ public final class SoccerScreen extends ScreenAdapter {
         // camera away from the authoritative positions on a negative or invalid frame.
         delta = Float.isFinite(delta) ? MathUtils.clamp(delta, 0, 0.1f) : 0;
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) { leave(); return; }
+        if (local != null) {
+            // the CPU drive, the match runs a step, and we read it as if the server sent it
+            for (SoccerMatch.Car car : local.cars) {
+                if (car != null && car.slot != slot) {
+                    cpuInput(local, car);
+                }
+            }
+            local.step(delta);
+            receive(localState());
+        }
         float smooth = 1 - (float) Math.exp(-25 * delta);
         for (int i = 0; i < 4; i++) if (cars[i] != null && targets[i] != null) {
             for (int j = 1; j < 8; j++) cars[i][j] = j == 4
@@ -228,7 +308,8 @@ public final class SoccerScreen extends ScreenAdapter {
         int count = 0; for (float[] c : cars) if (c != null) count++;
         waitText.setText("ROOM CODE: " + code + "\n" + size + "v" + size + "  |  " + count + "/" + (size * 2)
             + " connected\n\nShare this code with your friends.\nThe match starts when everyone joins.");
-        roomLabel.setText(code.isEmpty() ? "RACE CAR SOCCER" : "ROOM " + code + " | " + size + "v" + size);
+        roomLabel.setText(code.isEmpty() ? "RACE CAR SOCCER" : local != null ? "VS CPU | " + size + "v" + size
+            : "ROOM " + code + " | " + size + "v" + size);
         clock.setText(time <= 0 ? "OT" : ((int) Math.ceil(time) / 60) + ":" + String.format(java.util.Locale.ROOT, "%02d", (int) Math.ceil(time) % 60));
         winner.setText(event); rematch.setVisible(slot == host);
         if (slot >= 0 && cars[slot] != null) {
@@ -245,17 +326,21 @@ public final class SoccerScreen extends ScreenAdapter {
             float angle = MathUtils.atan2(ball[1] - c[2], ball[0] - c[1]) * MathUtils.radiansToDegrees;
             float relative = ((angle - c[4] + 540) % 360) - 180;
             String bearing = Math.abs(relative) > 110 ? "BEHIND" : relative > 20 ? "LEFT" : relative < -20 ? "RIGHT" : "AHEAD";
-            ballLabel.setText(sinceState > 2 ? "CONNECTION LOST - waiting for server" : "BALL " + bearing + "  "
+            ballLabel.setText(sinceState > 2 && local == null ? "CONNECTION LOST - waiting for server" : "BALL " + bearing + "  "
                 + (int) Math.sqrt((ball[0] - c[1]) * (ball[0] - c[1]) + (ball[1] - c[2]) * (ball[1] - c[2])) + "m");
             sendTimer += delta;
             jumpPending |= Gdx.input.isKeyJustPressed(Input.Keys.SPACE);
-            if (sendTimer >= 0.05f && connected) {
+            if (sendTimer >= 0.05f && (connected || local != null)) {
                 sendTimer = 0;
                 float throttle = (down(Input.Keys.W, Input.Keys.UP) || touch[2] ? 1 : 0) - (down(Input.Keys.S, Input.Keys.DOWN) || touch[3] ? 1 : 0);
                 float steer = (down(Input.Keys.A, Input.Keys.LEFT) || touch[0] ? 1 : 0) - (down(Input.Keys.D, Input.Keys.RIGHT) || touch[1] ? 1 : 0);
                 boolean boost = down(Input.Keys.SHIFT_LEFT, Input.Keys.SHIFT_RIGHT) || touch[4];
                 boolean jump = jumpPending || Gdx.input.isKeyPressed(Input.Keys.SPACE) || touch[5];
-                send("SOCCER|INPUT|" + throttle + "|" + steer + "|" + (boost ? 1 : 0) + "|" + (jump ? 1 : 0));
+                if (local != null) {
+                    local.input(slot, throttle, steer, boost, jump);
+                } else {
+                    send("SOCCER|INPUT|" + throttle + "|" + steer + "|" + (boost ? 1 : 0) + "|" + (jump ? 1 : 0));
+                }
                 jumpPending = false;
             }
         }
