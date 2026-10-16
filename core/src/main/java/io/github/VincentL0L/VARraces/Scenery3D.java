@@ -263,7 +263,7 @@ public class Scenery3D {
      * 4 x 4 window bays: white wall, glass with a sky reflection, some windows lit warm,
      * a ledge under each row, and a darker band at street level
      */
-    private static Texture makeFacade() {
+    static Texture makeFacade() {
         Pixmap p = new Pixmap(64, 64, Pixmap.Format.RGBA8888);
         p.setColor(0.93f, 0.93f, 0.93f, 1f);
         p.fill();

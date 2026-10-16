@@ -53,10 +53,10 @@ public class MapSelectScreen implements Screen {
     private final TrackBackdrop[] backdrops;
     private int selected = 0;
     /** Circuits, Sprints, Battle, and Soccer (a mode of its own, not a map) */
-    private static final int SOCCER = 3, PARKING = 4;
-    private final TextButton[] tabs = new TextButton[5];
-    private final Table[] grids = {new Table(), new Table(), new Table(), new Table(), new Table()};
-    private Texture lot;
+    private static final int SOCCER = 3, PARKING = 4, CHASE = 5;
+    private final TextButton[] tabs = new TextButton[6];
+    private final Table[] grids = {new Table(), new Table(), new Table(), new Table(), new Table(), new Table()};
+    private Texture lot, street;
     private int tab = 0;
     private Texture pitch;
     /** the maps scroll inside the card, so the title and buttons always fit (phones) */
@@ -66,7 +66,8 @@ public class MapSelectScreen implements Screen {
     private static final String[] TAB_NOTES = {"", "One run from start to finish. No laps.",
         "Demolition derby: ram everyone, last car driving wins. Heavy cars hit harder.",
         "In first person, against the CPU or online: knock the ball into their goal.",
-        "Six levels, from an easy first spot to parallel parking and a timed garage."};
+        "Six levels, from an easy first spot to parallel parking and a timed garage.",
+        "An endless getaway in third person. Swipe or use the arrows; don't get caught."};
 
     /** shows one kind of map (CIRCUIT, SPRINT or BATTLE); its tab is lit */
     private void showTab(int category) {
@@ -139,9 +140,9 @@ public class MapSelectScreen implements Screen {
         card.add(Cards.title("CHOOSE A TRACK", 40)).left().padTop(2).row();
         Table header = new Table();
         header.left();
-        String[] tabNames = {"Circuits", "Sprints", "Battle", "Soccer", "Parking"};
+        String[] tabNames = {"Circuits", "Sprints", "Battle", "Soccer", "Parking", "Chase"};
         // soccer has its own online lobby, so it's offered when picking a mode, not when hosting a race
-        int tabCount = host == null ? 5 : 3;
+        int tabCount = host == null ? 6 : 3;
         for (int t = 0; t < tabCount; t++) {
             final int tab = t;
             tabs[t] = Cards.smallButton(tabNames[t], skin);
@@ -150,12 +151,15 @@ public class MapSelectScreen implements Screen {
                     showTab(tab);
                 }
             });
-            header.add(tabs[t]).width(110).height(40).padRight(6);
+            header.add(tabs[t]).width(104).height(40).padRight(5);
         }
         if (host != null) {
             tabs[SOCCER] = Cards.smallButton("Soccer", skin);     // not shown
             tabs[PARKING] = Cards.smallButton("Parking", skin);
+            tabs[CHASE] = Cards.smallButton("Chase", skin);
         }
+        grids[CHASE].add(modeTile(street = chasePicture(), "POLICE CHASE",
+            "Outrun the cops down an endless city street. Dodge, jump, grab coins.")).width(TILE_WIDTH).fillY().padBottom(12);
         grids[SOCCER].add(soccerTile()).width(TILE_WIDTH).fillY().padBottom(12);
         grids[PARKING].add(modeTile(lot = parkingPicture(), "PARKING",
             "Park in the bay without a scratch. Six levels, three stars each.")).width(TILE_WIDTH).fillY().padBottom(12);
@@ -319,6 +323,46 @@ public class MapSelectScreen implements Screen {
         return tile;
     }
 
+    /** the Police Chase card's picture: a street running into the distance, a cop behind */
+    private static Texture chasePicture() {
+        com.badlogic.gdx.graphics.Pixmap p = new com.badlogic.gdx.graphics.Pixmap(160, 90, com.badlogic.gdx.graphics.Pixmap.Format.RGBA8888);
+        p.setColor(0.6f, 0.78f, 0.96f, 1f);
+        p.fill();
+        for (int y = 30; y < 90; y++) {
+            float t = (y - 30) / 60f;
+            int half = (int) (6 + t * 70);
+            p.setColor(0.27f, 0.27f, 0.29f, 1f);
+            p.drawLine(80 - half, y, 80 + half, y);
+            p.setColor(0.72f, 0.72f, 0.7f, 1f);
+            p.drawLine(0, y, 80 - half - 1, y);
+            p.drawLine(80 + half + 1, y, 159, y);
+            if ((y / 5) % 2 == 0) {
+                p.setColor(Color.WHITE);
+                p.drawPixel(80 - half / 3, y);
+                p.drawPixel(80 + half / 3, y);
+            }
+        }
+        // buildings either side
+        Color[] walls = {new Color(0.93f, 0.86f, 0.74f, 1f), new Color(0.78f, 0.84f, 0.92f, 1f), new Color(0.92f, 0.76f, 0.7f, 1f)};
+        for (int i = 0; i < 3; i++) {
+            p.setColor(walls[i]);
+            p.fillRectangle(i * 14, 8 + i * 6, 14, 60);
+            p.fillRectangle(146 - i * 14, 8 + i * 6, 14, 60);
+        }
+        // our car ahead, and the cop right behind with his lights
+        p.setColor(0.85f, 0.25f, 0.2f, 1f);
+        p.fillRectangle(72, 58, 16, 12);
+        p.setColor(0.95f, 0.95f, 0.95f, 1f);
+        p.fillRectangle(68, 76, 24, 14);
+        p.setColor(0.9f, 0.1f, 0.1f, 1f);
+        p.fillRectangle(72, 72, 7, 4);
+        p.setColor(0.2f, 0.4f, 1f, 1f);
+        p.fillRectangle(81, 72, 7, 4);
+        Texture t = new Texture(p);
+        p.dispose();
+        return t;
+    }
+
     /** the Parking card's picture: a row of bays, one empty and glowing green */
     private static Texture parkingPicture() {
         com.badlogic.gdx.graphics.Pixmap p = new com.badlogic.gdx.graphics.Pixmap(160, 90, com.badlogic.gdx.graphics.Pixmap.Format.RGBA8888);
@@ -374,6 +418,10 @@ public class MapSelectScreen implements Screen {
         }
         if (tab == PARKING) {
             game.setScreen(new ParkingScreen(game, selectedCar));
+            return;
+        }
+        if (tab == CHASE) {
+            game.setScreen(new PoliceChaseScreen(game, selectedCar));
             return;
         }
         TrackMap map = maps.get(selected);
@@ -442,6 +490,9 @@ public class MapSelectScreen implements Screen {
         }
         if (lot != null) {
             lot.dispose();
+        }
+        if (street != null) {
+            street.dispose();
         }
         stage.dispose();
         skin.dispose();
