@@ -33,8 +33,6 @@ public class FirstPersonView {
     /** the bonnet camera: just above the roof line, at the front of the cabin */
     private static final float EYE_HEIGHT = 6.3f, EYE_BACK = -3.5f;
     private static final float FAR = 2600f;
-    /** car model heights (a car is 10 wide and 20 long) */
-    private static final float BODY_LOW = 0.9f, DECK = 3.6f, CABIN_TOP = 5.8f;
 
     private final PerspectiveCamera cam = new PerspectiveCamera(72f, 640f, 360f);
     private final SpriteBatch batch = new SpriteBatch();
@@ -103,7 +101,8 @@ public class FirstPersonView {
         float fx = MathUtils.cosDeg(heading), fy = MathUtils.sinDeg(heading);
         float sx = shake > 0.05f ? MathUtils.random(-shake, shake) * 0.15f : 0f;
         float sz = shake > 0.05f ? MathUtils.random(-shake, shake) * 0.1f : 0f;
-        cam.position.set(x - fx * EYE_BACK - fy * sx, y - fy * EYE_BACK + fx * sx, EYE_HEIGHT + sz);
+        clock += delta;
+        cam.position.set(x - fx * EYE_BACK - fy * sx, y - fy * EYE_BACK + fx * sx, ownEye + sz);
         cam.direction.set(fx, fy, -0.045f).nor();
         cam.up.set(0f, 0f, 1f);
         cam.update();
@@ -263,8 +262,22 @@ public class FirstPersonView {
         drawModel(img, img.getX() + img.getWidth() / 2f, img.getY() + img.getHeight() / 2f, img.getRotation(), true);
     }
 
+    private final Map<Texture, CarModels3D.Shape> carShapes = new HashMap<>();
+    private float clock = 0f;
+    /** how high our eyes are in our own car (a bus sits far higher than a scooter) */
+    private float ownEye = EYE_HEIGHT;
+
+    private CarModels3D.Shape shapeFor(Texture art) {
+        CarModels3D.Shape sh = carShapes.get(art);
+        if (sh == null) {
+            sh = CarModels3D.shapeOf(art);
+            carShapes.put(art, sh);
+        }
+        return sh;
+    }
+
     /**
-     * one car: shadow, wheels, body, glass cabin, roof, lights, then the paint job on top
+     * one car, built to its own shape (CarModels3D), then its paint job laid over the top
      * (local x across the car, y toward its nose)
      */
     private void drawModel(Image img, float x, float y, float rotation, boolean inside) {
@@ -272,55 +285,20 @@ public class FirstPersonView {
         Color tint = img.getColor();
         Color body = art == null ? new Color(0.5f, 0.5f, 0.55f, 1f) : new Color(bodyColor(art));
         body.mul(tint.r, tint.g, tint.b, 1f);
+        CarModels3D.Shape shape = shapeFor(art);
+        if (inside) {
+            ownEye = CarModels3D.eyeHeight(shape);
+        }
         float w = img.getWidth(), h = img.getHeight();
         transform.idt().translate(x, y, 0f).rotate(0f, 0f, 1f, rotation);
         shapes.setProjectionMatrix(cam.combined);
         shapes.setTransformMatrix(transform);
         shapes.begin(ShapeRenderer.ShapeType.Filled);
-        if (!inside) {
-            shapes.setColor(0f, 0f, 0f, 0.35f);
-            shapes.rect(-w / 2f - 1f, -h / 2f - 1f, w + 2f, h + 2f);
-            // wheels, poking out a little past the body
-            shapes.setColor(0.07f, 0.07f, 0.08f, 1f);
-            for (int sx = -1; sx <= 1; sx += 2) {
-                for (int sy = -1; sy <= 1; sy += 2) {
-                    float wx = sx * (w / 2f - 0.6f), wy = sy * (h / 2f - 4.3f);
-                    up(wx - 1.1f, wy - 2.2f, 0f, 2.2f, 4.4f, 2.6f);
-                }
-            }
-            // hubcaps
-            shapes.setColor(0.6f, 0.6f, 0.62f, 1f);
-            for (int sx = -1; sx <= 1; sx += 2) {
-                for (int sy = -1; sy <= 1; sy += 2) {
-                    float wx = sx * (w / 2f - 0.6f + 1.15f), wy = sy * (h / 2f - 4.3f);
-                    up(wx - 0.05f, wy - 0.8f, 0.5f, 0.1f, 1.6f, 1.6f);
-                }
-            }
-        }
-        // the body: darker low down, the paint colour higher up
-        shapes.setColor(body.r * 0.45f, body.g * 0.45f, body.b * 0.45f, 1f);
-        up(-w / 2f, -h / 2f, BODY_LOW, w, h, 1.2f);
-        shapes.setColor(body.r * 0.85f, body.g * 0.85f, body.b * 0.85f, 1f);
-        up(-w / 2f, -h / 2f, BODY_LOW + 1.2f, w, h, DECK - BODY_LOW - 1.2f);
-        float cabinBack = -h * 0.24f, cabinLen = h * 0.44f;
-        if (!inside) {
-            // glass all round the cabin, then the roof
-            shapes.setColor(0.13f, 0.17f, 0.24f, 1f);
-            up(-w / 2f + 1.2f, cabinBack, DECK, w - 2.4f, cabinLen, CABIN_TOP - DECK - 0.4f);
-            shapes.setColor(body);
-            up(-w / 2f + 1.5f, cabinBack + 1.2f, CABIN_TOP - 0.45f, w - 3f, cabinLen - 2.6f, 0.5f);
-            // lights: white-gold at the front, red at the back
-            shapes.setColor(1f, 0.95f, 0.72f, 1f);
-            up(-w / 2f + 0.8f, h / 2f - 0.2f, 2.2f, 2.2f, 0.4f, 0.9f);
-            up(w / 2f - 3f, h / 2f - 0.2f, 2.2f, 2.2f, 0.4f, 0.9f);
-            shapes.setColor(0.9f, 0.08f, 0.08f, 1f);
-            up(-w / 2f + 0.8f, -h / 2f - 0.2f, 2.3f, 2.2f, 0.4f, 0.8f);
-            up(w / 2f - 3f, -h / 2f - 0.2f, 2.3f, 2.2f, 0.4f, 0.8f);
-        }
+        CarModels3D.draw(shapes, shape, w, h, body, inside, clock);
         shapes.end();
-        if (art != null) {
+        if (art != null && !shape.has("BIKE")) {
             // the top-down paint job across the bonnet and boot (the cabin hides its middle)
-            transform.translate(0f, 0f, DECK + 0.02f);
+            transform.translate(0f, 0f, shape.deck + 0.02f);
             batch.setProjectionMatrix(cam.combined);
             batch.setTransformMatrix(transform);
             Texture.TextureFilter min = art.getMinFilter(), mag = art.getMagFilter();
