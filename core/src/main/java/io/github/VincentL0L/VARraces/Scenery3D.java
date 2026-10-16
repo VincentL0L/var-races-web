@@ -115,8 +115,24 @@ public class Scenery3D {
         int scale = map.scale;
         float worldW = picture.getWidth() * scale, worldH = picture.getHeight() * scale;
 
-        Builder roofB = new Builder(roofs), wallB = new Builder(walls), treeB = new Builder(trees);
+        Builder roofB = new Builder(roofs), treeB = new Builder(trees);
         Color avg = new Color();
+        // first, each building patch's colour from above, and the patches a landmark stands on
+        Color[][] roofColour = new Color[gw][gh];
+        boolean[][] skip = new boolean[gw][gh];
+        for (int gx = 0; gx < gw; gx++) {
+            for (int gy = 0; gy < gh; gy++) {
+                if (height[gx][gy] == 0 || kind[gx][gy] != 2) {
+                    continue;
+                }
+                float cx = gx * CELL + CELL / 2f, cy = worldH - gy * CELL - CELL / 2f;
+                skip[gx][gy] = inside(clear, cx, cy);
+                roofColour[gx][gy] = new Color();
+                average(colours, gx * CELL / scale, gy * CELL / scale, CELL / scale, roofColour[gx][gy], false);
+            }
+        }
+        // the buildings themselves, each in its city's architecture
+        architecture = new CityArchitecture(map, height, kind, roofColour, skip, worldH);
         for (int gx = 0; gx < gw; gx++) {
             for (int gy = 0; gy < gh; gy++) {
                 int h = height[gx][gy];
@@ -150,21 +166,27 @@ public class Scenery3D {
                     }
                     continue;
                 }
-                // building: roof from the map picture
-                float u0 = x0 / worldW, u1 = x1 / worldW, v0 = 1f - y0 / worldH, v1 = 1f - y1 / worldH;
-                roofB.quad(x0, y0, h, x1, y0, h, x1, y1, h, x0, y1, h, u0, v0, u1, v0, u1, v1, u0, v1, Color.WHITE);
-                // walls of windows, painted like the roof (lighter), shaded by which way they face
-                Color paint = new Color(avg).lerp(Color.WHITE, 0.35f);
-                wall(wallB, height, gx + 1, gy, gw, gh, h, x1, y0, x1, y1, 1, 0, paint, 0.92f);
-                wall(wallB, height, gx - 1, gy, gw, gh, h, x0, y1, x0, y0, -1, 0, paint, 0.68f);
-                wall(wallB, height, gx, gy - 1, gw, gh, h, x1, y1, x0, y1, 0, 1, paint, 1f);
-                wall(wallB, height, gx, gy + 1, gw, gh, h, x0, y0, x1, y0, 0, -1, paint, 0.6f);
+                if (!architecture.builds(gx, gy)) {
+                    continue;
+                }
+                // the roof: the map's own picture of it, on top of the mansard where there is one
+                float lift = architecture.roofLift(gx, gy), in = architecture.roofInset(gx, gy);
+                float rx0 = x0 + (height(height, gx - 1, gy) < h ? in : 0), rx1 = x1 - (height(height, gx + 1, gy) < h ? in : 0);
+                float ry0 = y0 + (height(height, gx, gy + 1) < h ? in : 0), ry1 = y1 - (height(height, gx, gy - 1) < h ? in : 0);
+                float u0 = rx0 / worldW, u1 = rx1 / worldW, v0 = 1f - ry0 / worldH, v1 = 1f - ry1 / worldH;
+                float rz = h + lift;
+                roofB.quad(rx0, ry0, rz, rx1, ry0, rz, rx1, ry1, rz, rx0, ry1, rz, u0, v0, u1, v0, u1, v1, u0, v1, Color.WHITE);
             }
         }
         colours.dispose();
         roofB.finish();
-        wallB.finish();
         treeB.finish();
+    }
+
+    private CityArchitecture architecture;
+
+    private static int height(int[][] height, int x, int y) {
+        return x >= 0 && y >= 0 && x < height.length && y < height[0].length ? height[x][y] : 0;
     }
 
     private static boolean inside(java.util.List<float[]> areas, float x, float y) {
@@ -380,7 +402,7 @@ public class Scenery3D {
 
     /** @return true if this map has anything standing up */
     public boolean isEmpty() {
-        return roofs.isEmpty() && walls.isEmpty() && trees.isEmpty() && landmarks.isEmpty();
+        return roofs.isEmpty() && trees.isEmpty() && landmarks.isEmpty() && (architecture == null || architecture.isEmpty());
     }
 
     /**
@@ -401,7 +423,9 @@ public class Scenery3D {
         shader.setUniformi("u_texture", 0);
         shader.setUniformf("u_cutout", 0f);
         draw(roofs, picture);
-        draw(walls, facade);
+        if (architecture != null) {
+            architecture.render(shader);
+        }
         draw(landmarks.meshes(), landmarks.texture());
         shader.setUniformf("u_cutout", 0.5f);
         draw(trees, tree);
@@ -425,6 +449,9 @@ public class Scenery3D {
             }
         }
         landmarks.dispose();
+        if (architecture != null) {
+            architecture.dispose();
+        }
         if (facade != null) {
             facade.dispose();
             tree.dispose();
