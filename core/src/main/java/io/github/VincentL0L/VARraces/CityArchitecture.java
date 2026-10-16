@@ -130,6 +130,9 @@ public class CityArchitecture {
         for (int i = 0; i < buildings.size(); i++) {
             build(i, buildings.get(i));
         }
+        if (family != GENERIC) {
+            outskirts(gw * CELL, worldH);
+        }
         solid.finish();
         for (Building b : buildings) {
             b.fb.finish();
@@ -802,6 +805,104 @@ public class CityArchitecture {
             }
         }
         roofFeatures(id, b, b.mansard ? h + b.slopeRise : h, r);
+    }
+
+    // ---------------------------------------------------------------- the city carrying on
+
+    /**
+     * blocks of the same city all round the map, out into the haze, so it never just stops:
+     * streets in a grid, a pavement round each block, and a few buildings on it (sharing a
+     * dozen facades), lower near the map and taller further out
+     */
+    private void outskirts(float mapW, float mapH) {
+        Random r = new Random(city.hashCode() * 7L + 1);
+        int variants = 12;
+        Scenery3D.Builder[] fill = new Scenery3D.Builder[variants];
+        Color[] stones = new Color[variants];
+        for (int i = 0; i < variants; i++) {
+            Building d = new Building();
+            d.seed = r.nextInt();
+            d.rnd = new Random(d.seed);
+            boolean tower = i >= 8 && family != PARIS;
+            d.tall = tower;
+            d.deco = tower && (family == NYC || family == CHICAGO) && i % 2 == 0;
+            d.shop = !tower && r.nextFloat() < 0.6f;
+            d.awning = pick(r, c(0x8c2b2b), c(0x2b5c3a), c(0x1f3b6b), c(0x6b2b4e), c(0xc9792b));
+            Texture t = tower ? towerFacade(d, d.rnd) : facade(d, d.rnd);
+            fill[i] = new Scenery3D.Builder(list(t));
+            stones[i] = d.stone;
+        }
+        float step = 140f, street = 26f, margin = 2000f;
+        Color asphalt = c(0x45464c), pavement = c(0xa9a8a3);
+        for (float bx = -margin; bx < mapW + margin; bx += step) {
+            for (float by = -margin; by < mapH + margin; by += step) {
+                if (bx + step > -40 && bx < mapW + 40 && by + step > -40 && by < mapH + 40) {
+                    continue;                                  // the map itself
+                }
+                float dist = Math.max(Math.max(-bx - step, bx - mapW), Math.max(-by - step, by - mapH));
+                quad(bx, by, 0.03f, bx + step, by, 0.03f, bx + step, by + step, 0.03f, bx, by + step, 0.03f, asphalt);
+                float x0 = bx + street / 2f, y0 = by + street / 2f, x1 = bx + step - street / 2f, y1 = by + step - street / 2f;
+                quad(x0, y0, 0.25f, x1, y0, 0.25f, x1, y1, 0.25f, x0, y1, 0.25f, pavement);
+                // one building, two side by side, or four, set back a little from the kerb
+                int split = dist > 1100 ? 1 : r.nextInt(3) == 0 ? 1 : r.nextBoolean() ? 2 : 4;
+                float in = 4f;
+                for (int k = 0; k < split; k++) {
+                    float ax = x0 + in, ay = y0 + in, cx = x1 - in, cy = y1 - in;
+                    if (split == 2) {
+                        float mid = (ax + cx) / 2f;
+                        if (k == 0) {
+                            cx = mid - 1f;
+                        } else {
+                            ax = mid + 1f;
+                        }
+                    } else if (split == 4) {
+                        float mx = (ax + cx) / 2f, my = (ay + cy) / 2f;
+                        if (k % 2 == 0) {
+                            cx = mx - 1f;
+                        } else {
+                            ax = mx + 1f;
+                        }
+                        if (k < 2) {
+                            cy = my - 1f;
+                        } else {
+                            ay = my + 1f;
+                        }
+                    }
+                    boolean towerHere = family != PARIS && r.nextFloat() < 0.12f + Math.min(0.35f, dist / 4000f);
+                    int v = towerHere ? 8 + r.nextInt(4) : r.nextInt(8);
+                    int storeys = towerHere ? 6 + r.nextInt(5) : 2 + r.nextInt(4);
+                    float h = Math.min(TILE_H - 2, storeys * STOREY + 2);
+                    if (towerHere && storeys > 9) {
+                        h = 9 * STOREY + 2;
+                    }
+                    fillBlock(fill[v], ax, ay, cx, cy, h, stones[v], r);
+                    if (towerHere && r.nextBoolean()) {
+                        // a taller part rising out of the middle
+                        float sx = (cx - ax) * 0.2f, sy = (cy - ay) * 0.2f;
+                        fillBlock(fill[v], ax + sx, ay + sy, cx - sx, cy - sy, h + 24f + r.nextInt(3) * 12f, stones[v], r);
+                    }
+                }
+            }
+        }
+        for (Scenery3D.Builder f : fill) {
+            f.finish();
+        }
+    }
+
+    /** one outskirts building: four walls of its facade, a cornice, a roof and maybe a little plant on it */
+    private void fillBlock(Scenery3D.Builder fb, float x0, float y0, float x1, float y1, float h, Color stone, Random r) {
+        float[] sh = {0.93f, 0.72f, 1f, 0.64f};
+        float[][] e = {{x1, y0, x1, y1}, {x0, y1, x0, y0}, {x1, y1, x0, y1}, {x0, y0, x1, y0}};
+        float[][] n = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int s = 0; s < 4; s++) {
+            facadeWall(fb, e[s][0], e[s][1], e[s][2], e[s][3], 0f, h, new Color(sh[s], sh[s], sh[s], 1f));
+            moulding(e[s], n[s][0], n[s][1], h - 1.4f, h, 1f, stone, sh[s], true);
+        }
+        quad(x0, y0, h, x1, y0, h, x1, y1, h, x0, y1, h, mul(stone, 0.7f));
+        if (r.nextInt(3) == 0) {
+            float cx = (x0 + x1) / 2f, cy = (y0 + y1) / 2f;
+            box(cx - 3f, cy - 3f, cx + 3f, cy + 3f, h, h + 4f, c(0x9ea2a8));
+        }
     }
 
     private int lowAt(int x, int y) {

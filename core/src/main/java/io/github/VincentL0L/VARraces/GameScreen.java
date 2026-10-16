@@ -435,10 +435,8 @@ public class GameScreen implements Screen {
         fp.drawSky();
         com.badlogic.gdx.graphics.PerspectiveCamera pc = fp.getCamera();
         float r = pc.far;
-        // the ground fades into the haze toward the horizon
-        bg.setShader(fp.groundShader());
-        bg.render(pc, pc.position.x - r, pc.position.y - r, pc.position.x + r, pc.position.y + r);
-        bg.setShader(null);
+        // the ground, over its hills, fading into the haze toward the horizon
+        fp.drawGround();
         // trees and buildings stand up; from here on things hide behind them
         fp.drawScenery();
         trackWalls.render3D(pc, fp.groundShader());

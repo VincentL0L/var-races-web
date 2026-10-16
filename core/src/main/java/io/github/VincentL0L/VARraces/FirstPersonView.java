@@ -49,7 +49,18 @@ public class FirstPersonView {
     /** clouds (or stars): direction, height above the horizon (degrees), size */
     private final float[][] clouds;
 
+    /** the ground as a mesh (so it can follow the hills), out well past the map's edges */
+    private final java.util.List<com.badlogic.gdx.graphics.Mesh> ground = new java.util.ArrayList<>();
+    private final Texture mapPicture;
+    /** the far skyline round the horizon: direction, width and height (degrees), shade */
+    private final float[][] skyline;
+    private final int skylineKind;
+    private float pitch = 0f;
+
     public FirstPersonView(TrackMap map, Texture mapPicture) {
+        Terrain.set(map);
+        this.mapPicture = mapPicture;
+        buildGround(map, mapPicture);
         fog = new ShaderProgram(Scenery3D.VERTEX, Scenery3D.FRAGMENT);
         if (!fog.isCompiled()) {
             Gdx.app.error("FirstPersonView", fog.getLog());
@@ -70,6 +81,19 @@ public class FirstPersonView {
             skyLow = new Color(0.74f, 0.86f, 0.97f, 1f);
         }
         java.util.Random rnd = new java.util.Random(map.id.hashCode());
+        // the city (or the hills) carrying on past the horizon, all the way round
+        boolean cityMap = !map.battle && !map.id.equals(TrackMap.CLASSIC) && !map.id.equals(TrackMap.GRAND_PRIX)
+            && !map.id.equals(TrackMap.SUMMIT) && !space;
+        skylineKind = space ? 2 : cityMap ? 0 : 1;
+        java.util.List<float[]> sk = new java.util.ArrayList<>();
+        float az = 0f;
+        while (az < 360f) {
+            float w = skylineKind == 0 ? 0.6f + rnd.nextFloat() * 2.2f : 4f + rnd.nextFloat() * 10f;
+            float h = skylineKind == 0 ? 0.6f + rnd.nextFloat() * rnd.nextFloat() * 6f : 0.6f + rnd.nextFloat() * 2.5f;
+            sk.add(new float[] {az, w, h, rnd.nextFloat()});
+            az += w * (skylineKind == 0 ? 0.85f : 0.6f);
+        }
+        skyline = sk.toArray(new float[0][]);
         clouds = new float[space ? 160 : 16][];
         for (int i = 0; i < clouds.length; i++) {
             clouds[i] = space
@@ -102,8 +126,12 @@ public class FirstPersonView {
         float sx = shake > 0.05f ? MathUtils.random(-shake, shake) * 0.15f : 0f;
         float sz = shake > 0.05f ? MathUtils.random(-shake, shake) * 0.1f : 0f;
         clock += delta;
-        cam.position.set(x - fx * EYE_BACK - fy * sx, y - fy * EYE_BACK + fx * sx, ownEye + sz);
-        cam.direction.set(fx, fy, -0.045f).nor();
+        float ex = x - fx * EYE_BACK - fy * sx, ey = y - fy * EYE_BACK + fx * sx;
+        // ride the hills, and look up or down the slope ahead
+        float slope = (Terrain.height(ex + fx * 30f, ey + fy * 30f) - Terrain.height(ex - fx * 30f, ey - fy * 30f)) / 60f;
+        pitch = MathUtils.lerp(pitch, slope, 1f - (float) Math.exp(-6f * delta));
+        cam.position.set(ex, ey, ownEye + sz + Terrain.height(x, y));
+        cam.direction.set(fx, fy, -0.045f + pitch).nor();
         cam.up.set(0f, 0f, 1f);
         cam.update();
     }
@@ -131,6 +159,7 @@ public class FirstPersonView {
      */
     public ShaderProgram groundShader() {
         fog.bind();
+        Terrain.apply(fog);
         fog.setUniformf("u_eye", cam.position);
         fog.setUniformf("u_fogRange", Scenery3D.FOG_START, Scenery3D.FOG_END);
         fog.setUniformf("u_fogColor", skyLow.r, skyLow.g, skyLow.b);
@@ -177,6 +206,7 @@ public class FirstPersonView {
                 shapes.circle(sx, sy, r, 40);
             }
         }
+        drawSkyline(w, horizon, pxPerDeg);
         for (float[] c : clouds) {
             rel = wrap(c[0] - heading);
             if (Math.abs(rel) > hfov() + 30f) {
@@ -200,6 +230,61 @@ public class FirstPersonView {
         shapes.end();
     }
 
+    /**
+     * the far-off city (or hills, or moon peaks) all round the horizon, hazy with distance:
+     * a back row paler, a front row a little darker, the cities with a few lit windows
+     */
+    private void drawSkyline(int w, float horizon, float pxPerDeg) {
+        Color far = new Color(skyLow).lerp(skyTop, 0.15f).lerp(new Color(0.42f, 0.47f, 0.58f, 1f), 0.25f);
+        Color near = new Color(skyLow).lerp(new Color(0.36f, 0.41f, 0.52f, 1f), 0.45f);
+        if (skylineKind == 1) {
+            far.set(skyLow).lerp(new Color(0.42f, 0.55f, 0.48f, 1f), 0.35f);
+            near.set(skyLow).lerp(new Color(0.32f, 0.48f, 0.36f, 1f), 0.55f);
+        } else if (skylineKind == 2) {
+            far.set(0.25f, 0.25f, 0.29f, 1f);
+            near.set(0.38f, 0.38f, 0.42f, 1f);
+        }
+        float lift = horizon - 2f;
+        for (int layer = 0; layer < 2; layer++) {
+            Color col = layer == 0 ? far : near;
+            for (int i = layer; i < skyline.length; i += 2) {
+                float[] s = skyline[i];
+                float rel = wrap(s[0] - heading);
+                if (Math.abs(rel) > hfov() + s[1] + 5f) {
+                    continue;
+                }
+                float x0 = w / 2f - (rel + s[1] / 2f) * pxPerDeg, bw = s[1] * pxPerDeg;
+                float hh = s[2] * pxPerDeg * (layer == 0 ? 1f : 0.7f);
+                if (skylineKind == 0) {
+                    shapes.setColor(col.r * (0.92f + s[3] * 0.12f), col.g * (0.92f + s[3] * 0.12f), col.b * (0.92f + s[3] * 0.12f), 1f);
+                    shapes.rect(x0, lift, bw, hh);
+                    if (s[3] > 0.7f && s[2] > 3f) {
+                        shapes.rect(x0 + bw * 0.45f, lift + hh, bw * 0.1f, hh * 0.25f);     // a spire
+                    }
+                    // a few lit windows
+                    if (layer == 1) {
+                        shapes.setColor(1f, 0.85f, 0.5f, 0.35f);
+                        for (float wy = lift + 3f; wy < lift + hh - 3f; wy += 6f) {
+                            for (float wx = x0 + 2f; wx < x0 + bw - 2f; wx += 5f) {
+                                if (((int) (wx * 7 + wy * 13 + i)) % 9 == 0) {
+                                    shapes.rect(wx, wy, 2f, 2f);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // a rounded hill or a jagged peak
+                    shapes.setColor(col.r * (0.95f + s[3] * 0.08f), col.g * (0.95f + s[3] * 0.08f), col.b * (0.95f + s[3] * 0.08f), 1f);
+                    float peak = x0 + bw * (0.3f + s[3] * 0.4f);
+                    shapes.triangle(x0 - bw * 0.3f, lift, x0 + bw * 1.3f, lift, peak, lift + hh);
+                    if (skylineKind == 1) {
+                        shapes.ellipse(x0, lift - hh * 0.4f, bw, hh * 1.4f, 20);
+                    }
+                }
+            }
+        }
+    }
+
     private float hfov() {
         // half the horizontal field of view, in degrees
         float aspect = cam.viewportWidth / cam.viewportHeight;
@@ -214,6 +299,42 @@ public class FirstPersonView {
             deg += 360f;
         }
         return deg;
+    }
+
+    /** builds the ground grid: the map picture, its edge colours stretched on out past it */
+    private void buildGround(TrackMap map, Texture picture) {
+        float w = picture.getWidth() * map.scale, h = picture.getHeight() * map.scale, margin = 2700f;
+        float cell = 40f;
+        Scenery3D.Builder b = new Scenery3D.Builder(ground);
+        Color white = Color.WHITE;
+        for (float x = -margin; x < w + margin; x += cell) {
+            for (float y = -margin; y < h + margin; y += cell) {
+                float x1 = x + cell, y1 = y + cell;
+                b.quad(x, y, 0f, x1, y, 0f, x1, y1, 0f, x, y1, 0f, u(x, w), v(y, h), u(x1, w), v(y, h), u(x1, w), v(y1, h),
+                    u(x, w), v(y1, h), white);
+            }
+        }
+        b.finish();
+    }
+
+    private static float u(float x, float w) {
+        return MathUtils.clamp(x / w, 0.0005f, 0.9995f);
+    }
+
+    private static float v(float y, float h) {
+        return MathUtils.clamp(1f - y / h, 0.0005f, 0.9995f);
+    }
+
+    /** the ground, following the hills and fading into the haze */
+    public void drawGround() {
+        groundShader();
+        fog.setUniformMatrix("u_projTrans", cam.combined);
+        fog.setUniformi("u_texture", 0);
+        Gdx.gl.glDisable(GL20.GL_DEPTH_TEST);
+        mapPicture.bind(0);
+        for (com.badlogic.gdx.graphics.Mesh mesh : ground) {
+            mesh.render(fog, GL20.GL_TRIANGLES);
+        }
     }
 
     /** the map's trees and buildings, in 3D (depth testing stays on for the cars) */
@@ -263,6 +384,8 @@ public class FirstPersonView {
     }
 
     private final Map<Texture, CarModels3D.Shape> carShapes = new HashMap<>();
+    private final float[] slopeOut = new float[2];
+    private final Vector3 tilt = new Vector3(), axis = new Vector3();
     private float clock = 0f;
     /** how high our eyes are in our own car (a bus sits far higher than a scooter) */
     private float ownEye = EYE_HEIGHT;
@@ -290,7 +413,16 @@ public class FirstPersonView {
             ownEye = CarModels3D.eyeHeight(shape);
         }
         float w = img.getWidth(), h = img.getHeight();
-        transform.idt().translate(x, y, 0f).rotate(0f, 0f, 1f, rotation);
+        // sit on the hill and lean with it
+        Terrain.slope(x, y, slopeOut);
+        tilt.set(-slopeOut[0], -slopeOut[1], 1f).nor();
+        axis.set(0f, 0f, 1f).crs(tilt);
+        float lean = (float) Math.toDegrees(Math.acos(MathUtils.clamp(tilt.z, -1f, 1f)));
+        transform.idt().translate(x, y, Terrain.height(x, y));
+        if (lean > 0.01f && axis.len2() > 1e-8f) {
+            transform.rotate(axis.nor(), lean);
+        }
+        transform.rotate(0f, 0f, 1f, rotation);
         shapes.setProjectionMatrix(cam.combined);
         shapes.setTransformMatrix(transform);
         shapes.begin(ShapeRenderer.ShapeType.Filled);
@@ -334,7 +466,7 @@ public class FirstPersonView {
      * (out = its screen position, in back-buffer pixels)
      */
     public boolean project(float x, float y, float z, Vector3 out) {
-        out.set(x, y, z);
+        out.set(x, y, z + Terrain.height(x, y));
         float fx = cam.direction.x, fy = cam.direction.y;
         if ((x - cam.position.x) * fx + (y - cam.position.y) * fy < 2f) {
             return false;
@@ -390,6 +522,9 @@ public class FirstPersonView {
     }
 
     public void dispose() {
+        for (com.badlogic.gdx.graphics.Mesh mesh : ground) {
+            mesh.dispose();
+        }
         scenery.dispose();
         batch.dispose();
         shapes.dispose();

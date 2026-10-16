@@ -165,25 +165,28 @@ public class ItemRenderer {
         }
         eye.set(cam.position);
         batch.setProjectionMatrix(cam.combined);
-        // oil slicks, flat on the road
-        batch.setTransformMatrix(m.idt().translate(0f, 0f, 0.08f));
-        batch.begin();
+        // oil slicks, flat on the road (each lifted onto the hill where it lies)
         for (String s : parts[2].split(";")) {
             float[] p = numbers(s);
             if (p != null) {
+                batch.setTransformMatrix(m.idt().translate(0f, 0f, Terrain.height(p[0], p[1]) + 0.12f));
+                batch.begin();
                 batch.draw(oil, p[0] - 14f, p[1] - 14f, 28f, 28f);
+                batch.end();
             }
         }
         // the item boxes' shadows
-        batch.setColor(0f, 0f, 0f, 0.3f);
         for (int i = 0; i < boxes.size() && i < parts[0].length(); i++) {
             if (parts[0].charAt(i) == '1') {
                 Vector2 b = boxes.get(i);
+                batch.setTransformMatrix(m.idt().translate(0f, 0f, Terrain.height(b.x, b.y) + 0.12f));
+                batch.begin();
+                batch.setColor(0f, 0f, 0f, 0.3f);
                 batch.draw(shield, b.x - 5f, b.y - 5f, 10f, 10f);
+                batch.setColor(1f, 1f, 1f, 1f);
+                batch.end();
             }
         }
-        batch.setColor(1f, 1f, 1f, 1f);
-        batch.end();
 
         // item cubes: each face is the box art; only the faces turned toward us are drawn
         float s = 8f;
@@ -195,7 +198,7 @@ public class ItemRenderer {
             if (b.dst2(eye.x, eye.y) > 1800f * 1800f) {
                 continue;
             }
-            float zc = 7f + MathUtils.sin(clock * 3f + i * 1.7f) * 1.2f;
+            float zc = 7f + MathUtils.sin(clock * 3f + i * 1.7f) * 1.2f + Terrain.height(b.x, b.y);
             float spin = clock * 70f + i * 40f;
             float glint = MathUtils.sin(clock * 5f + i) > 0.92f ? 1.35f : 1f;
             batch.setColor(glint, glint, glint, 1f);
@@ -224,7 +227,7 @@ public class ItemRenderer {
             if (p == null) {
                 continue;
             }
-            m.idt().translate(p[0], p[1], 0f).rotate(0f, 0f, 1f, p[2] - 90f);
+            m.idt().translate(p[0], p[1], Terrain.height(p[0], p[1])).rotate(0f, 0f, 1f, p[2] - 90f);
             shapes.setTransformMatrix(m);
             shapes.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Filled);
             shapes.setColor(0.85f, 0.2f, 0.18f, 1f);
@@ -239,7 +242,7 @@ public class ItemRenderer {
             for (int k = 1; k <= 6; k++) {
                 float tx = p[0] - MathUtils.cosDeg(p[2]) * (4f + k * 3.5f), ty = p[1] - MathUtils.sinDeg(p[2]) * (4f + k * 3.5f);
                 batch.setColor(1f, 0.9f - k * 0.1f, 0.35f, 0.9f - k * 0.13f);
-                billboard(batch, shield, tx, ty, 4.4f + MathUtils.sin(clock * 30f + k) * 0.4f, 3.2f - k * 0.3f);
+                billboard(batch, shield, tx, ty, 4.4f + MathUtils.sin(clock * 30f + k) * 0.4f + Terrain.height(tx, ty), 3.2f - k * 0.3f);
             }
             batch.setColor(1f, 1f, 1f, 1f);
         }
@@ -258,10 +261,10 @@ public class ItemRenderer {
                     } else {
                         batch.setColor(0.6f, 0.9f, 1f, a);
                     }
-                    billboard(batch, shield, p[0], p[1], 4.5f, size);
+                    billboard(batch, shield, p[0], p[1], 4.5f + Terrain.height(p[0], p[1]), size);
                 }
                 batch.setColor(1f, 1f, 1f, 1f);
-                billboard(batch, fire ? icons[6] : icons[5], p[0], p[1], 4.5f, 7f);
+                billboard(batch, fire ? icons[6] : icons[5], p[0], p[1], 4.5f + Terrain.height(p[0], p[1]), 7f);
             }
         }
         // shields: a shimmering bubble round the car
@@ -270,7 +273,7 @@ public class ItemRenderer {
             if (c != null && c.dst2(eye.x, eye.y) > 64f) {
                 float size = 26f * (1f + MathUtils.sin(clock * 6f) * 0.05f);
                 batch.setColor(1f, 1f, 1f, 0.85f);
-                billboard(batch, shield, c.x, c.y, 4f, size);
+                billboard(batch, shield, c.x, c.y, 4f + Terrain.height(c.x, c.y), size);
                 batch.setColor(1f, 1f, 1f, 1f);
             }
         }

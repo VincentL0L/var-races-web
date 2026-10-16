@@ -49,13 +49,16 @@ public class Scenery3D {
         + "varying vec4 v_color;\n"
         + "varying vec2 v_texCoords;\n"
         + "varying float v_fog;\n"
+        + Terrain.GLSL
         + "void main() {\n"
         + "  v_color = a_color;\n"
         + "  v_color.a = v_color.a * (255.0/254.0);\n"
         + "  v_texCoords = a_texCoord0;\n"
-        + "  float d = distance(a_position.xy, u_eye.xy);\n"
+        + "  vec4 pos = a_position;\n"
+        + "  pos.z += hill(pos.xy);\n"
+        + "  float d = distance(pos.xy, u_eye.xy);\n"
         + "  v_fog = clamp((d - u_fogRange.x) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);\n"
-        + "  gl_Position = u_projTrans * a_position;\n"
+        + "  gl_Position = u_projTrans * pos;\n"
         + "}\n";
     public static final String FRAGMENT =
         "#ifdef GL_ES\n"
