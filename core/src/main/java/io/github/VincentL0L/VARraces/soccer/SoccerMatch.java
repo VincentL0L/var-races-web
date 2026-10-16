@@ -2,7 +2,7 @@ package io.github.VincentL0L.VARraces.soccer;
 
 /** Server-authoritative car soccer simulation, shared by desktop/web builds and tests. */
 public final class SoccerMatch {
-    public static final float WIDTH = 1400, HEIGHT = 900, GOAL_WIDTH = 280, GOAL_HEIGHT = 105, GOAL_DEPTH = 80;
+    public static final float WIDTH = 1960, HEIGHT = 1260, CEILING = 600, GOAL_WIDTH = 360, GOAL_HEIGHT = 150, GOAL_DEPTH = 100;
     public static final float BALL_RADIUS = 26, CAR_RADIUS = 15;
     public static final int WAITING = 0, KICKOFF = 1, PLAYING = 2, GOAL = 3, FINISHED = 4;
     public static final int WIN_SCORE = 5;
@@ -26,7 +26,7 @@ public final class SoccerMatch {
         public float nitroTime, shotTime, magnetTime;
         public boolean boostActive;
         public int pickupSerial, lastPickup;
-        private float inputAge;
+        private float inputAge, steering;
         Car(int slot) { this.slot = slot; team = slot % 2; }
     }
 
@@ -39,7 +39,7 @@ public final class SoccerMatch {
         public final float x, y;
         public final int type;
         public float cooldown;
-        Pickup(float x, float y, int type) { this.x = x; this.y = y; this.type = type; }
+        Pickup(float x, float y, int type) { this.x = x * WIDTH / 1400; this.y = y * HEIGHT / 900; this.type = type; }
         public float respawnSeconds() { return type == BOOST_PAD ? 4 : type == FULL_BOOST ? 10 : 12; }
         public float radius() { return type == BOOST_PAD ? 14 : type == FULL_BOOST ? 24 : 20; }
     }
@@ -111,12 +111,12 @@ public final class SoccerMatch {
         ball.vx = ball.vy = ball.vz = 0;
         for (Car car : cars) {
             if (car == null) continue;
-            car.x = car.team == 0 ? 260 : WIDTH - 260;
+            car.x = car.team == 0 ? WIDTH * (260f / 1400) : WIDTH * (1 - (260f / 1400));
             car.y = HEIGHT / 2 + (teamSize == 1 ? 0 : (car.slot / 2 == 0 ? -145 : 145));
             car.heading = car.team == 0 ? 0 : 180;
             car.z = car.vx = car.vy = car.vz = 0;
             car.boost = 100;
-            car.throttle = car.steer = 0;
+            car.throttle = car.steer = car.steering = 0;
             car.boosting = car.jumpQueued = car.jumpHeld = false;
             car.nitroTime = car.shotTime = car.magnetTime = 0;
             car.boostActive = false;
@@ -166,30 +166,46 @@ public final class SoccerMatch {
             car.magnetTime = Math.max(0, car.magnetTime - dt);
             car.inputAge += dt;
             // A lost connection or backgrounded tab cannot keep holding the accelerator.
-            if (car.inputAge > 0.35f) { car.throttle = car.steer = 0; car.boosting = car.jumpQueued = false; }
+            if (car.inputAge > 0.35f) { car.throttle = car.steer = car.steering = 0; car.boosting = car.jumpQueued = false; }
+            boolean grounded = car.z <= 0.1f && car.vz <= 0;
+            if (car.jumpQueued && grounded) { car.vz = 165; grounded = false; }
+            car.jumpQueued = false;
             float fx = cos(car.heading), fy = sin(car.heading);
             float forward = car.vx * fx + car.vy * fy;
-            float sideways = -car.vx * fy + car.vy * fx;
-            boolean boost = car.boosting && car.boost > 0 && car.throttle > 0;
+            boolean boost = car.boosting && car.boost > 0 && (!grounded || car.throttle > 0);
             boolean nitro = car.nitroTime > 0 && car.throttle > 0;
             car.boostActive = boost || nitro;
-            if (car.throttle != 0) {
-                float acceleration = car.throttle * forward < -5 ? 650 : nitro ? 680 : boost ? 480 : 300;
-                forward += car.throttle * acceleration * dt;
-            } else forward *= (float) Math.exp(-1.5f * dt);
-            forward = clamp(forward, -150, nitro ? 760 : boost ? 560 : 380);
-            sideways *= (float) Math.exp(-12 * dt);
-            car.boost = clamp(car.boost + (boost && !nitro ? -30 : 14) * dt, 0, 100);
-            car.heading += car.steer * 125 * Math.min(1, Math.abs(forward) / 110) * (forward < 0 ? -1 : 1) * dt;
+            car.steering += (car.steer - car.steering) * (1 - (float) Math.exp(-8 * dt));
+            float speed = Math.abs(forward);
+            float turn = grounded ? 200 * Math.min(1, speed / 70) / (1 + speed / 550) : 85;
+            car.heading += car.steering * turn * (grounded && forward < 0 ? -1 : 1) * dt;
             car.heading = (car.heading % 360 + 360) % 360;
-            fx = cos(car.heading); fy = sin(car.heading);
-            car.vx = fx * forward - fy * sideways;
-            car.vy = fy * forward + fx * sideways;
-            if (car.jumpQueued && car.z < 0.1f) car.vz = 100;
-            car.jumpQueued = false;
-            car.vz -= 230 * dt;
+            if (grounded) {
+                float sideways = -car.vx * fy + car.vy * fx;
+                if (car.throttle != 0) {
+                    float acceleration = car.throttle * forward < -5 ? 650 : nitro ? 680 : boost ? 480 : 300;
+                    forward += car.throttle * acceleration * dt;
+                } else forward *= (float) Math.exp(-1.5f * dt);
+                forward = clamp(forward, -150, nitro ? 760 : boost ? 560 : 380);
+                sideways *= (float) Math.exp(-(boost || nitro ? 5.5f : 9) * dt);
+                // Keep world momentum as the wheels turn; tire grip bends the path gradually.
+                car.vx = fx * forward - fy * sideways;
+                car.vy = fy * forward + fx * sideways;
+            } else {
+                fx = cos(car.heading); fy = sin(car.heading);
+                float thrust = boost ? 460 : nitro ? 340 : 100 * car.throttle;
+                car.vx += fx * thrust * dt; car.vy += fy * thrust * dt;
+                float flatSpeed = (float) Math.sqrt(car.vx * car.vx + car.vy * car.vy);
+                float limit = nitro ? 760 : 620;
+                if (flatSpeed > limit) { car.vx *= limit / flatSpeed; car.vy *= limit / flatSpeed; }
+                // An accessible aerial: jump then hold boost to climb, release it to descend.
+                if (boost) car.vz += 460 * dt;
+            }
+            car.boost = clamp(car.boost + (boost && !nitro ? -20 : grounded || nitro ? 14 : 0) * dt, 0, 100);
+            car.vz = Math.min(240, car.vz - 230 * dt);
             car.z = Math.max(0, car.z + car.vz * dt);
             if (car.z == 0) car.vz = 0;
+            if (car.z > CEILING - 20) { car.z = CEILING - 20; car.vz = Math.min(0, car.vz); }
             car.x += car.vx * dt; car.y += car.vy * dt;
             constrainCar(car);
             collectPickups(car);
@@ -208,8 +224,11 @@ public final class SoccerMatch {
             ball.z = BALL_RADIUS;
             ball.vz = Math.abs(ball.vz) > 12 ? Math.abs(ball.vz) * 0.62f : 0;
         }
-        if (ball.z > 300 - BALL_RADIUS) { ball.z = 300 - BALL_RADIUS; ball.vz = -Math.abs(ball.vz) * 0.8f; }
+        if (ball.z > CEILING - BALL_RADIUS) { ball.z = CEILING - BALL_RADIUS; ball.vz = -Math.abs(ball.vz) * 0.8f; }
         for (Car car : cars) if (car != null) hitBall(car);
+        // Contacts near the floor or roof must not push the ball outside the cage.
+        if (ball.z < BALL_RADIUS) { ball.z = BALL_RADIUS; ball.vz = Math.max(0, ball.vz); }
+        if (ball.z > CEILING - BALL_RADIUS) { ball.z = CEILING - BALL_RADIUS; ball.vz = Math.min(0, ball.vz); }
         if (ball.y < BALL_RADIUS) { ball.y = BALL_RADIUS; ball.vy = Math.abs(ball.vy) * 0.82f; }
         if (ball.y > HEIGHT - BALL_RADIUS) { ball.y = HEIGHT - BALL_RADIUS; ball.vy = -Math.abs(ball.vy) * 0.82f; }
         boolean mouth = Math.abs(ball.y - HEIGHT / 2) < GOAL_WIDTH / 2 - BALL_RADIUS
@@ -258,7 +277,7 @@ public final class SoccerMatch {
 
     private void constrainCar(Car c) {
         float low = CAR_RADIUS, high = WIDTH - CAR_RADIUS;
-        if (Math.abs(c.y - HEIGHT / 2) < GOAL_WIDTH / 2 - CAR_RADIUS) {
+        if (Math.abs(c.y - HEIGHT / 2) < GOAL_WIDTH / 2 - CAR_RADIUS && c.z + 14 < GOAL_HEIGHT) {
             low -= GOAL_DEPTH; high += GOAL_DEPTH;
         }
         float x = clamp(c.x, low, high), y = clamp(c.y, CAR_RADIUS, HEIGHT - CAR_RADIUS);

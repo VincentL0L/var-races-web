@@ -52,6 +52,11 @@ This copy adds:
   2v2 room from the main menu and share its five-letter room code. Matches start when
   all 2 or 4 players join, with balanced blue/orange teams. Drive with WASD/arrows,
   boost with Shift, and jump with Space (touch controls are also provided).
+  Steering eases in with tire grip and wider turns at speed, like the racing mode.
+  The pitch is 1960 x 1260 with a 600-high ceiling. Jump then hold Shift to climb
+  with aerial boost; release it to descend. A full tank supplies five seconds of
+  thrust, and boost recharges on the ground. Air steering changes your heading
+  while preserving momentum until you apply thrust.
   The server simulates the cars and bouncing ball, validates goals, and broadcasts
   one shared score. First to five goals wins, or the leader after three minutes;
   ties use sudden-death overtime. The host can start a rematch after the result.

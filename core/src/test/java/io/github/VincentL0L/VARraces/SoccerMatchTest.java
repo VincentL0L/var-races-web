@@ -47,7 +47,7 @@ public class SoccerMatchTest {
     @Test public void highShotsHitTheBackWallAboveTheCrossbar() {
         SoccerMatch m = started(1);
         m.ball.x = SoccerMatch.WIDTH - 27; m.ball.y = SoccerMatch.HEIGHT / 2;
-        m.ball.z = 150; m.ball.vx = 200; m.step(0.05f);
+        m.ball.z = SoccerMatch.GOAL_HEIGHT + 40; m.ball.vx = 200; m.step(0.05f);
         assertTrue(m.ball.vx < 0); assertEquals(0, m.blue);
     }
 
@@ -56,7 +56,7 @@ public class SoccerMatchTest {
         m.ball.x = -27; m.step(0.05f);
         for (int i = 0; i < 52; i++) m.step(0.05f);
         assertEquals(1, m.orange); assertEquals(SoccerMatch.KICKOFF, m.phase);
-        assertEquals(700, m.ball.x, 0); assertEquals(260, m.cars[0].x, 0);
+        assertEquals(SoccerMatch.WIDTH / 2, m.ball.x, 0); assertEquals(SoccerMatch.WIDTH * (260f / 1400), m.cars[0].x, 0);
     }
 
     @Test public void jumpBoostAndInputTimeoutWorkWithoutLeavingArena() {

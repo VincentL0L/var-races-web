@@ -85,13 +85,18 @@ async function twoVersusTwo() {
   assert.deepEqual(players.map(c => c.slot % 2), [0, 1, 0, 1]);
   players[0].send('SOCCER|INPUT|1|0|1|1');
   await until(() => players[0].state.cars[0][3] > 1 && players[0].state.cars[0][5] < 100, 'jump and boost replicated');
+  const aerial = setInterval(() => players[0].send('SOCCER|INPUT|0|0|1|1'), 50);
+  try {
+    await until(() => players.every(c => c.state.cars.find(car => car[0] === 0)?.[3] > 300), 'high aerial boost on all peers');
+  } finally { clearInterval(aerial); }
+  players[0].send('SOCCER|INPUT|0|0|0|0');
   for (let i = 1; i < 4; i++) sameState(players[0], players[i]);
   players[2].ws.close();
   await until(() => players[0].state.phase === 0 && players[0].state.cars.length === 3, '2v2 disconnect');
   const c = await connect(); c.send('SOCCER|JOIN|' + players[0].code);
   await until(() => players[0].state.phase === 1 && c.state?.cars.length === 4, '2v2 replacement');
   for (const p of [...players, c]) p.ws.close();
-  console.log('PASS 2v2: balanced teams, four-player kickoff, jump/boost, shared state, replacement');
+  console.log('PASS 2v2: balanced teams, four-player kickoff, high aerial boost, shared state, replacement');
 }
 try {
   await oneVersusOne();

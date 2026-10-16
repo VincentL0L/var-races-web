@@ -33,7 +33,8 @@ public final class SoccerScreen extends ScreenAdapter {
     private final Skin skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
     private final SoccerView view = new SoccerView();
     private final float[][] targets = new float[4][], cars = new float[4][];
-    private final float[] ballTarget = {700, 450, 26}, ball = {700, 450, 26};
+    private final float[] ballTarget = {SoccerMatch.WIDTH / 2, SoccerMatch.HEIGHT / 2, SoccerMatch.BALL_RADIUS},
+        ball = {SoccerMatch.WIDTH / 2, SoccerMatch.HEIGHT / 2, SoccerMatch.BALL_RADIUS};
     private final float[] pickupCooldowns = new float[SoccerMatch.createPickups().length];
     private final float[][] effects = new float[4][7];
     private final Table setup, waiting, finished;
@@ -134,7 +135,7 @@ public final class SoccerScreen extends ScreenAdapter {
         } else {
             Table hint = new Table(); hint.setBackground(Ui.solid(new Color(0.025f, 0.06f, 0.11f, 0.94f)));
             hint.pad(8, 14, 8, 14);
-            hint.add(Cards.text("WASD / ARROWS drive   |   SHIFT boost   |   SPACE jump   |   ESC leave", false));
+            hint.add(Cards.text("WASD / ARROWS drive   |   SHIFT boost / air lift   |   SPACE jump   |   ESC leave", false));
             bottom.add(hint).colspan(2).expandX().fillX();
         }
         stage.addActor(bottom);
@@ -216,7 +217,9 @@ public final class SoccerScreen extends ScreenAdapter {
         float throttle = keeper && dist < 40 ? 0f : Math.abs(rel) > 120 && dist < 140 ? -1f : 1f;
         boolean boost = Math.abs(rel) < 14 && dist > 220 && car.boost > 25 && !keeper;
         float bdx = b.x - car.x, bdy = b.y - car.y;
-        boolean jump = b.z > 45 && bdx * bdx + bdy * bdy < 70 * 70;
+        boolean nearHighBall = b.z > car.z + 25 && bdx * bdx + bdy * bdy < 180 * 180;
+        boolean jump = nearHighBall && car.z < 0.1f;
+        boost |= nearHighBall && car.z > 0 && car.boost > 5;
         m.input(car.slot, throttle, steer, boost, jump);
     }
 
@@ -327,7 +330,7 @@ public final class SoccerScreen extends ScreenAdapter {
             float relative = ((angle - c[4] + 540) % 360) - 180;
             String bearing = Math.abs(relative) > 110 ? "BEHIND" : relative > 20 ? "LEFT" : relative < -20 ? "RIGHT" : "AHEAD";
             ballLabel.setText(sinceState > 2 && local == null ? "CONNECTION LOST - waiting for server" : "BALL " + bearing + "  "
-                + (int) Math.sqrt((ball[0] - c[1]) * (ball[0] - c[1]) + (ball[1] - c[2]) * (ball[1] - c[2])) + "m");
+                + (int) Math.sqrt((ball[0] - c[1]) * (ball[0] - c[1]) + (ball[1] - c[2]) * (ball[1] - c[2])) + "m  |  HEIGHT " + (int) ball[2] + "m");
             sendTimer += delta;
             jumpPending |= Gdx.input.isKeyJustPressed(Input.Keys.SPACE);
             if (sendTimer >= 0.05f && (connected || local != null)) {
