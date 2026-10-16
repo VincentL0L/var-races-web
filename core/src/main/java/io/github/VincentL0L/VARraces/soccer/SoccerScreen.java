@@ -30,6 +30,8 @@ public final class SoccerScreen extends ScreenAdapter {
     private final SoccerView view = new SoccerView();
     private final float[][] targets = new float[4][], cars = new float[4][];
     private final float[] ballTarget = {700, 450, 26}, ball = {700, 450, 26};
+    private final float[] pickupCooldowns = new float[SoccerMatch.createPickups().length];
+    private final float[][] effects = new float[4][7];
     private final Table setup, waiting, finished;
     private final Label status = Cards.text("Connecting to the game server...", false);
     private final Label roomList = Cards.text("", false), waitText = Cards.text("", false);
@@ -38,6 +40,8 @@ public final class SoccerScreen extends ScreenAdapter {
     private final Label banner = Cards.title("", 38);
     private final Label boostLabel = new Label("BOOST 100", new Label.LabelStyle(Ui.font(13), Color.WHITE));
     private final Label ballLabel = Cards.text("", false), winner = Cards.title("", 30);
+    private final Label powerLabel = new Label("DRIVE OVER PICKUPS", new Label.LabelStyle(Ui.font(12), Color.WHITE));
+    private final Label pickupToast = Cards.title("", 25);
     private final TextButton rematch;
     private GameSocket socket;
     private boolean connected, connecting, disposed, jumpPending;
@@ -45,6 +49,8 @@ public final class SoccerScreen extends ScreenAdapter {
     private String code = "";
     private int slot = -1, host, phase = SoccerMatch.WAITING, size = 1;
     private float time = 180, countdown, sendTimer, sinceState;
+    private float toastTime;
+    private int lastPickupSerial;
     private String event = "";
 
     public SoccerScreen(Game game, int selectedCar) {
@@ -53,8 +59,8 @@ public final class SoccerScreen extends ScreenAdapter {
         Table card = Cards.card();
         card.add(Cards.kicker("FIRST PERSON  /  ONLINE MULTIPLAYER")).left().row();
         card.add(Cards.title("RACE CAR SOCCER", 29)).padBottom(14).left().row();
-        Label rules = Cards.text("Drive the ball into the other team's goal.\nFirst to 5, or lead after 3 minutes. Ties go to overtime.", false);
-        rules.setWrap(true); card.add(rules).height(64).left().row();
+        Label rules = Cards.text("First to 5, or lead after 3 minutes. Ties go to overtime.\nDrive over pickups - they activate automatically.\nGOLD: boost  |  CYAN: nitro  |  PINK: power shot\nPURPLE: magnet - pull a nearby ball to your bumper.", false);
+        rules.setWrap(true); card.add(rules).height(104).left().row();
         Table modes = new Table();
         modes.add(button("CREATE 1v1", () -> send("SOCCER|CREATE|1"))).width(220).height(54).padRight(12);
         modes.add(button("CREATE 2v2", () -> send("SOCCER|CREATE|2"))).width(220).height(54);
@@ -93,11 +99,13 @@ public final class SoccerScreen extends ScreenAdapter {
 
         Table center = new Table(); center.setFillParent(true); center.add(banner).padBottom(120); stage.addActor(center);
         center.setTouchable(com.badlogic.gdx.scenes.scene2d.Touchable.disabled);
+        Table toast = new Table(); toast.setFillParent(true); toast.add(pickupToast).padTop(180);
+        toast.setTouchable(com.badlogic.gdx.scenes.scene2d.Touchable.disabled); stage.addActor(toast);
         Table bottom = new Table(); bottom.setFillParent(true); bottom.bottom().pad(18);
         Table readout = new Table();
         readout.setBackground(Ui.solid(new Color(0.025f, 0.06f, 0.11f, 0.94f)));
         readout.pad(8, 14, 8, 14);
-        readout.add(boostLabel).left().expandX(); readout.add(ballLabel).right();
+        readout.add(boostLabel).left().expandX(); readout.add(powerLabel).center().expandX(); readout.add(ballLabel).right();
         bottom.add(readout).colspan(2).expandX().fillX().row();
         if (Ui.touchScreen) {
             Table buttons = new Table();
@@ -156,6 +164,7 @@ public final class SoccerScreen extends ScreenAdapter {
     private void receive(String message) {
         if (message.startsWith("SOCCER_JOINED|")) {
             String[] p = message.split("\\|"); code = p[1]; slot = Integer.parseInt(p[2]);
+            lastPickupSerial = 0; toastTime = 0;
             setup.setVisible(false); stage.setKeyboardFocus(null); sinceState = 0;
         } else if (message.startsWith("SOCCER_ERROR|")) status.setText(message.substring(13));
         else if (message.startsWith("SOCCER_LIST")) {
@@ -181,20 +190,35 @@ public final class SoccerScreen extends ScreenAdapter {
                 if (cars[id] == null || reset) cars[id] = targets[id].clone();
             }
             for (int i = 0; i < 4; i++) if (targets[i] == null) cars[i] = null;
+            JsonValue pads = s.get("pickups");
+            if (pads != null) for (int i = 0; i < Math.min(pads.size, pickupCooldowns.length); i++) pickupCooldowns[i] = pads.getFloat(i);
+            JsonValue power = s.get("effects");
+            if (power != null) for (JsonValue e = power.child; e != null; e = e.next) effects[e.getInt(0)] = e.asFloatArray();
+            if (slot >= 0 && (int) effects[slot][5] > lastPickupSerial) {
+                lastPickupSerial = (int) effects[slot][5];
+                pickupToast.setText(SoccerMatch.pickupName((int) effects[slot][6]) + "!");
+                toastTime = 2;
+                Sounds.play("item_pickup", 0.45f);
+            }
         }
     }
 
     @Override public void render(float delta) {
         if (disposed) return;
+        // Browser frame clocks can jump during focus changes. Never extrapolate the
+        // camera away from the authoritative positions on a negative or invalid frame.
+        delta = Float.isFinite(delta) ? MathUtils.clamp(delta, 0, 0.1f) : 0;
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) { leave(); return; }
-        float smooth = 1 - (float) Math.exp(-25 * Math.min(delta, 0.1f));
+        float smooth = 1 - (float) Math.exp(-25 * delta);
         for (int i = 0; i < 4; i++) if (cars[i] != null && targets[i] != null) {
             for (int j = 1; j < 8; j++) cars[i][j] = j == 4
                 ? MathUtils.lerpAngleDeg(cars[i][j], targets[i][j], smooth)
                 : MathUtils.lerp(cars[i][j], targets[i][j], smooth);
         }
         for (int i = 0; i < 3; i++) ball[i] = MathUtils.lerp(ball[i], ballTarget[i], smooth);
-        view.render(cars, ball, slot);
+        view.render(cars, ball, slot, pickupCooldowns, effects, delta);
+        toastTime = Math.max(0, toastTime - delta);
+        pickupToast.setVisible(toastTime > 0 && phase == SoccerMatch.PLAYING);
         sinceState += delta;
         waiting.setVisible(!code.isEmpty() && phase == SoccerMatch.WAITING);
         finished.setVisible(!code.isEmpty() && phase == SoccerMatch.FINISHED);
@@ -211,6 +235,13 @@ public final class SoccerScreen extends ScreenAdapter {
             float[] c = cars[slot];
             boostLabel.setText((slot % 2 == 0 ? "BLUE" : "ORANGE") + " TEAM  |  BOOST " + (int) c[5]);
             boostLabel.setColor(slot % 2 == 0 ? SoccerView.BLUE : SoccerView.ORANGE);
+            StringBuilder powers = new StringBuilder();
+            String[] names = {"", "NITRO", "POWER SHOT", "MAGNET"};
+            for (int i = 1; i <= 3; i++) if (effects[slot][i] > 0) {
+                if (powers.length() > 0) powers.append(" | ");
+                powers.append(names[i]).append(' ').append((int) Math.ceil(effects[slot][i])).append('s');
+            }
+            powerLabel.setText(powers.length() == 0 ? "DRIVE OVER PICKUPS" : powers.toString());
             float angle = MathUtils.atan2(ball[1] - c[2], ball[0] - c[1]) * MathUtils.radiansToDegrees;
             float relative = ((angle - c[4] + 540) % 360) - 180;
             String bearing = Math.abs(relative) > 110 ? "BEHIND" : relative > 20 ? "LEFT" : relative < -20 ? "RIGHT" : "AHEAD";

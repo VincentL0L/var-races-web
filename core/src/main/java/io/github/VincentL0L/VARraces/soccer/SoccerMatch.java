@@ -6,8 +6,11 @@ public final class SoccerMatch {
     public static final float BALL_RADIUS = 26, CAR_RADIUS = 15;
     public static final int WAITING = 0, KICKOFF = 1, PLAYING = 2, GOAL = 3, FINISHED = 4;
     public static final int WIN_SCORE = 5;
+    public static final int BOOST_PAD = 1, FULL_BOOST = 2, NITRO = 3, POWER_SHOT = 4, MAGNET = 5;
+    public static final float MAGNET_RANGE = 240;
     public final int teamSize;
     public final Car[] cars;
+    public final Pickup[] pickups = createPickups();
     public final Ball ball = new Ball();
     public int blue, orange, phase = WAITING;
     public float remaining = 180, phaseTime;
@@ -20,12 +23,49 @@ public final class SoccerMatch {
         public float x, y, z, vx, vy, vz, heading, boost = 100;
         public float throttle, steer;
         public boolean boosting, jumpQueued, jumpHeld;
+        public float nitroTime, shotTime, magnetTime;
+        public boolean boostActive;
+        public int pickupSerial, lastPickup;
         private float inputAge;
         Car(int slot) { this.slot = slot; team = slot % 2; }
     }
 
     public static final class Ball {
         public float x = WIDTH / 2, y = HEIGHT / 2, z = BALL_RADIUS, vx, vy, vz;
+    }
+
+    /** Shared placement data; only the server changes cooldowns or awards effects. */
+    public static final class Pickup {
+        public final float x, y;
+        public final int type;
+        public float cooldown;
+        Pickup(float x, float y, int type) { this.x = x; this.y = y; this.type = type; }
+        public float respawnSeconds() { return type == BOOST_PAD ? 4 : type == FULL_BOOST ? 10 : 12; }
+        public float radius() { return type == BOOST_PAD ? 14 : type == FULL_BOOST ? 24 : 20; }
+    }
+
+    public static Pickup[] createPickups() {
+        return new Pickup[] {
+            new Pickup(440, 450, BOOST_PAD), new Pickup(960, 450, BOOST_PAD),
+            new Pickup(350, 220, BOOST_PAD), new Pickup(700, 220, BOOST_PAD), new Pickup(1050, 220, BOOST_PAD),
+            new Pickup(350, 680, BOOST_PAD), new Pickup(700, 680, BOOST_PAD), new Pickup(1050, 680, BOOST_PAD),
+            new Pickup(140, 130, FULL_BOOST), new Pickup(1260, 130, FULL_BOOST),
+            new Pickup(140, 770, FULL_BOOST), new Pickup(1260, 770, FULL_BOOST),
+            new Pickup(430, 160, NITRO), new Pickup(970, 740, NITRO),
+            new Pickup(510, 450, POWER_SHOT), new Pickup(890, 450, POWER_SHOT),
+            new Pickup(700, 110, MAGNET), new Pickup(700, 790, MAGNET)
+        };
+    }
+
+    public static String pickupName(int type) {
+        switch (type) {
+            case BOOST_PAD: return "BOOST +25";
+            case FULL_BOOST: return "BOOST FULL";
+            case NITRO: return "NITRO";
+            case POWER_SHOT: return "POWER SHOT";
+            case MAGNET: return "MAGNET";
+            default: return "";
+        }
     }
 
     public SoccerMatch(int teamSize) {
@@ -66,6 +106,7 @@ public final class SoccerMatch {
     }
 
     private void resetPositions() {
+        for (Pickup pickup : pickups) pickup.cooldown = 0;
         ball.x = WIDTH / 2; ball.y = HEIGHT / 2; ball.z = BALL_RADIUS;
         ball.vx = ball.vy = ball.vz = 0;
         for (Car car : cars) {
@@ -77,6 +118,8 @@ public final class SoccerMatch {
             car.boost = 100;
             car.throttle = car.steer = 0;
             car.boosting = car.jumpQueued = car.jumpHeld = false;
+            car.nitroTime = car.shotTime = car.magnetTime = 0;
+            car.boostActive = false;
         }
     }
 
@@ -115,8 +158,12 @@ public final class SoccerMatch {
     }
 
     private void physics(float dt) {
+        for (Pickup pickup : pickups) pickup.cooldown = Math.max(0, pickup.cooldown - dt);
         for (Car car : cars) {
             if (car == null) continue;
+            car.nitroTime = Math.max(0, car.nitroTime - dt);
+            car.shotTime = Math.max(0, car.shotTime - dt);
+            car.magnetTime = Math.max(0, car.magnetTime - dt);
             car.inputAge += dt;
             // A lost connection or backgrounded tab cannot keep holding the accelerator.
             if (car.inputAge > 0.35f) { car.throttle = car.steer = 0; car.boosting = car.jumpQueued = false; }
@@ -124,13 +171,15 @@ public final class SoccerMatch {
             float forward = car.vx * fx + car.vy * fy;
             float sideways = -car.vx * fy + car.vy * fx;
             boolean boost = car.boosting && car.boost > 0 && car.throttle > 0;
+            boolean nitro = car.nitroTime > 0 && car.throttle > 0;
+            car.boostActive = boost || nitro;
             if (car.throttle != 0) {
-                float acceleration = car.throttle * forward < -5 ? 650 : boost ? 480 : 300;
+                float acceleration = car.throttle * forward < -5 ? 650 : nitro ? 680 : boost ? 480 : 300;
                 forward += car.throttle * acceleration * dt;
             } else forward *= (float) Math.exp(-1.5f * dt);
-            forward = clamp(forward, -150, boost ? 560 : 380);
+            forward = clamp(forward, -150, nitro ? 760 : boost ? 560 : 380);
             sideways *= (float) Math.exp(-12 * dt);
-            car.boost = clamp(car.boost + (boost ? -30 : 14) * dt, 0, 100);
+            car.boost = clamp(car.boost + (boost && !nitro ? -30 : 14) * dt, 0, 100);
             car.heading += car.steer * 125 * Math.min(1, Math.abs(forward) / 110) * (forward < 0 ? -1 : 1) * dt;
             car.heading = (car.heading % 360 + 360) % 360;
             fx = cos(car.heading); fy = sin(car.heading);
@@ -143,12 +192,14 @@ public final class SoccerMatch {
             if (car.z == 0) car.vz = 0;
             car.x += car.vx * dt; car.y += car.vy * dt;
             constrainCar(car);
+            collectPickups(car);
         }
         for (int i = 0; i < cars.length; i++) {
             for (int j = i + 1; j < cars.length; j++) {
                 if (cars[i] != null && cars[j] != null) collideCars(cars[i], cars[j]);
             }
         }
+        for (Car car : cars) if (car != null && car.magnetTime > 0) attractBall(car, dt);
         ball.vz -= 230 * dt;
         ball.x += ball.vx * dt; ball.y += ball.vy * dt; ball.z += ball.vz * dt;
         float drag = (float) Math.exp(-(ball.z <= BALL_RADIUS + 1 ? 0.24f : 0.025f) * dt);
@@ -167,6 +218,42 @@ public final class SoccerMatch {
         else if (mouth && ball.x > WIDTH + BALL_RADIUS) score(0);
         else if (!mouth && ball.x < BALL_RADIUS) { ball.x = BALL_RADIUS; ball.vx = Math.abs(ball.vx) * 0.82f; }
         else if (!mouth && ball.x > WIDTH - BALL_RADIUS) { ball.x = WIDTH - BALL_RADIUS; ball.vx = -Math.abs(ball.vx) * 0.82f; }
+    }
+
+    private void collectPickups(Car car) {
+        if (car.z > 12) return;
+        for (Pickup pickup : pickups) {
+            if (pickup.cooldown > 0) continue;
+            float dx = car.x - pickup.x, dy = car.y - pickup.y;
+            float radius = CAR_RADIUS + pickup.radius();
+            if (dx * dx + dy * dy > radius * radius) continue;
+            if ((pickup.type == BOOST_PAD || pickup.type == FULL_BOOST) && car.boost >= 99.9f) continue;
+            switch (pickup.type) {
+                case BOOST_PAD: car.boost = Math.min(100, car.boost + 25); break;
+                case FULL_BOOST: car.boost = 100; break;
+                case NITRO: car.nitroTime = 6; break;
+                case POWER_SHOT: car.shotTime = 8; break;
+                case MAGNET: car.magnetTime = 6; break;
+                default: continue;
+            }
+            pickup.cooldown = pickup.respawnSeconds();
+            car.pickupSerial++;
+            car.lastPickup = pickup.type;
+        }
+    }
+
+    private void attractBall(Car car, float dt) {
+        float bx = ball.x - car.x, by = ball.y - car.y;
+        if (bx * bx + by * by > MAGNET_RANGE * MAGNET_RANGE || Math.abs(ball.z - car.z) > 150) return;
+        // Pull toward a point in front of the bumper, not through the car. Multiple
+        // magnets add real forces; none of them teleports or claims ownership of the ball.
+        float dx = car.x + cos(car.heading) * 65 - ball.x;
+        float dy = car.y + sin(car.heading) * 65 - ball.y;
+        float dz = car.z + 32 - ball.z;
+        float length = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (length < 1) return;
+        float force = Math.min(720, length * 5) * dt / length;
+        ball.vx += dx * force; ball.vy += dy * force; ball.vz += dz * force;
     }
 
     private void constrainCar(Car c) {
@@ -209,6 +296,15 @@ public final class SoccerMatch {
             float impulse = -closing * 1.65f;
             ball.vx += nx * impulse; ball.vy += ny * impulse; ball.vz += nz * impulse;
             car.vx -= nx * impulse * 0.12f; car.vy -= ny * impulse * 0.12f;
+            if (car.shotTime > 0 && closing < -25) {
+                float flatLength = (float) Math.sqrt(nx * nx + ny * ny);
+                if (flatLength > 0.1f) {
+                    ball.vx += nx / flatLength * 260;
+                    ball.vy += ny / flatLength * 260;
+                    ball.vz = Math.min(100, ball.vz + 18);
+                    car.shotTime = 0;
+                }
+            }
         }
     }
 
@@ -222,7 +318,7 @@ public final class SoccerMatch {
     private void finish() {
         phase = FINISHED;
         event = blue > orange ? "BLUE WINS!" : "ORANGE WINS!";
-        for (Car c : cars) if (c != null) { c.throttle = c.steer = 0; c.boosting = false; }
+        for (Car c : cars) if (c != null) { c.throttle = c.steer = 0; c.boosting = c.boostActive = false; }
     }
 
     public String snapshot() {
@@ -237,6 +333,20 @@ public final class SoccerMatch {
             first = false;
             s.append('[').append(c.slot).append(',').append(c.x).append(',').append(c.y).append(',').append(c.z)
                 .append(',').append(c.heading).append(',').append(c.boost).append(',').append(c.vx).append(',').append(c.vy).append(']');
+        }
+        s.append("],\"pickups\":[");
+        for (int i = 0; i < pickups.length; i++) {
+            if (i > 0) s.append(',');
+            s.append(pickups[i].cooldown);
+        }
+        s.append("],\"effects\":[");
+        first = true;
+        for (Car c : cars) {
+            if (c == null) continue;
+            if (!first) s.append(','); first = false;
+            s.append('[').append(c.slot).append(',').append(c.nitroTime).append(',').append(c.shotTime)
+                .append(',').append(c.magnetTime).append(',').append(c.boostActive ? 1 : 0)
+                .append(',').append(c.pickupSerial).append(',').append(c.lastPickup).append(']');
         }
         return s.append("]}").toString();
     }

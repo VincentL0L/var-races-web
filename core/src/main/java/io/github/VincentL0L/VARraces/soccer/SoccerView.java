@@ -18,6 +18,13 @@ final class SoccerView {
     private final ShapeRenderer shapes = new ShapeRenderer(20000);
     private final Matrix4 transform = new Matrix4();
     private final Matrix4 identity = new Matrix4();
+    private final SoccerMatch.Pickup[] pickups = SoccerMatch.createPickups();
+    private static final Color GOLD = new Color(1f, 0.77f, 0.1f, 1);
+    private static final Color NITRO = new Color(0.1f, 0.95f, 1f, 1);
+    private static final Color SHOT = new Color(1f, 0.22f, 0.48f, 1);
+    private static final Color MAGNET = new Color(0.76f, 0.35f, 1f, 1);
+    private static final Color INACTIVE = new Color(0.09f, 0.19f, 0.17f, 1);
+    private float animation;
 
     SoccerView() { camera.near = 0.5f; camera.far = 2500; resize(1280, 720); }
 
@@ -28,7 +35,8 @@ final class SoccerView {
         camera.update();
     }
 
-    void render(float[][] cars, float[] ball, int me) {
+    void render(float[][] cars, float[] ball, int me, float[] cooldowns, float[][] effects, float delta) {
+        animation += Math.min(delta, 0.1f);
         float[] driver = me >= 0 && cars[me] != null ? cars[me] : new float[] {0, 260, 450, 0, 0, 100, 0, 0};
         float heading = driver[4];
         camera.position.set(driver[1] + MathUtils.cosDeg(heading) * 3,
@@ -83,11 +91,27 @@ final class SoccerView {
         shapes.setColor(0.025f, 0.12f, 0.08f, 1);
         shapes.circle(ball[0], ball[1], 19, 20);
         shapes.setTransformMatrix(identity);
+        for (int i = 0; i < pickups.length; i++) pickup(pickups[i], cooldowns[i]);
+        // The ball writes vertices directly. Flush the pickup transforms before that
+        // pass; ShapeRenderer otherwise updates its matrix only on the next shape call.
+        shapes.end();
+        shapes.setTransformMatrix(identity);
+        shapes.begin(ShapeRenderer.ShapeType.Filled);
         drawBall(ball[0], ball[1], ball[2]);
-        for (int i = 0; i < cars.length; i++) if (cars[i] != null) car(cars[i], i == me);
+        for (int i = 0; i < cars.length; i++) if (cars[i] != null) car(cars[i], i == me, effects[i]);
         shapes.end();
         shapes.setTransformMatrix(identity);
         shapes.begin(ShapeRenderer.ShapeType.Line);
+        for (int i = 0; i < cars.length; i++) if (cars[i] != null && effects[i][3] > 0) {
+            float[] c = cars[i]; shapes.setColor(MAGNET);
+            float dx = ball[0] - c[1], dy = ball[1] - c[2];
+            if (dx * dx + dy * dy < SoccerMatch.MAGNET_RANGE * SoccerMatch.MAGNET_RANGE
+                    && Math.abs(ball[2] - c[3]) < 150) {
+                shapes.line(c[1] + MathUtils.cosDeg(c[4]) * 19, c[2] + MathUtils.sinDeg(c[4]) * 19,
+                    c[3] + 8, ball[0], ball[1], ball[2]);
+                shapes.line(c[1], c[2], c[3] + 12, ball[0], ball[1], ball[2] + 8);
+            }
+        }
         shapes.setColor(0.8f, 0.97f, 0.92f, 1);
         for (int i = 0; i < 64; i++) {
             float a = i * MathUtils.PI2 / 64, b = (i + 1) * MathUtils.PI2 / 64;
@@ -114,11 +138,21 @@ final class SoccerView {
         Gdx.gl.glDisable(GL20.GL_DEPTH_TEST); Gdx.gl.glEnable(GL20.GL_BLEND);
     }
 
-    private void car(float[] c, boolean own) {
+    private void car(float[] c, boolean own, float[] effects) {
         Color team = ((int) c[0]) % 2 == 0 ? BLUE : ORANGE;
         shapes.setTransformMatrix(transform.idt().translate(c[1], c[2], c[3]).rotate(Vector3.Z, c[4] - 90));
         box(-11, -18, 2, 11, 19, 7, team);
         box(-2, -18, 7, 2, 19, 7.15f, Color.WHITE);
+        if (effects[2] > 0) box(-8, 16, 7.05f, 8, 20, own ? 7.3f : 9, SHOT);
+        if (effects[3] > 0) {
+            box(-11, 14, 7, -7, 24, 10, MAGNET);
+            box(7, 14, 7, 11, 24, 10, MAGNET);
+        }
+        if (effects[4] > 0) {
+            float length = 18 + 8 * MathUtils.sin(animation * 35);
+            box(-8, -18 - length, 2, 8, -18, 8, effects[1] > 0 ? NITRO : ORANGE);
+            box(-4, -15 - length, 3, 4, -18, 7, Color.WHITE);
+        }
         if (!own) {
             box(-9, -10, 7, 9, 3, 13, new Color(0.06f, 0.13f, 0.2f, 1));
             box(-9, -10, 13, 9, 3, 14, team);
@@ -126,6 +160,37 @@ final class SoccerView {
         for (int side = -1; side <= 1; side += 2) {
             box(side * 12 - 2, -14, 0, side * 12 + 2, -7, 6, Color.DARK_GRAY);
             box(side * 12 - 2, 9, 0, side * 12 + 2, 16, 6, Color.DARK_GRAY);
+        }
+        shapes.setTransformMatrix(identity);
+    }
+
+    private void pickup(SoccerMatch.Pickup pickup, float cooldown) {
+        Color color = pickup.type <= SoccerMatch.FULL_BOOST ? GOLD
+            : pickup.type == SoccerMatch.NITRO ? NITRO : pickup.type == SoccerMatch.POWER_SHOT ? SHOT : MAGNET;
+        boolean available = cooldown <= 0;
+        float radius = pickup.radius();
+        shapes.setTransformMatrix(transform.idt().translate(pickup.x, pickup.y, 0.14f));
+        shapes.setColor(available ? color : INACTIVE);
+        shapes.circle(0, 0, radius, 20);
+        shapes.setColor(0.07f, 0.12f, 0.15f, 1);
+        shapes.circle(0, 0, radius - 3, 20);
+        if (available) {
+            float bob = MathUtils.sin(animation * 3 + pickup.x * 0.01f) * 3;
+            if (pickup.type <= SoccerMatch.FULL_BOOST) {
+                box(-5, -5, 2, 5, 5, pickup.type == SoccerMatch.FULL_BOOST ? 21 + bob : 10 + bob, color);
+                box(-2, -2, 3, 2, 2, pickup.type == SoccerMatch.FULL_BOOST ? 24 + bob : 13 + bob, Color.WHITE);
+            } else {
+                shapes.setTransformMatrix(transform.idt().translate(pickup.x, pickup.y, 16 + bob).rotate(Vector3.Z, animation * 65));
+                box(-8, -8, -7, 8, 8, 7, color);
+                box(-8.5f, -2, -2, 8.5f, 2, 2, Color.WHITE);
+                box(-2, -8.5f, -2, 2, 8.5f, 2, Color.WHITE);
+            }
+        } else {
+            // A growing ring shows how close this pad is to respawning.
+            float progress = MathUtils.clamp(1 - cooldown / pickup.respawnSeconds(), 0, 1);
+            shapes.setColor(color);
+            shapes.arc(0, 0, radius - 1, 0, 360 * progress, 24);
+            shapes.setColor(INACTIVE); shapes.circle(0, 0, radius - 4, 20);
         }
         shapes.setTransformMatrix(identity);
     }

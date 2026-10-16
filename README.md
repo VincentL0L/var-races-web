@@ -53,6 +53,14 @@ This copy adds:
   one shared score. First to five goals wins, or the leader after three minutes;
   ties use sudden-death overtime. The host can start a rematch after the result.
   A disconnect returns the room to waiting for a replacement.
+  Gold pads refill 25 boost (small pads) or the whole tank (corner pads). Drive
+  over colored cubes to activate a power-up automatically: cyan **Nitro** gives
+  six seconds of extra speed without spending boost, pink **Power Shot** strengthens
+  your next ball hit within eight seconds, and purple **Magnet** pulls a nearby
+  ball toward your front bumper for six seconds. Pads respawn after 4/10 seconds,
+  power-ups after 12; their rings show recharge progress. Pickups, effects and
+  cooldowns are server-controlled and shared by all players, with fresh pickups
+  and cleared effects at each kickoff.
 - Sharp text on Retina screens (`Ui`). Titles use the game's own racing font drawn by
   `tools/make_speed_font.py`; small text uses Michroma (SIL OFL, see `tools/`).
 - Gilded 16-bit buttons and panels (`tools/make_ui.py`).

@@ -55,7 +55,9 @@ async function oneVersusOne() {
   try {
     await until(() => host.state.blue >= 1 && guest.state?.blue >= 1, 'shared goal', 30000);
     sameState(host, guest);
-    console.log('PASS 1v1: kickoff, car/ball collision, shared goal and identical snapshots');
+    assert(host.state.effects.find(e => e[0] === 0)[5] >= 2, 'Driver collected boost and a power-up');
+    assert(host.state.pickups.some(cooldown => cooldown > 0), 'Pickup cooldowns replicate');
+    console.log('PASS 1v1: kickoff, pickups, shared power-up effects, car/ball collision, goal and identical snapshots');
     await until(() => host.state.phase === 4 && guest.state?.phase === 4, 'first to five', 120000);
     assert.equal(host.state.blue, 5); sameState(host, guest);
     guest.send('SOCCER|REMATCH'); await delay(150);
