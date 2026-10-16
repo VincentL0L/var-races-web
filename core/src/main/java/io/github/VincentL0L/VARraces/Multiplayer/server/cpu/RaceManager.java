@@ -25,7 +25,7 @@ import io.github.VincentL0L.VARraces.Multiplayer.packets.LeaderboardPacket;
 public class RaceManager {
 
     /** lap counts a race can be set to, in the lobby */
-    public static final int[] LAP_CHOICES = {1, 2, 3, 5};
+    public static final int[] LAP_CHOICES = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
     /** laps in this race */
     private int laps = 1;
     /** seconds the red VAR RACES flag waves after everyone is ready, before the 3 2 1 countdown */
