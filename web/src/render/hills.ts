@@ -18,7 +18,7 @@ export function setHills(mapId: string): void {
     case 'sf': amp = 46; break;
     case 'summit': amp = 70; break;
     case 'classic': case 'gp': amp = 26; break;
-    case 'moon': amp = 30; break;
+    case 'moon': case 'monaco': amp = 30; break; // Monaco climbs the hillside
     case 'rooftop': case 'junkyard': case 'stadium': case 'rink': amp = 0; break;
     default: amp = 18; break; // the other cities: gentle rises
   }

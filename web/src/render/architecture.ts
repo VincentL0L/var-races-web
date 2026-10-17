@@ -125,7 +125,7 @@ class Art {
 
 function familyOf(id: string): number {
   switch (id) {
-    case 'paris': return PARIS;
+    case 'paris': case 'monaco': return PARIS;
     case 'london': return LONDON;
     case 'nyc': case 'rushhour': return NYC;
     case 'chicago': case 'rooftop': return CHICAGO;
