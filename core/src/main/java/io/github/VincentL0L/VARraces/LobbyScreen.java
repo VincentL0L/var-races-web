@@ -24,8 +24,9 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 
 /**
  * The lobby before a race: one gilded card over the drifting, frosted track. It lists the
- * drivers (with their cars and whether they're ready) and has just two buttons, Leave and
- * Ready. Once everyone is ready the red start flag waves and the race screen takes over.
+ * drivers (with their cars and whether they're ready) and has Leave and Ready (plus Track
+ * for an online host). Once everyone is ready the red start flag waves and the race screen
+ * takes over. Online, everyone comes back here after each race for the next one.
  */
 public class LobbyScreen implements Screen {
     private static final int CPU_COUNT = 3;
@@ -86,7 +87,7 @@ public class LobbyScreen implements Screen {
 
         boolean ranked = networkClient.isRanked();
         kicker = Cards.kicker(ranked ? "RANKED  /  " + map.name.toUpperCase()
-            : online ? (networkClient.isRoomPublic() ? "PUBLIC ROOM  /  " : "PRIVATE ROOM  /  ") + map.name.toUpperCase() : "SINGLE PLAYER");
+            : online ? (networkClient.isRoomPublic() ? "PUBLIC LOBBY  /  " : "PRIVATE LOBBY  /  ") + map.name.toUpperCase() : "SINGLE PLAYER");
         card.add(kicker).left().row();
         card.add(Cards.title(ranked ? "RANKED RACE" : online ? networkClient.getRoomCode() : map.name.toUpperCase(), 44))
             .left().padTop(2).padBottom(16).row();
@@ -109,7 +110,7 @@ public class LobbyScreen implements Screen {
             // a sprint is one run from start to finish, so there's no lap count to pick
             card.add(picker("LAPS", lapsValue, -1, 0)).height(Cards.ROW_HEIGHT).padBottom(6).row();
         }
-        if (online && !ranked) {
+        if (!ranked) {
             Table row = Cards.row();
             row.add(Cards.text("BOTS", false)).left().expandX();
             botsButton = Cards.smallButton("ON", skin);
@@ -137,10 +138,19 @@ public class LobbyScreen implements Screen {
                 }
             }
         });
+        // the online host can move the whole lobby to another track between races
+        trackButton = Cards.smallButton("Track", skin);
+        trackButton.addListener(new ClickListener() {
+            public void clicked(InputEvent event, float x, float y) {
+                if (canPickTrack()) {
+                    game.setScreen(new MapSelectScreen(game, selectedCar, networkClient, networkClient.isRoomPublic()));
+                }
+            }
+        });
         readyButton = new TextButton("Ready", skin);
         readyButton.addListener(new ClickListener() {
             public void clicked(InputEvent event, float x, float y) {
-                if (!networkClient.isReady() && networkClient.isConnected()) {
+                if (!networkClient.isReady() && networkClient.isConnected() && !networkClient.isRoomRacing()) {
                     networkClient.setReady(true);
                     Sounds.play("ready", 0.5f);
                 }
@@ -149,6 +159,9 @@ public class LobbyScreen implements Screen {
         Table buttons = new Table();
         buttons.add(leave).width(130).height(52);
         buttons.add().expandX();
+        if (online && !ranked) {
+            buttons.add(trackButton).width(130).height(52).padRight(12);
+        }
         buttons.add(readyButton).width(220).height(60);
         card.add(buttons).padTop(14).row();
 
@@ -157,7 +170,13 @@ public class LobbyScreen implements Screen {
 
     private static final String[] DIFFICULTIES = {"EASY", "NORMAL", "HARD", "EXTRA HARD"};
     private Label lapsValue, difficultyValue, settingsNote;
-    private TextButton botsButton;
+    private TextButton botsButton, trackButton;
+
+    /** the online host, before readying up (a ready host can't wander off to the map picker) */
+    private boolean canPickTrack() {
+        return networkClient.isOnline() && networkClient.canChangeSettings() && !networkClient.isReady()
+            && !networkClient.isRoomRacing();
+    }
     private final List<TextButton> settingButtons = new ArrayList<>();
 
     /**
@@ -224,8 +243,10 @@ public class LobbyScreen implements Screen {
         // colour code the difficulty
         int d = networkClient.getDifficulty();
         difficultyValue.setColor(d == 0 ? Cards.READY : d == 3 ? new com.badlogic.gdx.graphics.Color(0.85f, 0.4f, 1f, 1f) : d == 2 ? Cards.ERROR : Ui.GOLD);
-        settingsNote.setText(networkClient.isOnline() && !canChange && !networkClient.isFlagShown()
-            ? "The host picks the race settings" : "");
+        trackButton.setVisible(canPickTrack());
+        settingsNote.setText(networkClient.isRoomRacing() ? "A race is on - you're in the next one"
+            : networkClient.isOnline() && !canChange && !networkClient.isFlagShown()
+            ? "The host picks the track and race settings" : "");
     }
 
     /**
@@ -261,7 +282,7 @@ public class LobbyScreen implements Screen {
             row.add(Cards.text("+ " + CPU_COUNT + " " + map.cpuName + "S", false)).left().expandX().padLeft(8);
             row.add(Cards.pill(map.cpuName, Cards.CPU, true));
             drivers.add(row).row();
-        } else if (!networkClient.isOnline()) {
+        } else if (!networkClient.isOnline() && networkClient.areBotsEnabled()) {
             for (int i = 0; i < CPU_COUNT; i++) {
                 drivers.add(driverRow(cars[3 + i], map.displayName("CPU" + (i + 1)), false, "CPU")).row();
             }
@@ -305,6 +326,11 @@ public class LobbyScreen implements Screen {
         Gdx.gl.glClearColor(0f, 0f, 0f, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         networkClient.update(delta);
+        if (networkClient.getMap() != map) {
+            // the host picked another track: rebuild the lobby around it
+            game.setScreen(new LobbyScreen(game, selectedCar, networkClient, null));
+            return;
+        }
 
         refreshDrivers();
         refreshSettings();
@@ -323,6 +349,10 @@ public class LobbyScreen implements Screen {
         } else if (networkClient.isReady()) {
             readyButton.setText(networkClient.isOnline() && !networkClient.isFlagShown() ? "Waiting" : "Ready");
             readyButton.setDisabled(true);
+        } else {
+            // not ready yet, or back in the lobby after the race we joined too late for
+            readyButton.setText(networkClient.isRoomRacing() ? "Racing..." : "Ready");
+            readyButton.setDisabled(networkClient.isRoomRacing());
         }
 
         backdrop.render(delta);

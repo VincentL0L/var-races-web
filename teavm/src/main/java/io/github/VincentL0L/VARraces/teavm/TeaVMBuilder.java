@@ -60,12 +60,19 @@ public class TeaVMBuilder {
      * Google sign-in with Firebase Authentication. The game reads window.varAuth each frame.
      * Browsers only open the sign-in window straight from a click, so the game "arms" it when
      * its button is pressed and the click's release opens it.
+     * Firebase (and the form's font) load after the page's load event, which is what starts
+     * the game, so they never hold up the loading screen.
      */
     private static final String AUTH_SCRIPT =
-        "<script src=\"https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js\"></script>\n"
-        + "<script src=\"https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js\"></script>\n"
-        + "<script>\n"
+        "<script>\n"
         + "window.varAuth = {ready: false, armed: false, uid: null, name: null, token: null, error: null};\n"
+        + "window.addEventListener('load', function () {\n"
+        + "  var load = function (src, next) { var s = document.createElement('script'); s.src = src; s.onload = next;\n"
+        + "    s.onerror = function () { varAuth.error = 'unavailable'; }; document.head.appendChild(s); };\n"
+        + "  load('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js', function () {\n"
+        + "    load('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js', initAuth); });\n"
+        + "});\n"
+        + "function initAuth() {\n"
         + "try {\n"
         + "  var host = location.hostname;\n"
         + "  firebase.initializeApp({apiKey: 'AIzaSyBlIzA_86YzqDi3_G9BbUAVzh0ss0MIYaA',\n"
@@ -144,6 +151,7 @@ public class TeaVMBuilder {
         + "  document.addEventListener('touchend', fire, true);\n"
         + "  varAuth.ready = true;\n"
         + "} catch (e) { varAuth.error = 'unavailable'; }\n"
+        + "}\n"
         + "</script>\n";
 
     private static final String ROTATE_SCREEN =

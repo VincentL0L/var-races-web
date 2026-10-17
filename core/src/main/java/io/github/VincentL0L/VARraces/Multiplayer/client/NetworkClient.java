@@ -78,6 +78,7 @@ public class NetworkClient {
     // single player race, the same state RaceServer keeps for each room
     private RaceManager serverRaceManager;
     private final List<Opponent> cpuOpponents = new ArrayList<>();
+    private final List<Opponent> allCpuOpponents = new ArrayList<>();
     private final Vector2 playerPos = new Vector2(200, 300);
     private float playerHeading = 90f;
     private CpuTraffic traffic;
@@ -130,14 +131,8 @@ public class NetworkClient {
             cpu.setBattle(map.battle);
             cpu.setHeading(cpuHeading);
             cpuOpponents.add(cpu);
-
-            PositionPacket packet = new PositionPacket();
-            packet.playerId = cpu.getName();
-            packet.x = cpuPos.x;
-            packet.y = cpuPos.y;
-            packet.rotation = cpuHeading;
-            opponents.put(packet.playerId, packet);
         }
+        allCpuOpponents.addAll(cpuOpponents);
         track = new PixmapTrack(map.roadMask, map.scale);
         items = new ItemSystem(map.waypoints, map.pointToPoint);
         if (map.battle) {
@@ -271,6 +266,11 @@ public class NetworkClient {
                 serverRaceManager.updateRacer(cpu.getName(), cpu.getPosition(), raceTime);
             }
             PositionPacket packet = opponents.get(cpu.getName());
+            if (packet == null) {
+                packet = new PositionPacket();
+                packet.playerId = cpu.getName();
+                opponents.put(packet.playerId, packet);
+            }
             packet.x = cpu.getPosition().x;
             packet.y = cpu.getPosition().y;
             packet.rotation = cpu.getDisplayRotation();
@@ -431,6 +431,10 @@ public class NetworkClient {
             if (parts[1].equals(playerId)) {
                 myEffects.add("OUT");
             }
+        } else if (type.equals("RACING")) {
+            roomRacing = true;
+        } else if (type.equals("LOBBY")) {
+            backInLobby(TrackMap.get(parts[1]));
         } else if (type.equals("FLAG")) {
             flagShown = true;
         } else if (type.equals("COUNTDOWN")) {
@@ -462,6 +466,50 @@ public class NetworkClient {
                     Float.parseFloat(parts[i + 2]), Float.parseFloat(parts[i + 3])));
             }
             setLeaderboard(new LeaderboardPacket(entries));
+        }
+    }
+
+    /** a race is on in our room that we joined too late for (online) */
+    private boolean roomRacing = false;
+
+    /**
+     * The race is over (or the host picked another track): the same room, everyone unready,
+     * nothing left over from the last race. The race screen's RaceManager is let go.
+     */
+    private void backInLobby(TrackMap next) {
+        map = next;
+        flagShown = false;
+        roomRacing = false;
+        isReady = false;
+        countdownText = "";
+        for (Map.Entry<String, Boolean> e : playerReadyStates.entrySet()) {
+            e.setValue(false);
+        }
+        latestLeaderboard = null;
+        raceManager = null;
+        heldItem = null;
+        heldAmmo = 0;
+        myEffects.clear();
+        knockedOut.clear();
+        newKnockouts.clear();
+        itemView = "";
+        opponents.clear();
+        poseHistory.clear();
+    }
+
+    /**
+     * @return true if we joined mid-race and are waiting in the lobby for the next one
+     */
+    public boolean isRoomRacing() {
+        return roomRacing;
+    }
+
+    /**
+     * the host picks the next race's track (everyone's unready again)
+     */
+    public void changeMap(TrackMap next) {
+        if (isOnline() && canChangeSettings()) {
+            send("MAP|" + next.id);
         }
     }
 
@@ -686,16 +734,28 @@ public class NetworkClient {
         setRaceSettings(lapCount, cpuDifficulty, botsEnabled);
     }
 
-    /** The online host may remove the CPU cars before the countdown starts. */
+    /** The CPU cars can be removed before the countdown starts (online, by the host). */
     public void setRaceSettings(int lapCount, int cpuDifficulty, boolean withBots) {
         if (!canChangeSettings()) {
             return;
         }
         if (isOnline()) {
             send("SETTINGS|" + lapCount + "|" + cpuDifficulty + "|" + withBots);
-        } else {
-            laps = lapCount;
-            difficulty = cpuDifficulty;
+            return;
+        }
+        laps = lapCount;
+        difficulty = cpuDifficulty;
+        if (withBots != botsEnabled) {
+            botsEnabled = withBots;
+            // traffic shares this list, so the CPUs leave (or rejoin) the track with it
+            cpuOpponents.clear();
+            if (botsEnabled) {
+                cpuOpponents.addAll(allCpuOpponents);
+            } else {
+                for (Opponent cpu : allCpuOpponents) {
+                    opponents.remove(cpu.getName());
+                }
+            }
         }
     }
 

@@ -15,7 +15,7 @@ gradle_bin="${GRADLE_BIN:-./gradlew}"
 web_port="${WEB_PORT:-8000}"
 race_port="${PORT:-8080}"
 
-"$gradle_bin" core:test teavm:buildJavaScript server:installDist
+"$gradle_bin" core:test server:test teavm:buildJavaScript server:installDist
 if [[ "${1:-}" == "--build-only" ]]; then
     exit 0
 fi

@@ -42,6 +42,8 @@ public class MapSelectScreen implements Screen {
     /** hosting online: the open connection and whether the race is public (null = single player) */
     private final NetworkClient host;
     private final boolean hostPublic;
+    /** the host of an online lobby picking the next race's track (the room already exists) */
+    private final boolean changingTrack;
     private Label kicker;
     private boolean creating = false;
     private final Stage stage;
@@ -113,13 +115,15 @@ public class MapSelectScreen implements Screen {
         this.selectedCar = selectedCar;
         this.host = client;
         this.hostPublic = isPublic;
+        this.changingTrack = client != null && client.isInRoom();
         Sounds.music(Sounds.TITLE, true);
         stage = new Stage(Ui.viewport());
         Sounds.clickSounds(stage);
         skin = Ui.style(new Skin(Gdx.files.internal("ui/uiskin.json")));
         backdrops = new TrackBackdrop[maps.size()];
+        String current = changingTrack ? client.getMap().id : lastMap;
         for (int i = 0; i < maps.size(); i++) {
-            if (maps.get(i).id.equals(lastMap)) {
+            if (maps.get(i).id.equals(current)) {
                 selected = i;
             }
         }
@@ -133,7 +137,7 @@ public class MapSelectScreen implements Screen {
         Table card = Cards.card();
         int columns = Math.min(COLUMNS, maps.size());
         card.defaults().width(TILE_WIDTH * columns + 14f * (columns - 1));
-        kicker = Cards.kicker(host == null ? "SINGLE PLAYER" : hostPublic ? "HOST A PUBLIC RACE" : "HOST A PRIVATE RACE");
+        kicker = Cards.kicker(host == null ? "SINGLE PLAYER" : changingTrack ? "NEXT RACE" : hostPublic ? "HOST A PUBLIC LOBBY" : "HOST A PRIVATE LOBBY");
         card.add(kicker).left().row();
         // the title, with tabs on the right: circuits (laps) or sprints (A to B)
         // the title, then the kinds of race in a row of tabs underneath
@@ -194,14 +198,16 @@ public class MapSelectScreen implements Screen {
         TextButton back = Cards.smallButton("Back", skin);
         back.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {
-                if (host != null) {
+                if (changingTrack) {
+                    game.setScreen(new LobbyScreen(game, selectedCar, host, null));
+                } else if (host != null) {
                     game.setScreen(new MultiplayerScreen(game, selectedCar, host));
                 } else {
                     game.setScreen(new MenuScreen(game, selectedCar));
                 }
             }
         });
-        TextButton next = new TextButton(host != null ? "Create" : "Next", skin);
+        TextButton next = new TextButton(changingTrack ? "Pick" : host != null ? "Create" : "Next", skin);
         next.addListener(new ClickListener() {
             public void clicked(InputEvent e, float x, float y) {
                 go();
@@ -426,7 +432,10 @@ public class MapSelectScreen implements Screen {
         }
         TrackMap map = maps.get(selected);
         lastMap = map.id;
-        if (host != null) {
+        if (changingTrack) {
+            host.changeMap(map);
+            game.setScreen(new LobbyScreen(game, selectedCar, host, null));
+        } else if (host != null) {
             // the server makes the room; render() moves on to the lobby once we're in it
             if (!creating && host.isConnected()) {
                 creating = true;
@@ -441,7 +450,7 @@ public class MapSelectScreen implements Screen {
     public void render(float delta) {
         if (host != null) {
             host.update(delta);
-            if (host.isInRoom()) {
+            if (host.isInRoom() && !changingTrack) {
                 game.setScreen(new LobbyScreen(game, selectedCar, host, null));
                 return;
             }

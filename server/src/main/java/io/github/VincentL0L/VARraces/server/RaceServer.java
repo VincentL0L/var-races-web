@@ -21,8 +21,11 @@ import org.java_websocket.server.WebSocketServer;
  *
  * Messages are text with fields separated by '|'
  * from players:  LIST | CREATE|public or private|car|map | JOIN|code|car | READY|true | POS|x|y|rotation
+ *                MAP|map (host, in the lobby: race somewhere else next)
  * to players:    ROOMS|code|count|map|code|count|map... | JOINED|code|public|playerId|map | ERROR|text
  *                READY|id|true | LEFT|id | COUNTDOWN|3 | POS|id|x|y|rotation|car
+ *                LOBBY|map (race over or track changed: everyone unready for the next race)
+ *                RACING (you joined mid-race: wait in the lobby for the next one)
  *                LEADER|name|laps|progress|finishTime|name|laps...   (race order, finishTime -1 = racing)
  * accounts:      AUTH|idToken -> PROFILE|name|rating|races|wins|tier|rankedOn  (or AUTHFAIL)
  *                RANKED|car -> joins the ranked queue: QUEUE|players|seconds, then the race;
@@ -111,7 +114,7 @@ public class RaceServer extends WebSocketServer {
                 if (room == null) {
                     conn.send("ERROR|No room with code " + parts[1]);
                 } else if (!room.isJoinable()) {
-                    conn.send("ERROR|That race is full or already started");
+                    conn.send("ERROR|That lobby is full or its ranked race has started");
                 } else {
                     joinRoom(conn, room, Integer.parseInt(parts[2]));
                 }

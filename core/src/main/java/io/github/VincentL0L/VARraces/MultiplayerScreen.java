@@ -20,8 +20,8 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 
 /**
  * Online races: one gilded card over the drifting, frosted track with three sections:
- * every open public race (on any map) to join, hosting a public or private race (the map
- * is picked next, on MapSelectScreen), and joining with a code.
+ * every open public lobby (on any map, mid-race ones too) to join, hosting a public or
+ * private lobby (the map is picked next, on MapSelectScreen), and joining with a code.
  * Moves to LobbyScreen once the server puts the player in a room.
  */
 public class MultiplayerScreen implements Screen {
@@ -96,14 +96,14 @@ public class MultiplayerScreen implements Screen {
         card.add(rankedRow).height(Cards.ROW_HEIGHT + 8).row();
 
         // open public races
-        card.add(Cards.kicker("OPEN RACES")).left().padTop(10).padBottom(6).row();
+        card.add(Cards.kicker("OPEN LOBBIES")).left().padTop(10).padBottom(6).row();
         roomsTable = new Table();
         roomsTable.top();
         roomsTable.defaults().width(Cards.CARD_WIDTH).height(Cards.ROW_HEIGHT).padBottom(6);
         card.add(roomsTable).top().row();
 
         // host your own
-        card.add(Cards.kicker("HOST A RACE")).left().padTop(10).padBottom(6).row();
+        card.add(Cards.kicker("HOST A LOBBY")).left().padTop(10).padBottom(6).row();
         TextButton createPublic = new TextButton("Public", skin);
         TextButton createPrivate = new TextButton("Private", skin);
         createPublic.addListener(new ClickListener() {
@@ -278,7 +278,7 @@ public class MultiplayerScreen implements Screen {
         }
         List<String[]> rooms = networkClient.getPublicRooms();
         if (rooms.isEmpty()) {
-            roomsTable.add(Cards.emptyRow("No open races. Host one below!")).row();
+            roomsTable.add(Cards.emptyRow("No open lobbies. Host one below!")).row();
             return;
         }
         for (int i = 0; i < rooms.size() && i < MAX_ROWS; i++) {
