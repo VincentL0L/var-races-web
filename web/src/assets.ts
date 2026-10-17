@@ -12,7 +12,9 @@ export function texture(name: string, pixelArt = true): Promise<THREE.Texture> {
   let t = textures.get(key);
   if (!t) {
     t = new THREE.TextureLoader().loadAsync(asset(webp(name))).then((tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
+      // no colour space: the pixels go to the screen exactly as they are (the renderer outputs
+      // them unconverted), so tagging them sRGB would decode them darker
+      tex.colorSpace = THREE.NoColorSpace;
       if (pixelArt) {
         tex.magFilter = THREE.NearestFilter;
         tex.minFilter = THREE.NearestFilter;
