@@ -5,6 +5,7 @@
 // Positions are map coordinates (x right, y up, z up off the ground).
 import * as THREE from 'three';
 import { CameraRig, RACE_CAMERA, type CameraMode, type CameraProfile } from './camera';
+import { Occluders } from './occluders';
 import { disposeObject } from './dispose';
 import { pixels, texture } from '../assets';
 import { mapLayout, type MapDef, type Sign, type Wall } from '../wasm';
@@ -46,6 +47,8 @@ export class World {
   private readonly colors: SkyColors;
   private readonly fog: THREE.Fog;
   private readonly environment = new THREE.Group();
+  /** the environment's triangles, for keeping the chase camera out of walls and buildings */
+  private readonly occluders = new Occluders(this.environment);
   private readonly sky: THREE.Group;
   private readonly items: ItemsView;
   private readonly ownedTextures: THREE.Texture[] = [];
@@ -311,8 +314,7 @@ export class World {
     const pose = target ? { ...target, z: hill(target.x, target.y) } : null;
     if (pose) {
       const view = target ? this.cars.get(target.slot) : null;
-      this.environment.updateMatrixWorld(true);
-      this.rig.update(pose, view ? eyeHeight(view.spriteName) : 6.3, delta, [this.environment], frame.shake);
+      this.rig.update(pose, view ? eyeHeight(view.spriteName) : 6.3, delta, this.occluders, frame.shake);
       this.sky.position.copy(this.rig.camera.position);
     }
     this.items.update(frame.items, this.rig.camera.position, delta);
