@@ -12,6 +12,7 @@ import { CarView, eyeHeight, type CarLook } from './cars';
 import { ItemsView, type ItemState } from './items';
 import { buildLandmarks, type Area } from './landmarks';
 import { hill, hillsOn, lift, liftAll, setHills, slope } from './hills';
+import { buildClassic } from './classic';
 import { buildScenery } from './scenery';
 import { buildSky, skyColors, type SkyColors } from './sky';
 import { barrier, chevrons } from './textures';
@@ -225,6 +226,14 @@ export class World {
       texture(`maps/${id}/background.png`),
     ]);
     if (this.disposed) return;
+    if (id === 'classic') {
+      // the countryside the picture paints: cabins, rocks, logs and the animals
+      const classic = buildClassic(picture);
+      liftAll(classic.group);
+      this.environment.add(classic.group);
+      this.scene.add(classic.standees);
+      clear = [...clear, ...classic.clear];
+    }
     const scenery = buildScenery(this.map, heights, picture, roof, clear);
     liftAll(scenery);
     this.environment.add(scenery);
