@@ -224,9 +224,11 @@ public class GameScreen implements Screen {
             player.getImage().setColor(0.35f, 0.33f, 0.32f, 1f);
         }
 
-        if (done) {
+        // online, the lobby resets once the race is over, so a car that never finished leaves too
+        boolean raceOver = nc.isOnline() && !nc.isFlagShown();
+        if (done || raceOver) {
             end += dt;
-            if (end >= 3f) {
+            if (end >= 3f || raceOver) {
                 int pos = 1;
                 String id = nc.getPlayerId();
                 List<RacerInfo> lead = rm.getSortedLeaderboard();
@@ -237,8 +239,8 @@ public class GameScreen implements Screen {
                     }
                     pos++;
                 }
-                // a ranked race keeps its connection open until the rating change comes back
-                keepClient = nc.isRanked();
+                // online the connection stays open: back to the lobby, or the ranked rating change
+                keepClient = nc.isOnline();
                 game.setScreen(new EndScreen(game, car, pos, lead, map, keepClient ? nc : null));
                 return;
             }

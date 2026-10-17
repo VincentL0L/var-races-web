@@ -1,5 +1,6 @@
 package io.github.VincentL0L.VARraces;
 
+import io.github.VincentL0L.VARraces.Multiplayer.client.NetworkClient;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 
 import java.util.List;
@@ -52,12 +53,13 @@ public class EndScreen implements Screen {
     }
 
     /**
-     * @param ranked the still-open connection after a ranked race (its rating change arrives
-     * a moment later), or null
+     * @param online the still-open connection after an online race, or null. Ranked: its
+     * rating change arrives a moment later. Otherwise the lobby lives on for the next race.
      */
     public EndScreen(Game game, int selectedCar, int finalPosition, List<RacerInfo> leaderboard, TrackMap map,
-            io.github.VincentL0L.VARraces.Multiplayer.client.NetworkClient ranked) {
-        this.ranked = ranked;
+            NetworkClient online) {
+        this.online = online;
+        this.ranked = online != null && online.isRanked() ? online : null;
         this.game = game;
         this.selectedCar = selectedCar;
         this.finalPosition = finalPosition;
@@ -138,7 +140,24 @@ public class EndScreen implements Screen {
                 game.setScreen(new MenuScreen(game, selectedCar));
             }
         });
-        mainTable.add(menuButton).width(220).height(56).row();
+        if (online != null && ranked == null) {
+            // a lobby: everyone goes back together for the next race
+            lobbyButton = new TextButton("Back to Lobby", skin);
+            lobbyButton.addListener(new ClickListener() {
+                public void clicked(InputEvent e, float x, float y) {
+                    if (!lobbyButton.isDisabled()) {
+                        toLobby = true;
+                        game.setScreen(new LobbyScreen(game, selectedCar, online, null));
+                    }
+                }
+            });
+            Table buttons = new Table();
+            buttons.add(menuButton).width(200).height(56).padRight(16);
+            buttons.add(lobbyButton).width(260).height(56);
+            mainTable.add(buttons).row();
+        } else {
+            mainTable.add(menuButton).width(220).height(56).row();
+        }
 
         // results sit in a gilded panel so they read clearly over the checkered flag
         mainTable.setFillParent(false);
@@ -158,8 +177,16 @@ public class EndScreen implements Screen {
         Gdx.gl.glClearColor(0.12f, 0.07f, 0.04f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         drawCheckers(delta);
+        if (online != null) {
+            online.update(delta);
+        }
+        if (lobbyButton != null) {
+            // the lobby opens again once everyone's finished (the server sends LOBBY)
+            boolean waiting = online.isFlagShown() || !online.isConnected();
+            lobbyButton.setDisabled(waiting);
+            lobbyButton.setText(!online.isConnected() ? "Disconnected" : waiting ? "Still racing..." : "Back to Lobby");
+        }
         if (ranked != null) {
-            ranked.update(delta);
             int[] r = ranked.getRankResult();
             if (r != null && !rankShown) {
                 rankShown = true;
@@ -218,13 +245,15 @@ public class EndScreen implements Screen {
     /**
      * clears memory
      */
-    private final io.github.VincentL0L.VARraces.Multiplayer.client.NetworkClient ranked;
+    private final NetworkClient online, ranked;
+    private TextButton lobbyButton;
+    private boolean toLobby = false;
     private Label rankLabel;
     private boolean rankShown = false;
 
     public void dispose() {
-        if (ranked != null) {
-            ranked.stop();
+        if (online != null && !toLobby) {
+            online.stop();
         }
         checkers.dispose();
         stage.dispose();

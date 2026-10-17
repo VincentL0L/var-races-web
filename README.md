@@ -44,10 +44,15 @@ This copy adds:
 - Race courses have raised track walls and yellow chevron boards at turns in the
   first-person view. The overhead view shows the same collision boundary as a yellow
   curb. `V` switches views during a race; battle arenas keep their existing layout.
-- Multiplayer lists public races, creates public or private races, or joins one with a 4-letter code.
-  The host can switch **Bots** off in the lobby for a players-only race; the setting
-  is shared with everyone joining the room and locks when the countdown starts.
-  Ranked races keep their fixed bot settings.
+- Multiplayer lists public lobbies, creates public or private lobbies, or joins one with a
+  4-letter code. A lobby outlives its races: once everyone finishes, the results screen's
+  **Back to Lobby** returns the same group to ready up again, and the host can pick another
+  **Track** between races. Players who join mid-race wait in the lobby for the next one.
+  The host can switch **Bots** off in the lobby for a players-only race (single player has
+  the same switch); the setting is shared with everyone joining the room and locks when the
+  countdown starts. Ranked races are one race each and keep their fixed bot settings.
+- The web page starts the game without waiting for Google sign-in to load, and ships only
+  the assets the game uses (PNGs are losslessly recompressed).
 - **Race Car Soccer** is a separate, first-person-only online mode. Create a 1v1 or
   2v2 room from the main menu and share its five-letter room code. Matches start when
   all 2 or 4 players join, with balanced blue/orange teams. Drive with WASD/arrows,

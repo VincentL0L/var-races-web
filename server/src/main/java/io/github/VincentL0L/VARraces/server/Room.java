@@ -21,8 +21,10 @@ import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.TrackMap;
 import io.github.VincentL0L.VARraces.Multiplayer.server.cpu.Waypoints;
 
 /**
- * One race on the server: its players, 3 CPU opponents, countdown and leaderboard.
- * This is the old GameServer logic, but one copy per room.
+ * One lobby on the server: its players, 3 CPU opponents, countdown and leaderboard.
+ * After each race everyone goes back to the lobby together for the next one (on the
+ * same track or one the host picks), so nobody has to rejoin. Players who join mid-race
+ * wait in the lobby until it's over. Ranked rooms are still one race each.
  */
 public class Room {
     public static final int MAX_PLAYERS = 6;
@@ -33,11 +35,10 @@ public class Room {
     private final List<Opponent> cpuOpponents = new ArrayList<>();
     private final List<Opponent> allCpuOpponents = new ArrayList<>();
     private boolean botsEnabled = true;
-    private final CpuTraffic traffic;
-    private final TrackMap map;
-    private final List<Vector2> waypoints;
-    private final RaceManager raceManager;
-    private final ItemSystem items;
+    private CpuTraffic traffic;
+    private TrackMap map;
+    private RaceManager raceManager;
+    private ItemSystem items;
     /** battle mode (null in races) */
     private BattleSystem battle;
     private float roomClock = 0f;
@@ -50,6 +51,9 @@ public class Room {
     private float countdownTimer = 0f;
     private String lastCountdown = "";
     private float raceTime = 0f;
+    /** seconds since everyone finished: the results show for a moment, then it's back to the lobby */
+    private float overTime = 0f;
+    private static final float RESULTS_TIME = 4f;
 
     /**
      * creates a room with 3 CPU opponents on the starting line
@@ -60,14 +64,21 @@ public class Room {
     public Room(String code, boolean isPublic, TrackMap map) {
         this.code = code;
         this.isPublic = isPublic;
-        this.map = map;
-        waypoints = map.waypoints;
+        setup(map);
+    }
+
+    /** a fresh race on this map: CPUs on the grid, no items on the track, no standings */
+    private void setup(TrackMap newMap) {
+        map = newMap;
+        List<Vector2> waypoints = map.waypoints;
         raceManager = RaceManager.forMap(map);
         items = new ItemSystem(waypoints, map.pointToPoint);
+        battle = null;
         if (map.battle) {
             battle = new BattleSystem();
             items.setBattle(battle);
         }
+        allCpuOpponents.clear();
         List<Vector2> grid = Waypoints.getCpuGrid();
         for (int i = 0; i < grid.size(); i++) {
             Vector2 start = grid.get(i);
@@ -81,10 +92,77 @@ public class Room {
             cpu.setSprint(map.pointToPoint);
             cpu.setBattle(map.battle);
             cpu.setHeading(heading);
-            cpuOpponents.add(cpu);
+            allCpuOpponents.add(cpu);
         }
-        allCpuOpponents.addAll(cpuOpponents);
+        cpuOpponents.clear();
+        if (botsEnabled) {
+            cpuOpponents.addAll(allCpuOpponents);
+        }
         traffic = new CpuTraffic(cpuOpponents, ImageTrack.forMap(map));
+    }
+
+    /**
+     * Everyone back to the lobby, unready, for a new race on newMap. Clients reset on LOBBY.
+     */
+    private void backToLobby(TrackMap newMap) {
+        setup(newMap);
+        started = false;
+        countdownInProgress = false;
+        countdownTimer = 0f;
+        lastCountdown = "";
+        raceTime = 0f;
+        firstFinish = -1f;
+        overTime = 0f;
+        int i = 0;
+        for (PlayerState p : players.values()) {
+            p.ready = false;
+            p.racing = false;
+            p.position.set(spawn(i++));
+            p.lastPosition.set(p.position);
+        }
+        broadcast("LOBBY|" + map.id);
+    }
+
+    /** where a player waits before the race (their game sends the real grid spot once it starts) */
+    private static Vector2 spawn(int index) {
+        return new Vector2(200 + index * 40, 300);
+    }
+
+    /** true while a race is on (from the start flag until everyone's back in the lobby) */
+    private boolean racing() {
+        return started || countdownInProgress;
+    }
+
+    /** in this race: everyone between races, and once it's on, only those who were there at the start */
+    private boolean inRace(PlayerState p) {
+        return p.racing || !racing();
+    }
+
+    /**
+     * Once every racer has finished (or the battle's over, or a minute after the first
+     * finisher), the results show for a moment and then everyone's back in the lobby.
+     */
+    private void checkRaceOver(float delta) {
+        if (ranked || !started) {
+            return;
+        }
+        boolean all = true, any = false;
+        for (PlayerState p : players.values()) {
+            if (p.racing) {
+                boolean done = battle != null ? battle.isOver() : raceManager.isFinished(p.id);
+                all &= done;
+                any |= done;
+            }
+        }
+        if (any && firstFinish < 0f) {
+            firstFinish = raceTime;
+        }
+        if (all || (firstFinish >= 0f && raceTime - firstFinish > 60f)) {
+            overTime += delta;
+            if (overTime >= RESULTS_TIME) {
+                backToLobby(map);
+            }
+        }
     }
 
     /**
@@ -102,8 +180,7 @@ public class Room {
      */
     public void join(WebSocket conn, int car, String name, String uid) {
         String id = name == null ? "Player " + nextPlayerNumber++ : uniqueId(name);
-        Vector2 spawn = new Vector2(200 + (players.size()) * 40, 300);
-        PlayerState state = new PlayerState(id, car, spawn);
+        PlayerState state = new PlayerState(id, car, spawn(players.size()));
         state.uid = uid;
 
         conn.send("JOINED|" + code + "|" + (ranked ? "ranked" : isPublic ? "public" : "private") + "|" + id + "|" + map.id);
@@ -114,6 +191,9 @@ public class Room {
         broadcast("READY|" + id + "|false");
         conn.send(settingsMessage());
         broadcast("HOST|" + hostId());
+        if (racing()) {
+            conn.send("RACING");     // a race is on: they wait in the lobby for the next one
+        }
     }
 
     /** a name nobody else in the room has ("Vincent L", then "Vincent L 2"...) */
@@ -280,7 +360,10 @@ public class Room {
             } catch (NumberFormatException e) {
                 // ignore bad settings
             }
-        } else if (parts[0].equals("USE") && started) {
+        } else if (parts[0].equals("MAP") && parts.length >= 2 && !ranked && !racing()
+                && state.id.equals(hostId())) {
+            backToLobby(TrackMap.get(parts[1]));
+        } else if (parts[0].equals("USE") && started && state.racing) {
             List<ItemSystem.Racer> racers = racers();
             for (ItemSystem.Racer r : racers) {
                 if (r.id.equals(state.id)) {
@@ -303,7 +386,10 @@ public class Room {
     }
 
     private void startCountdown() {
-        // the settings are locked in now
+        // the settings are locked in now, and so are the racers
+        for (PlayerState p : players.values()) {
+            p.racing = true;
+        }
         raceManager.setLaps(laps);
         for (Opponent cpu : cpuOpponents) {
             cpu.setLaps(laps);
@@ -325,6 +411,7 @@ public class Room {
         roomClock += delta;
         broadcast("TICK|" + roomClock);
         tickQueue(delta);
+        checkRaceOver(delta);
         if (countdownInProgress) {
             countdownTimer += delta;
             String text;
@@ -345,7 +432,9 @@ public class Room {
 
         // all CPUs move together so they avoid and bump each other and the players
         for (PlayerState p : players.values()) {
-            traffic.setPlayer(p.id, p.position.x, p.position.y, p.rotation + 90f, CarModel.of(p.car).mass);
+            if (inRace(p)) {
+                traffic.setPlayer(p.id, p.position.x, p.position.y, p.rotation + 90f, CarModel.of(p.car).mass);
+            }
         }
         traffic.update(delta, started);
         if (started) {
@@ -362,6 +451,9 @@ public class Room {
         }
 
         for (PlayerState p : players.values()) {
+            if (!inRace(p)) {
+                continue;
+            }
             if (onGrid && battle == null) {
                 raceManager.updateRacer(p.id, p.position, raceTime);
             }
@@ -384,7 +476,9 @@ public class Room {
         if (onGrid && battle != null) {
             java.util.Map<String, Float> masses = new java.util.HashMap<>();
             for (PlayerState p : players.values()) {
-                masses.put(p.id, CarModel.of(p.car).mass);
+                if (inRace(p)) {
+                    masses.put(p.id, CarModel.of(p.car).mass);
+                }
             }
             battle.update(delta, racers(), masses, started);
             for (String event : battle.takeEvents()) {
@@ -425,6 +519,9 @@ public class Room {
             racers.add(r);
         }
         for (PlayerState p : players.values()) {
+            if (!inRace(p)) {
+                continue;
+            }
             ItemSystem.Racer r = new ItemSystem.Racer();
             r.id = p.id;
             r.x = p.position.x + CarBody.WIDTH / 2f;
@@ -474,10 +571,11 @@ public class Room {
     }
 
     /**
-     * @return true if new players can still join
+     * @return true if new players can still join (mid-race too: they wait for the next one,
+     * except in ranked, where the race is the whole room)
      */
     public boolean isJoinable() {
-        return !started && !countdownInProgress && players.size() < MAX_PLAYERS;
+        return players.size() < MAX_PLAYERS && !(ranked && racing());
     }
 
     public boolean isPublic() {
@@ -505,6 +603,8 @@ public class Room {
         Vector2 position;
         float rotation = 0f;
         boolean ready = false;
+        /** in the race that's on now (false for someone who joined mid-race) */
+        boolean racing = false;
         String uid;
         final Vector2 lastPosition = new Vector2();
         float speed = 0f;
