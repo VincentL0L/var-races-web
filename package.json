@@ -1,0 +1,24 @@
+{
+  "name": "var-races",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bash tools/dev.sh",
+    "wasm": "bash tools/build-wasm.sh",
+    "assets": "node tools/web-assets.mjs",
+    "build": "npm run wasm && npm run assets && tsc -p web && vite build --config web/vite.config.ts",
+    "typecheck": "tsc -p web",
+    "preview": "vite preview --config web/vite.config.ts"
+  },
+  "dependencies": {
+    "firebase": "^12.0.0",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.180.0",
+    "playwright-core": "^1.64.1",
+    "sharp": "^0.34.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0"
+  }
+}

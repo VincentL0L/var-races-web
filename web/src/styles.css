@@ -1,0 +1,1128 @@
+/* The game's look: gilded 16-bit pixel-art panels and buttons (assets/ui/gilded, drawn by
+   tools/make_ui.py, scaled 3x), the racing font for titles and Michroma for small text.
+   The art's URLs are set as variables by ui/theme.ts. Menus are laid out in design pixels;
+   #ui is zoomed down on screens smaller than 900 x 620. */
+
+:root {
+  --cream: #fff2d6;
+  --gold: #ffcc47;
+  --dark: #2b1408;
+  --red: #e8281e;
+  --face: #2c1c14;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0a0c;
+  color: var(--cream);
+  font: 13px/1.45 Michroma, system-ui, sans-serif;
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  height: 100dvh;
+}
+
+#world {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+#ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+#ui > * {
+  pointer-events: auto;
+}
+
+/* ---------------------------------------------------------------- screens */
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 18px;
+}
+
+.screen.frosted {
+  backdrop-filter: blur(6px) brightness(0.8);
+  -webkit-backdrop-filter: blur(6px) brightness(0.8);
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* ---------------------------------------------------------------- the gilded pieces */
+
+.panel {
+  border-style: solid;
+  border-width: 18px;
+  border-image: var(--panel) 6 fill / 18px / 0 stretch;
+  image-rendering: pixelated;
+  padding: 6px 10px;
+}
+
+.frame {
+  border-style: solid;
+  border-width: 12px;
+  border-image: var(--frame) 4 fill / 12px / 0 stretch;
+  image-rendering: pixelated;
+}
+
+.btn {
+  font: 20px/1 Speed, sans-serif;
+  letter-spacing: 0.5px;
+  color: var(--dark);
+  background: none;
+  border-style: solid;
+  border-width: 9px 9px 15px;
+  border-image: var(--button) 3 3 5 3 fill / 9px 9px 15px 9px / 0 stretch;
+  image-rendering: pixelated;
+  padding: 6px 14px 2px;
+  min-width: 180px;
+  min-height: 52px;
+  cursor: pointer;
+  white-space: nowrap;
+  outline: none;
+}
+
+.btn:hover:not(:disabled) {
+  border-image-source: var(--button-over);
+}
+
+.btn:active:not(:disabled),
+.btn.on {
+  border-image-source: var(--button-down);
+  padding-top: 9px;
+}
+
+.btn:disabled {
+  border-image-source: var(--button-disabled);
+  color: #4d4033;
+  cursor: default;
+}
+
+.btn.small {
+  font-size: 15px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 3px 10px 0;
+}
+
+.btn.wide {
+  min-width: 260px;
+}
+
+input.field {
+  font: 14px Michroma, sans-serif;
+  color: var(--cream);
+  background: none;
+  border-style: solid;
+  border-width: 9px;
+  border-image: var(--field) 3 fill / 9px / 0 stretch;
+  image-rendering: pixelated;
+  padding: 4px 6px;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+input.field::placeholder {
+  color: #9a805f;
+}
+
+/* ---------------------------------------------------------------- text */
+
+.title {
+  font: 64px/1 Speed, sans-serif;
+  color: var(--gold);
+  text-align: center;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 8px #1a0c04;
+  text-shadow: 0 4px 0 #1a0c04;
+}
+
+.title.red {
+  color: var(--red);
+}
+
+.title.medium {
+  font-size: 40px;
+  -webkit-text-stroke-width: 6px;
+}
+
+.title.small {
+  font-size: 24px;
+  -webkit-text-stroke-width: 4px;
+  text-shadow: 0 2px 0 #1a0c04;
+}
+
+.title.plain {
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+}
+
+.label {
+  color: var(--cream);
+}
+
+.muted {
+  color: #b9a07a;
+  font-size: 11px;
+}
+
+.gold {
+  color: var(--gold);
+}
+
+.error {
+  color: #ff8a6a;
+  min-height: 1.4em;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------- the rotate-your-phone notice */
+
+#rotate {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: var(--red);
+  color: #fff;
+  font: 700 22px system-ui, sans-serif;
+  text-align: center;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+
+#rotate .phone {
+  width: 46px;
+  height: 80px;
+  border: 5px solid #fff;
+  border-radius: 10px;
+  animation: turn 1.6s ease-in-out infinite;
+}
+
+@keyframes turn {
+  0%,
+  25% {
+    transform: rotate(0deg);
+  }
+  60%,
+  100% {
+    transform: rotate(-90deg);
+  }
+}
+
+@media (orientation: portrait) and (pointer: coarse) {
+  #rotate {
+    display: flex;
+  }
+}
+
+/* ---------------------------------------------------------------- cards (maps, rooms, cars) */
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.card {
+  cursor: pointer;
+  padding: 4px;
+  border: 3px solid transparent;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  text-align: center;
+}
+
+.card:hover {
+  border-color: rgba(255, 204, 71, 0.5);
+}
+
+.card.on {
+  border-color: var(--gold);
+  background: rgba(255, 204, 71, 0.15);
+}
+
+.card img {
+  width: 100%;
+  display: block;
+  image-rendering: pixelated;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.card .name {
+  font: 15px/1.3 Speed, sans-serif;
+  color: var(--gold);
+  margin-top: 4px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.pixel {
+  image-rendering: pixelated;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+  min-width: 360px;
+}
+
+.list .item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.list .item.me {
+  background: rgba(255, 204, 71, 0.18);
+}
+
+.pill {
+  font: 12px/1 Speed, sans-serif;
+  padding: 4px 8px 2px;
+  border-radius: 3px;
+  background: #4a3423;
+  color: #c9b08a;
+}
+
+.pill.ready {
+  background: #2f8f3a;
+  color: #fff;
+}
+
+/* ---------------------------------------------------------------- the title screen */
+
+.title-screen {
+  justify-content: flex-start;
+  /* a soft shade toward the bottom so the buttons stand out */
+  background: linear-gradient(to top, rgba(13, 8, 5, 0.45), rgba(13, 8, 5, 0.45) 10%, rgba(13, 8, 5, 0) 62%);
+}
+
+.sign {
+  margin-top: 40px;
+  position: relative;
+  padding: 22px 40px 14px;
+  background: #e0291f;
+  border: 4px solid #fff;
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.sign span {
+  position: relative;
+  font: 80px/1 Speed, sans-serif;
+  color: #fff;
+}
+
+/* the shimmer: soft light and dark bands drifting slowly sideways */
+.sign::before {
+  content: '';
+  position: absolute;
+  inset: 0 -100% 0 0;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.09) 0 40px, rgba(0, 0, 0, 0.08) 80px 120px, rgba(255, 255, 255, 0.09) 160px);
+  animation: shimmer 6s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-160px);
+  }
+}
+
+.menu-buttons {
+  margin-top: auto;
+  margin-bottom: 30px;
+}
+
+.menu-buttons .btn {
+  min-width: 270px;
+  min-height: 58px;
+}
+
+/* ---------------------------------------------------------------- the race HUD */
+
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  --hud-zoom: 1;
+}
+
+.hud-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 12px;
+  zoom: var(--hud-zoom);
+  width: calc(100% / var(--hud-zoom));
+}
+
+.hud-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 320px;
+}
+
+.hud .panel {
+  padding: 0 4px;
+}
+
+.hud-title {
+  font: 16px/30px Speed, sans-serif;
+  color: var(--gold);
+  height: 30px;
+}
+
+.hud-title.right {
+  text-align: right;
+}
+
+.hud-rows {
+  min-height: 104px;
+}
+
+.hud-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 26px;
+  padding: 0 3px;
+  font-size: 12px;
+}
+
+.hud-row.me {
+  background: rgba(255, 204, 71, 0.22);
+}
+
+.hud-tab {
+  width: 26px;
+  height: 18px;
+  font: 16px/20px Speed, sans-serif;
+  text-align: center;
+  color: var(--dark);
+  background: #cc8c26;
+}
+
+.hud-tab.lead {
+  background: var(--gold);
+}
+
+.hud-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hud-row.me .hud-name {
+  color: var(--gold);
+}
+
+.hud-status {
+  color: #d9a64d;
+}
+
+.hud-status.done {
+  color: var(--gold);
+}
+
+.hud-strip {
+  display: flex;
+  gap: 8px;
+}
+
+.hud-strip .hud-screen {
+  flex: 1;
+}
+
+.hud-screen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 38px;
+  border-style: solid;
+  border-width: 9px;
+  border-image: var(--field) 3 fill / 9px / 0 stretch;
+  image-rendering: pixelated;
+  padding: 0 3px;
+}
+
+.hud-screen.button {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.hud-screen.button:hover .hud-label {
+  color: var(--gold);
+}
+
+.hud-label {
+  font-size: 9px;
+  color: #d9a64d;
+  white-space: nowrap;
+}
+
+.hud-value {
+  font: 20px/1 Speed, sans-serif;
+  color: var(--cream);
+  white-space: nowrap;
+}
+
+.hud-strip .hud-value {
+  font-size: 16px;
+}
+
+.hud-value.gold {
+  color: var(--gold);
+}
+
+.hud-item {
+  width: 30px;
+  height: 30px;
+  margin-left: -4px;
+}
+
+.hud-boost {
+  flex: 1;
+  display: flex;
+  gap: 3px;
+  height: 18px;
+  margin-left: 4px;
+}
+
+.hud-boost i {
+  flex: 1;
+  background: #1f2938;
+}
+
+.hud-boost i.on {
+  background: #40adff;
+  box-shadow: inset 0 3px 0 #9ee6ff;
+}
+
+.hud-cluster {
+  position: relative;
+  width: 640px;
+  height: 124px;
+}
+
+.hud-housing {
+  display: flex;
+  height: 124px;
+  padding: 0;
+  align-items: stretch;
+}
+
+.hud-modules {
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.hud-pod {
+  flex: 1;
+}
+
+.hud-gauge {
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  width: 192px;
+  height: 192px;
+  transform: translateX(-50%);
+  image-rendering: pixelated;
+}
+
+.hud-minimap {
+  height: 192px;
+}
+
+.hud-map {
+  display: block;
+  width: 100%;
+  height: 130px;
+}
+
+.hud-banner {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: 360px;
+  height: 64px;
+  font: 34px/34px Speed, sans-serif;
+  color: var(--gold);
+  text-align: center;
+  display: none;
+}
+
+.hud-banner.final {
+  color: #ff5c38;
+}
+
+.hud-warning {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 240px;
+  text-align: center;
+  font: 26px Speed, sans-serif;
+  color: #ff5c38;
+  -webkit-text-stroke: 5px #1a0c04;
+  paint-order: stroke fill;
+  visibility: hidden;
+}
+
+.hud-center {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  font: 64px Speed, sans-serif;
+  -webkit-text-stroke: 8px #1a0c04;
+  paint-order: stroke fill;
+  display: none;
+}
+
+.hud-flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  box-shadow: inset 0 0 18vmin 6vmin rgba(230, 26, 13, 1);
+}
+
+.hud-marks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* the start lights hang under the speedometer, the count pops up big below the car */
+.lights {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 24px;
+  padding: 4px 10px;
+}
+
+.lights i {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #380f0f;
+  border: 4px solid #140c0a;
+  box-sizing: content-box;
+  position: relative;
+}
+
+.lights i::after {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 7px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.lights i.red {
+  background: #ff2e1f;
+  box-shadow: 0 0 0 10px rgba(255, 46, 31, 0.22);
+}
+
+.lights i.green {
+  background: #40ff59;
+  box-shadow: 0 0 0 10px rgba(64, 255, 89, 0.22);
+}
+
+.lights i.red::after,
+.lights i.green::after {
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.count {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(50% + 150px);
+  transform: translateY(-50%);
+  text-align: center;
+  font: 130px/1 Speed, sans-serif;
+  color: var(--cream);
+  -webkit-text-stroke: 12px #1a0c04;
+  paint-order: stroke fill;
+}
+
+.flag {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.pause {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pause .panel {
+  padding: 18px 26px 22px;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------- touch controls */
+
+.touch {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 70%;
+  touch-action: none;
+  --gold-dark: #8c5214;
+}
+
+.touch > div {
+  position: absolute;
+  background: #2b1a0f;
+  border: 4px solid var(--gold);
+  box-shadow: 0 3px 0 var(--gold-dark);
+  opacity: 0.6;
+  pointer-events: none;
+  color: var(--gold);
+  font: 15px Speed, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.touch > div.down {
+  opacity: 0.95;
+  transform: translateY(3px);
+}
+
+.touch-arrow {
+  bottom: 26px;
+  width: 96px;
+  height: 96px;
+}
+
+.touch-arrow.left {
+  left: 26px;
+}
+
+.touch-arrow.right {
+  left: 138px;
+}
+
+.touch-arrow i {
+  width: 0;
+  height: 0;
+  border-top: 25px solid transparent;
+  border-bottom: 25px solid transparent;
+}
+
+.touch-arrow.left i {
+  border-right: 42px solid var(--gold);
+  margin-right: 8px;
+}
+
+.touch-arrow.right i {
+  border-left: 42px solid var(--gold);
+  margin-left: 8px;
+}
+
+.touch-pedal {
+  bottom: 26px;
+  flex-direction: column;
+  justify-content: flex-end !important;
+  padding-bottom: 6px;
+}
+
+.touch-pedal b {
+  flex: 1;
+  width: calc(100% - 24px);
+  margin: 26px 0 4px;
+  background: repeating-linear-gradient(to bottom, currentColor 0 4px, transparent 4px 12px);
+  opacity: 0.4;
+}
+
+.touch-pedal.down b {
+  opacity: 0.95;
+}
+
+.touch-pedal.gas {
+  right: 26px;
+  width: 74px;
+  height: 128px;
+}
+
+.touch-pedal.gas.boost {
+  color: #40adff;
+}
+
+.touch-pedal.brake {
+  right: 118px;
+  width: 112px;
+  height: 92px;
+}
+
+.touch-pedal.brake.down {
+  color: #ff5c3d;
+}
+
+.touch-item {
+  right: 42px;
+  bottom: 192px;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  opacity: 0.95 !important;
+}
+
+.touch-item.empty {
+  opacity: 0.5 !important;
+}
+
+.touch-item img {
+  width: 48px;
+  height: 48px;
+}
+
+.touch-item span {
+  display: none;
+}
+
+.touch-item.empty span {
+  display: block;
+}
+
+.touch-btn {
+  width: 92px;
+  height: 64px;
+  bottom: 26px;
+}
+
+.touch-btn.left {
+  left: 26px;
+}
+
+.touch-btn.right {
+  left: 130px;
+}
+
+.touch-btn.brake {
+  right: 130px;
+}
+
+.touch-btn.gas {
+  right: 26px;
+}
+
+.touch-btn.boost {
+  right: 26px;
+  bottom: 104px;
+}
+
+.touch-btn.jump {
+  right: 130px;
+  bottom: 104px;
+}
+
+/* ---------------------------------------------------------------- menu cards: a gilded card,
+   small gold section labels, recessed rows (like the HUD's screens) and status pills */
+
+.card-panel {
+  border-style: solid;
+  border-width: 18px;
+  border-image: var(--panel) 6 fill / 18px / 0 stretch;
+  image-rendering: pixelated;
+  padding: 8px 16px 12px;
+  width: 528px;
+  max-height: calc(100% - 20px);
+  display: flex;
+  flex-direction: column;
+}
+
+.card-panel.wide {
+  width: auto;
+}
+
+.kicker {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #d9a64d;
+  margin: 6px 0;
+}
+
+.kicker.error {
+  color: #ff8066;
+}
+
+.card-title {
+  font: 44px/1.05 Speed, sans-serif;
+  color: var(--gold);
+  margin: 2px 0 14px;
+}
+
+.crow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  margin-bottom: 6px;
+  border-style: solid;
+  border-width: 9px;
+  border-image: var(--field) 3 fill / 9px / 0 stretch;
+  image-rendering: pixelated;
+  padding: 0 4px 0 6px;
+}
+
+.crow.clickable {
+  cursor: pointer;
+}
+
+.crow.clickable:hover {
+  border-image-source: var(--frame);
+}
+
+.crow .grow {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crow img.car {
+  width: 13px;
+  height: 26px;
+  image-rendering: pixelated;
+}
+
+.pill {
+  font: 13px/1 Speed, sans-serif;
+  padding: 4px 10px 2px;
+  color: var(--cream);
+  background: #42332a;
+}
+
+.pill.ready {
+  background: #45a852;
+}
+
+.pill.cpu {
+  background: #cc8c26;
+  color: var(--dark);
+}
+
+.picker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.picker .value {
+  width: 120px;
+  text-align: center;
+  color: var(--gold);
+}
+
+.picker .btn {
+  min-width: 38px;
+  min-height: 32px;
+  padding: 0 4px;
+  font-size: 15px;
+  border-width: 6px 6px 10px;
+  border-image-width: 6px 6px 10px 6px;
+}
+
+.card-buttons {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.card-buttons .spacer {
+  flex: 1;
+}
+
+.note {
+  font-size: 9px;
+  color: #d9a64d;
+  min-height: 14px;
+}
+
+.scroll {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* ---------------------------------------------------------------- results */
+
+.checkers {
+  position: absolute;
+  inset: 0;
+  background-color: #1a1412;
+  background-image: conic-gradient(#ede6d6 25%, #1a1412 0 50%, #ede6d6 0 75%, #1a1412 0);
+  background-size: 112px 112px;
+}
+
+.checkers::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(26, 15, 8, 0.62);
+}
+
+.results-box {
+  width: 460px;
+  max-height: 260px;
+  border-style: solid;
+  border-width: 18px;
+  border-image: var(--panel) 6 fill / 18px / 0 stretch;
+  image-rendering: pixelated;
+}
+
+.results {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.results th {
+  color: var(--gold);
+  font-weight: normal;
+  padding: 6px;
+}
+
+.results td {
+  padding: 4px 6px;
+}
+
+.results td:nth-child(2) {
+  text-align: left;
+}
+
+.results tr.me td {
+  color: var(--gold);
+}
+
+.results tr.racing td {
+  opacity: 0.5;
+}
+
+/* ---------------------------------------------------------------- soccer */
+
+.soccer-strip {
+  align-self: stretch;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin: 14px;
+  padding: 10px 18px;
+  background: rgba(6, 15, 28, 0.94);
+  font-size: 13px;
+}
+
+.soccer-strip > span {
+  flex: 1;
+}
+
+.soccer-banner {
+  position: absolute;
+  top: 34%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  pointer-events: none;
+}
+
+.soccer-toast {
+  position: absolute;
+  top: 62%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.soccer > .screen {
+  background: rgba(6, 10, 16, 0.4);
+}

@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = ["crates/sim", "crates/proto", "crates/server", "crates/wasm", "crates/tools"]
+
+[workspace.package]
+edition = "2021"
+version = "1.0.0"
+license = "MIT"
+
+[workspace.dependencies]
+sim = { path = "crates/sim" }
+proto = { path = "crates/proto" }
+libm = "0.2"
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+postcard = { version = "1", default-features = false, features = ["alloc"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+# the browser build: smallest code, see crates/wasm
+[profile.wasm]
+inherits = "release"
+opt-level = "z"
+
+# the simulation tests build every map's distance field; keep them quick
+[profile.test]
+opt-level = 2

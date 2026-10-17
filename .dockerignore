@@ -1,0 +1,6 @@
+# The server image needs only the Rust workspace and the map data it embeds
+*
+!Cargo.toml
+!Cargo.lock
+!crates/
+!data/

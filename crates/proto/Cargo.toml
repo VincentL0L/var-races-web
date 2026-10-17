@@ -1,0 +1,17 @@
+[package]
+name = "proto"
+description = "VAR Races wire protocol, shared by the server and the browser"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+sim.workspace = true
+serde.workspace = true
+postcard.workspace = true
+
+tsify = { version = "0.5", optional = true, default-features = false, features = ["js"] }
+wasm-bindgen = { version = "0.2", optional = true }
+
+[features]
+ts = ["dep:tsify", "dep:wasm-bindgen", "sim/ts"]

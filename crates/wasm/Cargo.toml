@@ -1,0 +1,17 @@
+[package]
+name = "wasm"
+description = "VAR Races simulation and protocol for the browser"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+sim = { workspace = true, features = ["ts"] }
+proto = { workspace = true, features = ["ts"] }
+serde.workspace = true
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"

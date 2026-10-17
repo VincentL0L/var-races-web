@@ -1,0 +1,19 @@
+# Rust
+/target/
+
+# Web client
+node_modules/
+/web/dist/
+/web/src/wasm/pkg/
+/web/public/gen/
+/web/src/gen/
+
+# Firebase
+.firebase/
+firebase-debug.log
+
+# Local settings
+.env.local
+.DS_Store
+.idea/
+*.iml

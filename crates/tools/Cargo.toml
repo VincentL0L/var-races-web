@@ -1,0 +1,11 @@
+[package]
+name = "tools"
+description = "Asset build steps and generators for VAR Races"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+sim.workspace = true
+png = "0.17"
