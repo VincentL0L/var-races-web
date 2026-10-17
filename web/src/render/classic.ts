@@ -2,26 +2,23 @@
 // grass besides the trees.
 //  - the two log cabins in the forest, the rock piles, the two tall rock spires and the fallen
 //    logs, built as chunky models
-//  - the animals (and their tree stumps), cut out of the map picture itself and stood up like
-//    cardboard standees that always face you, so they keep their exact pixel art
+//  - the animals (and their tree stumps), as little block models like the cars, each in the
+//    colours the picture paints it
 // Picture pixels are map units here (the Classic map is its picture at full size), y flipped.
 import * as THREE from 'three';
 import { CRITTERS, ROCKS } from './classicProps';
 import { Builder, rgb, shade, vertexColors, type Rgb } from './geom';
-import { hill } from './hills';
+import { critter } from './props';
 import type { Area } from './landmarks';
 
 const H = 1080;
-/** the standees' size against the picture (the cars are drawn a little big for their world) */
-const STANDEE = 0.9;
 
 let seed = 7;
 const rnd = () => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296);
 
-/** the models (solid, for the camera to keep clear of) and the standees, apart */
-export function buildClassic(picture: ImageData): { group: THREE.Group; standees: THREE.Group; clear: Area[] } {
-  const group = new THREE.Group(), standees = new THREE.Group();
-  const b = new Builder();
+export function buildClassic(picture: ImageData): { group: THREE.Group; clear: Area[] } {
+  const group = new THREE.Group();
+  const b = new Builder(), c = new Builder();
   const clear: Area[] = [];
   seed = 7;
 
@@ -54,18 +51,16 @@ export function buildClassic(picture: ImageData): { group: THREE.Group; standees
   for (const [px, py, len, turn] of [[40, 728, 60, -15], [620, 742, 70, 18], [748, 1040, 70, -12], [1412, 988, 64, 10]]) log(b, px, H - py, len, turn);
   if (!b.empty) group.add(b.mesh(vertexColors()));
 
-  // the animals: each cut out of the picture with the grass around it see-through
+  // the animals: little block models in their own colours, sat on a stump where the picture
+  // has one under them
   for (const [px, py, w, h] of CRITTERS) {
-    const texture = cutOut(picture, px - 2, py - 2, w + 4, h + 4);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, alphaTest: 0.5, fog: true }));
-    const sw = (w + 4) * STANDEE, sh = (h + 4) * STANDEE;
-    const x = px + w / 2, y = H - py - h; // standing on the bottom of its picture
-    sprite.scale.set(sw, sh, 1);
-    sprite.position.set(x, y, hill(x, y) + sh / 2);
-    standees.add(sprite);
-    clear.push([x - w / 2, y, x + w / 2, y + h]);
+    const { coat, stump } = look(picture, px, py, w, h);
+    const x = px + w / 2, y = H - py - h / 2;
+    critter(c, x, y, Math.max(w, h) * 0.55, coat, px * 7919 + py * 104729, rnd() * Math.PI * 2, stump);
+    clear.push([px, H - py - h, px + w, H - py]);
   }
-  return { group, standees, clear };
+  if (!c.empty) group.add(c.mesh(vertexColors()));
+  return { group, clear };
 }
 
 /** a lumpy boulder: a squat block, a narrower one on top, a lit cap */
@@ -116,26 +111,57 @@ function log(b: Builder, x: number, y: number, len: number, turn: number): void 
   b.box(ex - 2, ey - 2, 1, ex + 2, ey + 2, 7.4, rgb(0xd8b48a)); // its cut face
 }
 
-/** a patch of the picture with the grass (and the leaves) made see-through */
-function cutOut(p: ImageData, x0: number, y0: number, w: number, h: number): THREE.Texture {
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const out = new ImageData(w, h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const sx = Math.min(p.width - 1, Math.max(0, x0 + x)), sy = Math.min(p.height - 1, Math.max(0, y0 + y));
-      const i = (sy * p.width + sx) * 4, o = (y * w + x) * 4;
-      const r = p.data[i], g = p.data[i + 1], bl = p.data[i + 2];
-      out.data[o] = r;
-      out.data[o + 1] = g;
-      out.data[o + 2] = bl;
-      out.data[o + 3] = g > r + 6 && g > bl + 6 ? 0 : 255;
+/** an animal's coat (its pixels that aren't grass, leaves or bark) and whether it sits on a stump */
+function look(p: ImageData, x0: number, y0: number, w: number, h: number): { coat: Rgb; stump: boolean } {
+  let r = 0, g = 0, bl = 0, n = 0, bark = 0, low = 0;
+  for (let y = y0; y < y0 + h; y++) {
+    for (let x = x0; x < x0 + w; x++) {
+      const i = (Math.min(p.height - 1, y) * p.width + Math.min(p.width - 1, x)) * 4;
+      const cr = p.data[i], cg = p.data[i + 1], cb = p.data[i + 2];
+      const green = cg > cr + 6 && cg > cb + 6, brown = cr > cg && cg > cb && cr - cb > 40 && cr < 160;
+      if (y > y0 + h / 2) {
+        low++;
+        if (brown) bark++;
+      }
+      if (green || brown || cr + cg + cb < 90) continue; // and the dark outline
+      r += cr;
+      g += cg;
+      bl += cb;
+      n++;
     }
   }
-  canvas.getContext('2d')!.putImageData(out, 0, 0);
+  const coat: Rgb = n ? [r / n / 255, g / n / 255, bl / n / 255] : [0.6, 0.6, 0.6];
+  return { coat, stump: bark > low * 0.2 };
+}
+
+/**
+ * the map picture for the ground, with grass painted over the animals and rocks (they stand
+ * up as models now): each spot gets the grass colour from just outside it
+ */
+export function groundWithoutProps(picture: THREE.Texture): THREE.Texture {
+  const img = picture.image as CanvasImageSource & { width: number; height: number };
+  const canvas = document.createElement('canvas');
+  canvas.width = img.width;
+  canvas.height = img.height;
+  const g = canvas.getContext('2d')!;
+  g.drawImage(img, 0, 0);
+  const data = g.getImageData(0, 0, canvas.width, canvas.height);
+  for (const [x0, y0, w, h] of [...CRITTERS, ...ROCKS]) {
+    for (let y = y0 - 1; y <= y0 + h; y++) {
+      for (let x = x0 - 1; x <= x0 + w; x++) {
+        // the nearest grass pixel along the row, left or right of the spot
+        const i = (y * canvas.width + x) * 4;
+        const fromX = x - x0 < w / 2 ? x0 - 3 : x0 + w + 2;
+        const j = (y * canvas.width + Math.min(canvas.width - 1, Math.max(0, fromX))) * 4;
+        for (let k = 0; k < 3; k++) data.data[i + k] = data.data[j + k];
+      }
+    }
+  }
+  g.putImageData(data, 0, 0);
   const t = new THREE.CanvasTexture(canvas);
-  t.magFilter = t.minFilter = THREE.NearestFilter;
+  t.colorSpace = picture.colorSpace;
+  t.magFilter = picture.magFilter;
+  t.minFilter = picture.minFilter;
   t.generateMipmaps = false;
   return t;
 }

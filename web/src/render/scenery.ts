@@ -2,13 +2,13 @@
 // by tools from the map picture) says how tall things are on a grid of CELL x CELL patches.
 //  - buildings: each designed in its city's architecture (architecture.ts), with that bit of the
 //    map picture for a roof
-//  - trees: two crossed upright pictures of a tree, tinted the colour of the leaves seen from
+//  - trees: little block models like the cars (props.ts), their leaves the colour seen from
 //    above, so cherry blossom stays pink
 import * as THREE from 'three';
 import type { MapDef } from '../wasm';
 import { CityArchitecture } from './architecture';
 import { Builder, vertexColors, type Rgb } from './geom';
-import { tree } from './textures';
+import { tree as propTree } from './props';
 import type { Area } from './landmarks';
 
 /** map pixels per height cell (must match the height map maker) */
@@ -62,12 +62,7 @@ export function buildScenery(
         const size = 15 + mod(seed >> 12, 9);
         const tall = h * 1.35;
         const leaf: Rgb = [Math.min(1, avg[0] * 1.45), Math.min(1, avg[1] * 1.45), Math.min(1, avg[2] * 1.45)];
-        const turn = mod(seed >> 16, 90);
-        for (let k = 0; k < 2; k++) {
-          const a = ((turn + k * 90) * Math.PI) / 180;
-          const dx = (Math.cos(a) * size) / 2, dy = (Math.sin(a) * size) / 2;
-          trees.quad([tx - dx, ty - dy, 0], [tx + dx, ty + dy, 0], [tx + dx, ty + dy, tall], [tx - dx, ty - dy, tall], leaf, [0, 0, 1, 0, 1, 1, 0, 1]);
-        }
+        propTree(trees, tx, ty, tall, size, leaf, seed);
         continue;
       }
       if (!architecture.builds(gx, gy)) continue;
@@ -81,7 +76,7 @@ export function buildScenery(
     }
   }
   if (!roofs.empty) group.add(roofs.mesh(vertexColors(roofTexture)));
-  if (!trees.empty) group.add(trees.mesh(vertexColors(tree(), 0.5)));
+  if (!trees.empty) group.add(trees.mesh(vertexColors()));
   return group;
 }
 

@@ -12,7 +12,7 @@ import { CarView, eyeHeight, type CarLook } from './cars';
 import { ItemsView, type ItemState } from './items';
 import { buildLandmarks, type Area } from './landmarks';
 import { hill, hillsOn, lift, liftAll, setHills, slope } from './hills';
-import { buildClassic } from './classic';
+import { buildClassic, groundWithoutProps } from './classic';
 import { buildScenery } from './scenery';
 import { buildSky, skyColors, type SkyColors } from './sky';
 import { barrier, chevrons } from './textures';
@@ -84,7 +84,8 @@ export class World {
 
   private async addGround(): Promise<void> {
     const map = this.map;
-    const picture = await texture(`maps/${map.id}/background.png`);
+    let picture = await texture(`maps/${map.id}/background.png`);
+    if (map.id === 'classic') picture = groundWithoutProps(picture);
     const ground = new THREE.Group();
     // the ground writes depth, so on the hills a crest hides the ground behind it
     const flat = (t: THREE.Texture) => lift(new THREE.MeshBasicMaterial({ map: t, fog: true }));
@@ -231,7 +232,6 @@ export class World {
       const classic = buildClassic(picture);
       liftAll(classic.group);
       this.environment.add(classic.group);
-      this.scene.add(classic.standees);
       clear = [...clear, ...classic.clear];
     }
     const scenery = buildScenery(this.map, heights, picture, roof, clear);
