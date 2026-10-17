@@ -3,6 +3,7 @@
 // The same running stage stays behind every menu.
 import type { Stage } from '../app';
 import { pref } from '../prefs';
+import { TITLE_CAMERA } from '../render/camera';
 import { spriteFor } from '../render/cars';
 import { World } from '../render/world';
 import { LocalRace, maps, type MapDef, type Snapshot } from '../wasm';
@@ -21,7 +22,7 @@ export class TitleStage implements Stage {
   }
 
   static async create(): Promise<TitleStage> {
-    return new TitleStage(await World.create(mapById('classic')));
+    return new TitleStage(await World.create(mapById('classic'), TITLE_CAMERA));
   }
 
   private syncCar(): void {

@@ -4,7 +4,8 @@
 //  - first person: from the driver's seat, over the bonnet
 // Positions are map coordinates (x right, y up, z up off the ground).
 import * as THREE from 'three';
-import { CameraRig, RACE_CAMERA, type CameraMode } from './camera';
+import { CameraRig, RACE_CAMERA, type CameraMode, type CameraProfile } from './camera';
+import { Occluders } from './occluders';
 import { disposeObject } from './dispose';
 import { pixels, texture } from '../assets';
 import { mapLayout, type MapDef, type Sign, type Wall } from '../wasm';
@@ -42,10 +43,12 @@ export interface Frame {
 
 export class World {
   readonly scene = new THREE.Scene();
-  private readonly rig = new CameraRig(RACE_CAMERA);
+  private readonly rig: CameraRig;
   private readonly colors: SkyColors;
   private readonly fog: THREE.Fog;
   private readonly environment = new THREE.Group();
+  /** the environment's triangles, for keeping the chase camera out of walls and buildings */
+  private readonly occluders = new Occluders(this.environment);
   private readonly sky: THREE.Group;
   private readonly items: ItemsView;
   private readonly ownedTextures: THREE.Texture[] = [];
@@ -56,7 +59,8 @@ export class World {
   private clock = 0;
   private followed: number | null = null;
 
-  private constructor(readonly map: MapDef, layout: { walls: Wall[]; signs: Sign[]; boxes: { x: number; y: number }[][] }) {
+  private constructor(readonly map: MapDef, layout: { walls: Wall[]; signs: Sign[]; boxes: { x: number; y: number }[][] }, camera: CameraProfile) {
+    this.rig = new CameraRig(camera);
     this.colors = skyColors(map.id);
     this.fog = new THREE.Fog(new THREE.Color(...this.colors.low), FOG_START, FOG_END);
     this.scene.background = new THREE.Color(...this.colors.low);
@@ -71,8 +75,8 @@ export class World {
   }
 
   /** builds a map's world (the ground picture is loaded before it's ready) */
-  static async create(map: MapDef): Promise<World> {
-    const world = new World(map, mapLayout(map.id));
+  static async create(map: MapDef, camera: CameraProfile = RACE_CAMERA): Promise<World> {
+    const world = new World(map, mapLayout(map.id), camera);
     try {
       await Promise.all([world.addGround(), world.addScenery()]);
       return world;
@@ -310,8 +314,7 @@ export class World {
     const pose = target ? { ...target, z: hill(target.x, target.y) } : null;
     if (pose) {
       const view = target ? this.cars.get(target.slot) : null;
-      this.environment.updateMatrixWorld(true);
-      this.rig.update(pose, view ? eyeHeight(view.spriteName) : 6.3, delta, [this.environment], frame.shake);
+      this.rig.update(pose, view ? eyeHeight(view.spriteName) : 6.3, delta, this.occluders, frame.shake);
       this.sky.position.copy(this.rig.camera.position);
     }
     this.items.update(frame.items, this.rig.camera.position, delta);

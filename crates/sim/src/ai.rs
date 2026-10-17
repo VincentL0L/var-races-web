@@ -17,8 +17,9 @@ use crate::track::Track;
 const MAX_LINE_OFFSET: f32 = 28.0;
 /// seconds off the road before a CPU is put back on it
 const RESCUE_TIME: f32 = 5.0;
-/// how strongly a CPU steers toward where it wants to point (per second)
-const STEER_GAIN: f32 = 5.0;
+/// how strongly a CPU steers toward where it wants to point (per second); higher reacts faster
+/// but overshoots its line and weaves
+const STEER_GAIN: f32 = 3.0;
 
 /// what a CPU can see of another car
 #[derive(Clone, Copy, Debug)]
@@ -317,9 +318,20 @@ impl Driver {
         let segment = self.base_point - from;
         let length = segment.len().max(1.0);
         let along = clamp((pos - from).dot(segment) / length, 0.0, length);
-        let look = clamp(35.0 + speed * 0.22, 45.0, 115.0);
-        let center = from + segment * ((along + look).min(length) / length);
-        let candidate = center + self.left_of_travel * clamp(self.line_offset + self.pass_shift, -MAX_LINE_OFFSET, MAX_LINE_OFFSET);
+        let look = clamp(35.0 + speed * 0.3, 45.0, 150.0);
+        // a lookahead running past the corner carries on down the next stretch, so the car
+        // starts turning onto it smoothly instead of overshooting the exit and swerving back
+        let past = along + look - length;
+        let (center, side) = if past > 0.0 {
+            let next = self.point_after(map, self.waypoint) - self.base_point;
+            let next_len = next.len().max(1.0);
+            let next_dir = next * (1.0 / next_len);
+            let t = clamp(past / look, 0.0, 1.0);
+            (self.base_point + next_dir * past.min(next_len), self.left_of_travel.lerp(next_dir.perp(), t).norm())
+        } else {
+            (from + segment * ((along + look) / length), self.left_of_travel)
+        };
+        let candidate = center + side * clamp(self.line_offset + self.pass_shift, -MAX_LINE_OFFSET, MAX_LINE_OFFSET);
         let line = if safe_point(candidate, track) { candidate } else { center };
         let aim = dodge.map(|(p, _)| p).unwrap_or(line);
         let wanted = (aim - pos).angle();

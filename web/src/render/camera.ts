@@ -1,5 +1,6 @@
 // Presentation only: this controller consumes rendered poses and never reads or sends input.
 import * as THREE from 'three';
+import { Occluders } from './occluders';
 
 export type CameraMode = 'firstPerson' | 'thirdPerson';
 export interface CameraPose { x: number; y: number; z: number; heading: number; }
@@ -8,8 +9,12 @@ export interface CameraProfile {
   height: number;
   lookAhead: number;
   eyeForward: number;
+  /** how quickly the third-person camera swings round to follow the car's heading (per second) */
+  turnRate: number;
 }
-export const RACE_CAMERA: CameraProfile = { distance: 70, height: 32, lookAhead: 24, eyeForward: 3.5 };
+export const RACE_CAMERA: CameraProfile = { distance: 70, height: 32, lookAhead: 24, eyeForward: 3.5, turnRate: 8 };
+/** the title screen's chase: swings round more lazily, so the CPU's steering doesn't sway the whole view */
+export const TITLE_CAMERA: CameraProfile = { ...RACE_CAMERA, turnRate: 2.5 };
 
 export function nextCameraMode(mode: CameraMode): CameraMode {
   return mode === 'firstPerson' ? 'thirdPerson' : 'firstPerson';
@@ -57,10 +62,10 @@ export class CameraRig {
     this.camera.updateProjectionMatrix();
   }
 
-  update(pose: CameraPose, eye: number, delta: number, obstacles: THREE.Object3D[] = [], shake = 0): void {
+  update(pose: CameraPose, eye: number, delta: number, obstacles: Occluders | THREE.Object3D[] = [], shake = 0): void {
     const { x, y, z, heading } = pose;
     const snap = !this.initialized || this.last.distanceToSquared(this.anchor.set(x, y, z)) > 200 ** 2;
-    const rate = this.mode === 'firstPerson' ? 18 : 8;
+    const rate = this.mode === 'firstPerson' ? 18 : this.profile.turnRate;
     const turn = Math.atan2(Math.sin(heading - this.heading), Math.cos(heading - this.heading));
     this.heading = snap ? heading : this.heading + turn * (1 - Math.exp(-rate * delta));
     this.last.set(x, y, z);
@@ -87,9 +92,14 @@ export class CameraRig {
         for (const side of [0, -3, 3]) {
           this.origin.copy(this.anchor).addScaledVector(this.side.set(-fy, fx, 0), side);
           this.ray.set(this.origin, this.direction);
-          this.hits.length = 0;
-          this.ray.intersectObjects(obstacles, true, this.hits);
-          if (this.hits.length) distance = Math.min(distance, Math.max(0.5, this.hits[0].distance - 4));
+          let hit: number | null = null;
+          if (obstacles instanceof Occluders) hit = obstacles.nearest(this.ray.ray, this.ray.far);
+          else {
+            this.hits.length = 0;
+            this.ray.intersectObjects(obstacles, true, this.hits);
+            if (this.hits.length) hit = this.hits[0].distance;
+          }
+          if (hit !== null) distance = Math.min(distance, Math.max(0.5, hit - 4));
         }
       }
       if (snap) this.boomDistance = distance;
