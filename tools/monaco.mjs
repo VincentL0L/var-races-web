@@ -2,7 +2,7 @@
 // barriers right at the track's edge. Start / finish on the harbour boulevard, up the hill
 // through Sainte Devote and Beau Rivage, Massenet and Casino Square, down past Mirabeau to the
 // Grand Hotel hairpin, Portier, the long curve of the tunnel, the Nouvelle chicane, Tabac, the
-// Swimming Pool chicanes and Rascasse. The harbour full of yachts sits inside the lap, and the
+// Swimming Pool chicanes and Rascasse. The harbour full of yachts lies below the lap, and the
 // Monte Carlo blocks crowd every gap.
 //
 // Run: node tools/monaco.mjs
@@ -18,28 +18,37 @@ import { join } from 'node:path';
 import sharp from 'sharp';
 
 const root = decodeURIComponent(new URL('..', import.meta.url).pathname);
-const S = 3, W = 3600, H = 2304, AW = W / S, AH = H / S, CELL = 12;
+const S = 3, W = 2880, H = 3456, AW = W / S, AH = H / S, CELL = 12;
 /** half the track's width; the barrier and pavement beyond it */
-const HALF = 54, BARRIER = HALF + 5, PAVE = HALF + 26;
+const HALF = 44, BARRIER = HALF + 5, PAVE = HALF + 26;
 
-/** the circuit, in the order you drive it (a closed loop) */
-const CONTROL = [
-  [200, 150], [200, 700], [200, 1250], // the start / finish straight
-  [250, 1520], [430, 1620], // Sainte Devote
-  [800, 1690], [1150, 1880], [1420, 2060], // up Beau Rivage
-  [1680, 2130], [1900, 2060], // Massenet
-  [2050, 1930], [2250, 1900], // Casino Square
-  [2480, 1920], [2600, 1800], [2560, 1620], // Mirabeau
-  [2500, 1450], [2560, 1300], [2680, 1290], [2740, 1420], [2760, 1640], // the Grand Hotel hairpin
-  [2880, 1800], [3080, 1820], [3260, 1700], // Portier
-  [3380, 1450], [3420, 1100], [3360, 750], [3220, 520], // the tunnel
-  [3000, 430], [2850, 470], [2750, 380], [2600, 330], // the Nouvelle chicane
-  [2300, 330], [2000, 300], // Tabac
-  [1800, 250], [1650, 330], [1500, 250], [1350, 330], [1200, 260], // the Swimming Pool
-  [900, 230], [600, 240], // along the quay
-  [430, 140], [260, 60], // Rascasse and Anthony Noghes
+/**
+ * the circuit, in the order you drive it (a closed loop), traced from a map of the real one
+ * (picture pixels, y down, 1200 x 1380) and fitted into the world. The bottom loop (Rascasse
+ * and Anthony Noghes) is tucked in by hand, since the grid has to sit at (200, 300).
+ */
+const fit = ([ix, iy]) => [200 + (ix - 150) * 2.6, 300 + (1180 - iy) * 2.6];
+const TRACED = [
+  [140, 1000], [130, 925], [128, 850], [125, 780], [135, 700], [150, 660], // the start straight
+  [175, 630], [230, 620], // Sainte Devote
+  [330, 605], [440, 575], [530, 555], [600, 525], [700, 500], [790, 485], // up Beau Rivage
+  [835, 450], [850, 400], [840, 345], [800, 300], [780, 265], [800, 220], [850, 155], [890, 95], // Massenet
+  [925, 50], [952, 30], [972, 48], [972, 85], // Casino Square
+  [980, 118], [1000, 150], [1035, 175], [1068, 158], [1066, 125], [1052, 98], [1040, 72], // Mirabeau and the hairpin
+  [1045, 50], [1070, 38], [1110, 30], [1132, 55], // Portier
+  [1125, 120], [1110, 250], [1080, 320], [1050, 390], [1020, 420], // the tunnel
+  [950, 470], [850, 520], [780, 550], [700, 575], [600, 595], // out along the harbour
+  [585, 615], [565, 640], [530, 640], // the Nouvelle chicane
+  [450, 648], [350, 662], [265, 685], // Tabac
+  [222, 718], [200, 760], [185, 800], [190, 860], [225, 900], [240, 960], [250, 1020], [240, 1060], [225, 1090], [230, 1130], // the Swimming Pool
 ];
-const TUNNEL = [[3150, 450], [3500, 1600]]; // the box the tunnel runs through
+const CONTROL = [
+  [200, 150], [200, 450],
+  ...TRACED.map(fit),
+  [470, 300], [560, 200], [600, 120], [540, 70], [430, 70], // Rascasse
+  [300, 80], [225, 105], // Anthony Noghes
+];
+const TUNNEL = [[2560, 2200], [2860, 2980]]; // the box the tunnel runs through
 
 // ---------------------------------------------------------------- randomness
 
@@ -148,8 +157,8 @@ const distAt = (x, y) => {
 
 /** the harbour: a basin inside the lap, with a stone quay round it */
 function inHarbour(x, y) {
-  const e = ((x - 1450) / 760) ** 2 + ((y - 760) / 320) ** 2;
-  return e < 1 || (x > 700 && x < 2250 && y > 470 && y < 1000);
+  const e = ((x - 1500) / 900) ** 2 + ((y - 760) / 520) ** 2;
+  return e < 1 || (x > 700 && x < 2400 && y > 200 && y < 1300);
 }
 function harbourEdge(x, y) {
   for (const [dx, dy] of [[14, 0], [-14, 0], [0, 14], [0, -14]]) if (!inHarbour(x + dx, y + dy)) return true;
@@ -221,10 +230,10 @@ for (let ay = 0; ay < AH; ay++) {
     art[i] = harbourEdge(x, y) ? 0xd8d0bc : rint(50) === 0 ? 0x5aa8d8 : 0x2f78b8;
   }
 }
-for (let px = 850; px <= 2100; px += 250) {
+for (let px = 900; px <= 2200; px += 260) {
   // a pier running out into the basin, yachts moored along both sides
-  for (let x = px - 5; x < px + 5; x += S) for (let y = 500; y < 900; y += S) if (inHarbour(x, y) && distAt(x, y) > PAVE + 6) set(x, y, 0xc8bca0, -1);
-  for (let y = 520; y < 880; y += 34) {
+  for (let x = px - 5; x < px + 5; x += S) for (let y = 260; y < 1200; y += S) if (inHarbour(x, y) && distAt(x, y) > PAVE + 6) set(x, y, 0xc8bca0, -1);
+  for (let y = 280; y < 1180; y += 34) {
     for (const side of [-1, 1]) {
       if (rnd() < 0.2) continue;
       const len = 40 + rint(4) * 10, x0 = side < 0 ? px - 8 - len : px + 8;
@@ -261,19 +270,19 @@ function tree(x, y, r) {
     }
   }
 }
-park(1980, 1560, 2380, 1780, 24); // the Casino gardens
-park(1200, 1300, 1500, 1560, 14);
-park(2900, 900, 3120, 1300, 16);
-for (let x = 760; x < 2200; x += 60) tree(x, 1040, 8); // palms along the quay
+park(2150, 2300, 2420, 2560, 20); // the Casino gardens
+park(1100, 1980, 1500, 2260, 14);
+park(2620, 1500, 2820, 1900, 12);
+for (let x = 760; x < 2350; x += 60) tree(x, 1340, 8); // palms along the quay
 // the Casino itself: a cream Belle Epoque palace with a green copper roof and two towers
 const casino = heights.length;
 heights.push(62);
-for (let x = 2050; x < 2310; x += S) {
-  for (let y = 1600; y < 1720; y += S) {
+for (let x = 2120; x < 2380; x += S) {
+  for (let y = 2840; y < 2960; y += S) {
     if (distAt(x, y) < PAVE + 6) continue;
-    const edge = x < 2050 + S || x >= 2310 - S || y < 1600 + S || y >= 1720 - S;
-    const tower = (x < 2100 || x > 2260) && y > 1640;
-    set(x, y, edge ? OUTLINE : tower ? 0x5f9e88 : (Math.floor((x - 2050) / 12) % 2 ? 0xf2e6c8 : 0xe8d8b0), casino);
+    const edge = x < 2120 + S || x >= 2380 - S || y < 2840 + S || y >= 2960 - S;
+    const tower = (x < 2170 || x > 2330) && y > 2880;
+    set(x, y, edge ? OUTLINE : tower ? 0x5f9e88 : (Math.floor((x - 2120) / 12) % 2 ? 0xf2e6c8 : 0xe8d8b0), casino);
   }
 }
 
@@ -325,21 +334,21 @@ for (let slot = 0; slot < 12; slot++) {
 const teams = [0xd9433b, 0x3f6fd0, 0x2f9f8f, 0xf08a2e, 0xe8e8ec, 0x1b1b1f];
 const pits = heights.length;
 heights.push(26);
-for (let x = 290; x < 380; x += S) {
-  for (let y = 420; y < 1150; y += S) {
+for (let x = 262; x < 345; x += S) {
+  for (let y = 360; y < 700; y += S) {
     if (distAt(x, y) < BARRIER + 4) continue;
-    const edge = x < 290 + S || x >= 380 - S || y < 420 + S || y >= 1150 - S;
+    const edge = x < 262 + S || x >= 345 - S || y < 360 + S || y >= 700 - S;
     let c = edge ? OUTLINE : 0xb7bcc6;
-    if (!edge && x < 290 + 14) c = (y - 420) % 40 < 30 ? teams[Math.floor((y - 420) / 40) % teams.length] : 0x8a8f99;
+    if (!edge && x < 262 + 14) c = (y - 360) % 40 < 30 ? teams[Math.floor((y - 360) / 40) % teams.length] : 0x8a8f99;
     set(x, y, c, pits);
   }
 }
 const stand = heights.length;
 heights.push(35);
-for (let x = 400; x < 560; x += S) {
-  for (let y = 430; y < 1150; y += S) {
+for (let x = 700; x < 1500; x += S) {
+  for (let y = 1360; y < 1440; y += S) {
     if (distAt(x, y) < BARRIER + 4 || inHarbour(x, y)) continue;
-    const t = (x - 400) / 160;
+    const t = (y - 1360) / 80;
     const crowd = [0xd9433b, 0xf2c84b, 0x3f6fd0, 0xf6f3ea, 0x2a2a2e, 0x6cb84b];
     set(x, y, t > 0.86 ? 0xe8e8ec : Math.floor(t * 14) % 2 === 0 ? crowd[rint(crowd.length)] : 0x8a8f99, stand);
   }
@@ -423,4 +432,27 @@ console.log(`monaco ${W}x${H}, ${heights.length} buildings, ${raised} raised pat
   out.push('(200.0, 300.0)');
   console.log(`waypoints (${out.length}):`);
   console.log(out.join(', '));
+}
+
+// different stretches of the lap must stay far enough apart for a wall between them (the
+// road's edge, plus the sim's 12 of run-off on each side, plus a wall)
+{
+  const n = line.length, need = 2 * (HALF + 1 + 12) + 14;
+  const close = [];
+  for (let i = 0; i < n; i += 2) {
+    for (let j = i + 2; j < n; j += 2) {
+      const along = Math.min(j - i, n - (j - i)) * 6;
+      if (along < need * 2.5) continue;
+      const d = Math.hypot(line[i][0] - line[j][0], line[i][1] - line[j][1]);
+      if (d < need) {
+        const key = `${Math.round(line[i][0] / 150) * 150},${Math.round(line[i][1] / 150) * 150}`;
+        const best = close.find((c) => c.key === key);
+        if (!best) close.push({ key, d, at: [line[i], line[j]] });
+        else if (d < best.d) Object.assign(best, { d, at: [line[i], line[j]] });
+      }
+    }
+  }
+  const where = (p) => `(${Math.round(p[0])}, ${Math.round(p[1])})`;
+  console.log(close.length ? `too close (need ${need}):\n${close.map((c) => `${Math.round(c.d)} between ${where(c.at[0])} and ${where(c.at[1])}`).join('\n')}`
+    : 'every stretch is walled off');
 }
