@@ -1,5 +1,5 @@
 //! The messages between the game and the server: binary WebSocket frames, each one
-//! postcard-encoded `ClientMsg` or `ServerMsg`. Race and soccer rooms share one connection.
+//! postcard-encoded `ClientMsg` or `ServerMsg`. Race rooms share one connection.
 //!
 //! In a race the server is in charge of every car. Each client sends its controls once per
 //! 60 Hz tick (with the previous few repeated, so a lost packet costs nothing), and the server
@@ -11,7 +11,7 @@ use sim::events::Event;
 use sim::room::{Settings, Snapshot};
 
 /// bumped whenever a message changes shape; the server turns away other versions
-pub const VERSION: u16 = 1;
+pub const VERSION: u16 = 3;
 /// inputs repeated in every Inputs message
 pub const INPUT_REDUNDANCY: usize = 4;
 /// largest message a client may send
@@ -22,22 +22,16 @@ pub const MAX_CLIENT_FRAME: usize = 4096;
 pub enum Visibility {
     Public,
     Private,
-    Ranked,
 }
 
 #[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ClientMsg {
     Hello { version: u16 },
-    /// a Firebase ID token (sent again whenever it refreshes)
-    Auth { token: String },
-    SignOut,
     /// the public races waiting for players
     ListRooms,
     Create { visibility: Visibility, map: String, car: u8 },
     Join { code: String, car: u8 },
-    /// join the ranked queue (signed-in players only)
-    Ranked { car: u8 },
     Ready(bool),
     /// the host's laps and CPU difficulty
     Settings(Settings),
@@ -46,11 +40,6 @@ pub enum ClientMsg {
     Leave,
     /// controls for consecutive ticks, oldest first; `last` numbers the newest
     Inputs { last: u32, inputs: Vec<[u8; 2]> },
-    /// the ranked Top 20
-    Leaderboard,
-    SoccerList,
-    SoccerCreate { team_size: u8 },
-    SoccerJoin { code: String },
 }
 
 #[cfg_attr(feature = "ts", derive(tsify::Tsify))]
@@ -81,45 +70,6 @@ pub struct Lobby {
 
 #[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Profile {
-    pub name: String,
-    pub rating: i32,
-    pub races: u32,
-    pub wins: u32,
-    pub tier: String,
-    /// false when the server has no database: sign-in works but ranked is off
-    pub ranked_on: bool,
-}
-
-#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct TopEntry {
-    pub name: String,
-    pub rating: i32,
-    pub tier: String,
-}
-
-#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct RankResult {
-    pub old: i32,
-    pub new: i32,
-    pub tier: String,
-    pub place: u8,
-    /// false when fewer than two rated players raced
-    pub rated: bool,
-}
-
-#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct SoccerRoomInfo {
-    pub code: String,
-    pub team_size: u8,
-    pub players: u8,
-}
-
-#[cfg_attr(feature = "ts", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ServerMsg {
     Welcome { version: u16 },
     Error(String),
@@ -128,17 +78,8 @@ pub enum ServerMsg {
     Lobby(Lobby),
     /// the host started another race in the same room: back to the lobby
     Rematch,
-    /// ranked: players waiting and seconds until the start
-    Queue { players: u8, seconds: u8 },
     /// one race tick: the state, what happened since the last one, and the last input applied
     Race { snapshot: Box<Snapshot>, events: Vec<Event>, ack: u32 },
-    Profile(Profile),
-    AuthFailed,
-    Top(Vec<TopEntry>),
-    RankResult(RankResult),
-    SoccerRooms(Vec<SoccerRoomInfo>),
-    SoccerJoined { code: String, slot: u8 },
-    Soccer { state: Box<sim::soccer::SoccerMatch>, host: Option<u8>, ack: u32 },
 }
 
 pub fn encode<T: Serialize>(msg: &T) -> Vec<u8> {

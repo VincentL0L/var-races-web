@@ -1,4 +1,4 @@
-// The first-person sky: a gradient from the haze at the horizon up to the sky colour, a sun
+// The perspective sky: a gradient from the haze at the horizon up to the sky colour, a sun
 // (the Earth, from the moon), flat-bottomed clouds, and stars in space. It's a dome that
 // travels with the camera, so it's always infinitely far away.
 import * as THREE from 'three';
@@ -43,7 +43,9 @@ function canvas(w: number, h: number, draw: (g: CanvasRenderingContext2D) => voi
   c.width = w;
   c.height = h;
   draw(c.getContext('2d')!);
-  return new THREE.CanvasTexture(c);
+  const texture = new THREE.CanvasTexture(c);
+  texture.userData.sceneOwned = true;
+  return texture;
 }
 
 const css = (c: Rgb, a = 1) => `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a})`;

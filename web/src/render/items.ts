@@ -1,7 +1,6 @@
 // The items on the track (the pixel art in assets/ui/items): item boxes that bob and glint,
 // oil slicks on the road, rockets with a spark trail, blaster shots and shield bubbles.
-// Overhead they're flat pictures; in first person the boxes are spinning cubes, the rockets
-// little models, and the glowing things face the camera.
+// Boxes are spinning cubes, rockets are models, and glowing effects face the active camera.
 import * as THREE from 'three';
 import { texture } from '../assets';
 import { Builder, vertexColors } from './geom';
@@ -61,7 +60,16 @@ export class ItemsView {
 
   constructor(private readonly boxes: [number, number][]) {
     const cubeGeometry = new THREE.BoxGeometry(8, 8, 8);
-    this.cube = this.pool(() => new THREE.Mesh(cubeGeometry, withArt(new THREE.MeshBasicMaterial({ fog: true }), 'box')));
+    const positions = cubeGeometry.getAttribute('position');
+    const normals = cubeGeometry.getAttribute('normal');
+    const uv = cubeGeometry.getAttribute('uv');
+    for (let i = 0; i < positions.count; i++) {
+      const x = positions.getX(i) / 8, y = positions.getY(i) / 8, z = positions.getZ(i) / 8;
+      const nx = normals.getX(i), ny = normals.getY(i), nz = normals.getZ(i);
+      // Side face right-vector = world-up cross outward normal.
+      uv.setXY(i, 0.5 + (nz ? x : -ny * x + nx * y), 0.5 + (nz ? nz * y : z));
+    }
+    this.cube = this.pool(() => new THREE.Mesh(cubeGeometry, withArt(new THREE.MeshBasicMaterial({ fog: true }), 'box_face')));
     const rocket = rocketGeometry();
     const rocketMaterial = vertexColors();
     this.rocketModel = this.pool(() => new THREE.Mesh(rocket, rocketMaterial));
@@ -103,68 +111,51 @@ export class ItemsView {
     s.scale.set(size, size, 1);
   }
 
-  update(state: ItemState, firstPerson: boolean, eye: THREE.Vector3, delta: number): void {
+  update(state: ItemState, eye: THREE.Vector3, delta: number): void {
     this.clock += delta;
     const t = this.clock;
     // oil slicks, flat on the road
     for (const [x, y] of state.slicks) {
-      this.flat('oil', firstPerson ? 28 : 24).position.set(x, y, 0.08);
+      this.flat('oil', 28).position.set(x, y, 0.08);
     }
     // item boxes: each bobs a little out of step with its neighbours, and glints now and then
     state.boxes.forEach((on, i) => {
       if (!on || i >= this.boxes.length) return;
       const [bx, by] = this.boxes[i];
       const glint = Math.sin(t * 5 + i) > 0.92 ? 1.3 : 1;
-      if (firstPerson) {
-        if ((bx - eye.x) ** 2 + (by - eye.y) ** 2 > 1800 * 1800) return;
-        this.glow('shield', bx, by, 0.1, 10, 0, 0, 0, 0.3);
-        const cube = this.cube.next();
-        cube.position.set(bx, by, 7 + Math.sin(t * 3 + i * 1.7) * 1.2);
-        cube.rotation.set(0, 0, ((t * 70 + i * 40) * Math.PI) / 180);
-        (cube.material as THREE.MeshBasicMaterial).color.setScalar(glint);
-      } else {
-        const bob = Math.sin(t * 3 + i * 1.7) * 1.5;
-        const shadow = this.flat('box', 15);
-        shadow.position.set(bx + 2, by - 3, 0.5);
-        shadow.scale.set(1, 0.5, 1);
-        (shadow.material as THREE.MeshBasicMaterial).color.setScalar(0);
-        (shadow.material as THREE.MeshBasicMaterial).opacity = 0.3;
-        this.glow('box', bx, by + bob, 3, 15, glint, glint, glint, 1, (Math.sin(t * 2 + i) * 8 * Math.PI) / 180);
-      }
+      if ((bx - eye.x) ** 2 + (by - eye.y) ** 2 > 1800 * 1800) return;
+      this.glow('shield', bx, by, 0.1, 10, 0, 0, 0, 0.3);
+      const cube = this.cube.next();
+      cube.position.set(bx, by, 7 + Math.sin(t * 3 + i * 1.7) * 1.2);
+      cube.rotation.set(0, 0, ((t * 70 + i * 40) * Math.PI) / 180);
+      (cube.material as THREE.MeshBasicMaterial).color.setScalar(glint);
     });
     // rockets with sparks trailing behind
     for (const [x, y, h] of state.rockets) {
       const fx = Math.cos(h), fy = Math.sin(h);
-      if (firstPerson) {
-        const r = this.rocketModel.next();
-        r.position.set(x, y, 0);
-        r.rotation.set(0, 0, h - Math.PI / 2);
-        for (let k = 1; k <= 6; k++) {
-          const d = 4 + k * 3.5;
-          this.glow('shield', x - fx * d, y - fy * d, 4.4 + Math.sin(t * 30 + k) * 0.4, 3.2 - k * 0.3, 1, 0.9 - k * 0.1, 0.35, 0.9 - k * 0.13);
-        }
-      } else {
-        for (let k = 1; k <= 4; k++) {
-          this.glow('shield', x - fx * k * 6, y - fy * k * 6, 4, 4, 1, 0.85 - k * 0.12, 0.3, 0.8 - k * 0.17);
-        }
-        this.glow('rocket', x, y, 5, 14, 1, 1, 1, 1, h - Math.PI / 2);
+      const r = this.rocketModel.next();
+      r.position.set(x, y, 0);
+      r.rotation.set(0, 0, h - Math.PI / 2);
+      for (let k = 1; k <= 6; k++) {
+        const d = 4 + k * 3.5;
+        this.glow('shield', x - fx * d, y - fy * d, 4.4 + Math.sin(t * 30 + k) * 0.4, 3.2 - k * 0.3, 1, 0.9 - k * 0.1, 0.35, 0.9 - k * 0.13);
       }
     }
     // blaster shots: an ice shard or a fireball with a short glowing trail
     for (const [x, y, , fire] of state.shots) {
-      const z = firstPerson ? 4.5 : 5;
+      const z = 4.5;
       for (let k = 3; k >= 0; k--) {
-        const a = 0.85 - k * 0.2, size = (firstPerson ? 10 : 9) - k * 1.5;
+        const a = 0.85 - k * 0.2, size = 10 - k * 1.5;
         if (fire) this.glow('shield', x, y, z, size, 1, 0.55 + k * 0.08, 0.15, a);
         else this.glow('shield', x, y, z, size, 0.6, 0.9, 1, a);
       }
-      this.glow(fire ? 'fire' : 'frost', x, y, z + 0.1, firstPerson ? 7 : 12, 1, 1, 1, 1);
+      this.glow(fire ? 'fire' : 'frost', x, y, z + 0.1, 7, 1, 1, 1, 1);
     }
     // shields: a shimmering bubble round the car
     for (const [x, y] of state.shields) {
-      if (firstPerson && (x - eye.x) ** 2 + (y - eye.y) ** 2 < 64) continue;
+      if ((x - eye.x) ** 2 + (y - eye.y) ** 2 < 64) continue;
       const pulse = 1 + Math.sin(t * 6) * 0.05;
-      this.glow('shield', x, y, firstPerson ? 4 : 6, (firstPerson ? 26 : 30) * pulse, 1, 1, 1, firstPerson ? 0.85 : 1);
+      this.glow('shield', x, y, 4, 26 * pulse, 1, 1, 1, 0.85);
     }
     for (const p of this.pools) p.finish();
   }

@@ -20,7 +20,6 @@ export class MenuScreen implements Screen {
         button('Single Player', () => void nav.mapSelect()),
         button('Multiplayer', () => void nav.multiplayer()),
         button('Garage', () => void nav.garage()),
-        button('Race Car Soccer', () => void nav.soccer()),
       ),
     );
   }

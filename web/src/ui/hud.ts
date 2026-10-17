@@ -81,6 +81,7 @@ export class Hud {
   private readonly gaugeImg = new Image();
   private readonly map = h('canvas.hud-map', { width: 300, height: 170 });
   private readonly pauseBox = screenBox(touchScreen ? 'PAUSE' : 'PAUSE  ESC', 'button');
+  private readonly viewBox = screenBox(touchScreen ? 'VIEW' : 'VIEW  V', 'button');
   private readonly itemBox = screenBox(touchScreen ? 'ITEM' : 'ITEM  E', 'button');
   private readonly itemIcon = h('img.hud-item.pixel', { alt: '' });
   private readonly banner = h('div.hud-banner.panel');
@@ -99,7 +100,7 @@ export class Hud {
   private history = new Map<number, number[]>();
   private lastSample = -1;
 
-  constructor(private readonly mapDef: MapDef, onPause: () => void, onItem: () => void) {
+  constructor(private readonly mapDef: MapDef, onPause: () => void, onItem: () => void, onView: () => void, private readonly solo = false, private readonly personalBest: number | null = null) {
     this.gaugeImg.src = asset('ui/speedometer.webp');
     for (let i = 0; i < BOOST_SEGMENTS; i++) this.boostSegs.push(h('i'));
     const boost = h('div.hud-screen', null, h('span.hud-label', null, 'BOOST'), h('div.hud-boost', null, ...this.boostSegs));
@@ -118,6 +119,14 @@ export class Hud {
     this.itemBox.el.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
       onItem();
+    });
+    this.viewBox.el.classList.add('hud-view');
+    this.viewBox.el.setAttribute('role', 'button');
+    this.viewBox.el.setAttribute('aria-label', 'Switch view');
+    this.viewBox.el.tabIndex = 0;
+    this.viewBox.el.addEventListener('pointerdown', (e) => { e.stopPropagation(); onView(); });
+    this.viewBox.el.addEventListener('keydown', (e) => {
+      if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); e.stopPropagation(); onView(); }
     });
     this.itemBox.el.append(this.itemIcon);
     this.el = h('div.hud', null,
@@ -138,17 +147,27 @@ export class Hud {
         ),
         h('div.hud-side', null,
           h('div.panel.hud-minimap', null, h('div.hud-title.right', null, 'TRACK'), this.map),
-          h('div.panel.hud-strip', null, this.pauseBox.el, this.itemBox.el),
+          h('div.panel.hud-strip.hud-actions', null, this.pauseBox.el, this.itemBox.el, this.viewBox.el),
         ),
       ),
       this.banner,
       this.warning,
       this.label,
     );
+    if (solo) {
+      this.itemBox.el.style.display = 'none';
+      this.pauseBox.el.style.gridColumn = '1 / -1';
+      this.el.querySelector<HTMLElement>('.hud-standings')!.style.display = 'none';
+      this.ahead.el.style.display = 'none';
+      this.behind.el.style.display = 'none';
+      setText(this.pos.label, 'PB');
+    }
     this.drawTrack();
     this.fit();
     addEventListener('resize', this.fit);
   }
+
+  setView(label: string): void { setText(this.viewBox.value, label); }
 
   /** the top row shrinks evenly on narrow windows */
   private fit = (): void => {
@@ -216,7 +235,7 @@ export class Hud {
     // cluster
     const lit = Math.round(Math.max(0, Math.min(1, s.boost)) * BOOST_SEGMENTS);
     this.boostSegs.forEach((seg, i) => seg.classList.toggle('on', i < lit));
-    setText(this.pos.value, myPlace ? `P${myPlace}/${s.standings.length}` : '--');
+    setText(this.pos.value, this.solo ? (this.personalBest === null ? '—' : formatTime(this.personalBest)) : myPlace ? `P${myPlace}/${s.standings.length}` : '--');
     const finished = me?.finishTime != null && !battle;
     if (battle) {
       const hp = me ? Math.max(0, me.hp) : 100;

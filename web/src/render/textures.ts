@@ -9,6 +9,7 @@ function canvasTexture(w: number, h: number, draw: (g: CanvasRenderingContext2D)
   const g = canvas.getContext('2d')!;
   draw(g);
   const t = new THREE.CanvasTexture(canvas);
+  t.userData.sceneOwned = true;
   if (pixelArt) {
     t.magFilter = THREE.NearestFilter;
     t.minFilter = THREE.NearestFilter;

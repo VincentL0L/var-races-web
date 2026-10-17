@@ -30,14 +30,18 @@ export function carIcon(sprite: string): HTMLImageElement {
 }
 
 export function smallButton(label: string, onClick: () => void): HTMLButtonElement {
-  return button(label, onClick, 'small');
+  return button(label, onClick, 'small', label === 'Back' || label === 'Leave' ? 'secondary' : 'tertiary');
 }
 
 /** one setting: a recessed row with its name, then < value > */
 export function picker(name: string, onStep: (direction: number) => void): { el: HTMLElement; value: HTMLElement; arrows: HTMLButtonElement[] } {
   const value = h('span.value');
   const less = smallButton('<', () => onStep(-1)), more = smallButton('>', () => onStep(1));
-  return { el: row(h('span.grow', null, name), h('div.picker', null, less, value, more)), value, arrows: [less, more] };
+  less.setAttribute('aria-label', `Decrease ${name.toLowerCase()}`);
+  more.setAttribute('aria-label', `Increase ${name.toLowerCase()}`);
+  const el = row(h('span.grow', null, name), h('div.picker', null, less, value, more));
+  el.classList.add('setting-row');
+  return { el, value, arrows: [less, more] };
 }
 
 /** a full-screen frosted holder for a card, centred */

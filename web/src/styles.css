@@ -1,7 +1,7 @@
 /* The game's look: gilded 16-bit pixel-art panels and buttons (assets/ui/gilded, drawn by
    tools/make_ui.py, scaled 3x), the racing font for titles and Michroma for small text.
    The art's URLs are set as variables by ui/theme.ts. Menus are laid out in design pixels;
-   #ui is zoomed down on screens smaller than 900 x 620. */
+   #ui is zoomed down on screens smaller than 990 x 620. */
 
 :root {
   --cream: #fff2d6;
@@ -68,8 +68,7 @@ body {
 }
 
 .screen.frosted {
-  backdrop-filter: blur(6px) brightness(0.8);
-  -webkit-backdrop-filter: blur(6px) brightness(0.8);
+  background: rgba(12, 9, 7, 0.12);
 }
 
 .row {
@@ -109,11 +108,13 @@ body {
 }
 
 .btn {
+  appearance: none;
   font: 20px/1 Speed, sans-serif;
   letter-spacing: 0.5px;
   color: var(--dark);
   background: none;
   border-style: solid;
+  border-color: transparent;
   border-width: 9px 9px 15px;
   border-image: var(--button) 3 3 5 3 fill / 9px 9px 15px 9px / 0 stretch;
   image-rendering: pixelated;
@@ -129,10 +130,29 @@ body {
   border-image-source: var(--button-over);
 }
 
-.btn:active:not(:disabled),
-.btn.on {
-  border-image-source: var(--button-down);
-  padding-top: 9px;
+.btn:active:not(:disabled) {
+  /* Draw the pressed face continuously: stretched border-image slices can
+     leave hairline seams across the flat face at fractional UI scales. */
+  --press-pixel: 3px;
+  border-image: none;
+  background:
+    linear-gradient(to right, #2a1408 0 var(--press-pixel), transparent var(--press-pixel) calc(100% - var(--press-pixel)), #2a1408 calc(100% - var(--press-pixel)) 100%),
+    linear-gradient(to bottom, #2a1408 0 var(--press-pixel), transparent var(--press-pixel) calc(100% - var(--press-pixel)), #2a1408 calc(100% - var(--press-pixel)) 100%),
+    linear-gradient(to right, #fff0aa 0 calc(2 * var(--press-pixel)), transparent calc(2 * var(--press-pixel)) 100%),
+    linear-gradient(to bottom,
+    #fff0aa 0 calc(2 * var(--press-pixel)),
+    #e2a028 calc(2 * var(--press-pixel)) calc(100% - 2 * var(--press-pixel)),
+    #78400a calc(100% - 2 * var(--press-pixel)) 100%);
+  background-origin: border-box;
+  box-shadow: none;
+  clip-path: polygon(
+    var(--press-pixel) 0, calc(100% - var(--press-pixel)) 0,
+    calc(100% - var(--press-pixel)) var(--press-pixel), 100% var(--press-pixel),
+    100% calc(100% - var(--press-pixel)), calc(100% - var(--press-pixel)) calc(100% - var(--press-pixel)),
+    calc(100% - var(--press-pixel)) 100%, var(--press-pixel) 100%,
+    var(--press-pixel) calc(100% - var(--press-pixel)), 0 calc(100% - var(--press-pixel)),
+    0 var(--press-pixel), var(--press-pixel) var(--press-pixel));
+  transform: translateY(2px);
 }
 
 .btn:disabled {
@@ -408,6 +428,7 @@ input.field::placeholder {
 
 .hud-top {
   position: absolute;
+  z-index: 2;
   top: 0;
   left: 0;
   right: 0;
@@ -492,6 +513,15 @@ input.field::placeholder {
 .hud-strip {
   display: flex;
   gap: 8px;
+}
+
+.hud-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.hud-actions .hud-view {
+  grid-column: 1 / -1;
 }
 
 .hud-strip .hud-screen {
@@ -734,6 +764,7 @@ input.field::placeholder {
 
 .pause {
   position: absolute;
+  z-index: 3;
   inset: 0;
   display: flex;
   align-items: center;
@@ -872,38 +903,6 @@ input.field::placeholder {
   display: block;
 }
 
-.touch-btn {
-  width: 92px;
-  height: 64px;
-  bottom: 26px;
-}
-
-.touch-btn.left {
-  left: 26px;
-}
-
-.touch-btn.right {
-  left: 130px;
-}
-
-.touch-btn.brake {
-  right: 130px;
-}
-
-.touch-btn.gas {
-  right: 26px;
-}
-
-.touch-btn.boost {
-  right: 26px;
-  bottom: 104px;
-}
-
-.touch-btn.jump {
-  right: 130px;
-  bottom: 104px;
-}
-
 /* ---------------------------------------------------------------- menu cards: a gilded card,
    small gold section labels, recessed rows (like the HUD's screens) and status pills */
 
@@ -1011,6 +1010,8 @@ input.field::placeholder {
   border-image-width: 6px 6px 10px 6px;
 }
 
+.picker .btn:active:not(:disabled) { --press-pixel: 2px; }
+
 .card-buttons {
   display: flex;
   align-items: center;
@@ -1086,43 +1087,34 @@ input.field::placeholder {
   opacity: 0.5;
 }
 
-/* ---------------------------------------------------------------- soccer */
 
-.soccer-strip {
-  align-self: stretch;
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  margin: 14px;
-  padding: 10px 18px;
-  background: rgba(6, 15, 28, 0.94);
-  font-size: 13px;
-}
+/* Shared control sizes never change between idle, selected and pressed states. */
+#world { transition: filter 220ms ease; }
+body.menu-muted #world { filter: blur(2px) brightness(0.55) saturate(0.8); }
+.btn { height: 52px; flex-shrink: 0; }
+.btn.small { height: 40px; }
+.btn.secondary { color: #49301b; }
+.btn.tertiary { font-size: 15px; }
+.btn.on { border-image-source: var(--button-over); color: #5c2b06; }
+.btn:focus-visible, .card:focus-visible { outline: 2px solid var(--cream); outline-offset: 3px; }
+.menu-buttons .btn { height: 58px; }
+.picker .btn { width: 38px; height: 32px; min-height: 32px; }
+.setting-row { height: 56px; flex-shrink: 0; }
+.picker .value { flex: 0 0 120px; white-space: nowrap; }
+.card-panel.track-picker { width: 950px; }
+.track-scroll { height: 326px; flex: 0 1 326px; scrollbar-gutter: stable; overscroll-behavior: contain; touch-action: pan-y; }
+.track-scroll .cards { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 158px; }
+.track-scroll .card { min-width: 0; }
+.track-scroll .card .name { height: 38px; display: grid; place-items: center; }
+.lobby-drivers { max-height: 240px; overflow-y: auto; scrollbar-gutter: stable; touch-action: pan-y; }
+.lobby-drivers.multiplayer-drivers { height: clamp(100px, calc(100vh - 520px), 200px); flex-shrink: 0; }
+.lobby-add-cpu { display: flex; justify-content: center; padding-top: 6px; }
+.lobby-add-cpu .btn { width: 200px; }
+.crow .btn.remove-cpu { width: 40px; min-width: 40px; padding: 0; }
+.results-actions { justify-content: center; }
+.garage-preview { width: 200px; height: 220px; display: block; }
+@media (prefers-reduced-motion: reduce) { #world { transition: none; } }
 
-.soccer-strip > span {
-  flex: 1;
-}
-
-.soccer-banner {
-  position: absolute;
-  top: 34%;
-  left: 0;
-  right: 0;
-  text-align: center;
-  pointer-events: none;
-}
-
-.soccer-toast {
-  position: absolute;
-  top: 62%;
-  left: 0;
-  right: 0;
-  text-align: center;
-  pointer-events: none;
-  visibility: hidden;
-}
-
-.soccer > .screen {
-  background: rgba(6, 10, 16, 0.4);
-}
+.track-scroll .card img { height: 104px; aspect-ratio: auto; }
+.paint-swatch { background: none; cursor: pointer; }
+.paint-swatch:focus-visible { outline: 2px solid var(--cream); }

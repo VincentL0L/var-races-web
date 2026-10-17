@@ -12,4 +12,3 @@ pub mod battle;
 pub mod events;
 pub mod items;
 pub mod room;
-pub mod soccer;

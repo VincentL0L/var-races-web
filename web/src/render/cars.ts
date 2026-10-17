@@ -1,13 +1,13 @@
-// The cars. Overhead, a car is its sprite. In first person it's a little model built to its own
+// The cars: little models built to their own
 // shape (the garage's Sprinter, Roadster, GT, Muscle and Hauler, and each city's CPU cars: Waymo,
-// kei van, taxi, police car, double-decker bus, 2CV, scooter and moon rover), with the sprite
-// laid over the top as the paint job.
+// kei van, taxi, police car, double-decker bus, 2CV, scooter and moon rover).
 //
 // Models are built in the car's own frame: x across, y toward the nose, z up, with the sprite
 // w = 10 wide and h = 20 long.
 import * as THREE from 'three';
-import { carSprite, cpuSprite, pixels, texture } from '../assets';
-import { Builder, shade, vertexColors, type Rgb } from './geom';
+import { carSprite, cpuSprite, pixels } from '../assets';
+import { disposeObject } from './dispose';
+import { Builder, rgb, shade, vertexColors, type Rgb } from './geom';
 
 export const CAR_W = 10;
 export const CAR_L = 20;
@@ -16,7 +16,7 @@ interface Shape {
   /** body width as a share of the sprite's, and where the body starts off the ground */
   width: number;
   low: number;
-  /** the top of the bonnet and boot (where the sprite is laid) */
+  /** the top of the bonnet and boot */
   deck: number;
   /** the cabin, as shares of the length from the tail (0) to the nose (1), and its roof height */
   cabinFrom: number;
@@ -84,7 +84,7 @@ interface Model {
   animate(clock: number): void;
 }
 
-function buildModel(s: Shape, body: Rgb, paint: THREE.Texture, inside: boolean): Model {
+function buildModel(s: Shape, body: Rgb, inside: boolean): Model {
   const w = CAR_W, h = CAR_L;
   const bw = w * s.width, tail = -h / 2;
   const b = new Builder();
@@ -116,8 +116,7 @@ function buildModel(s: Shape, body: Rgb, paint: THREE.Texture, inside: boolean):
   } else if (!(inside && has(s, 'BUS'))) {
     // lower body: dark sill, then the paint
     box(-bw / 2, tail, s.low, bw, h, Math.min(1.2, s.deck - s.low), shade(body, 0.45));
-    const paintBody = shade(body, 0.85);
-    box(-bw / 2, tail, s.low + 1.2, bw, h, s.deck - s.low - 1.2, paintBody);
+    box(-bw / 2, tail, s.low + 1.2, bw, h, s.deck - s.low - 1.2, body);
     if (has(s, 'BUS')) {
       // windows on both decks, all the way round, and the destination board
       box(-bw / 2 - 0.05, tail - 0.05, 5, bw + 0.1, h + 0.1, 3.4, [0.14, 0.18, 0.25]);
@@ -184,15 +183,6 @@ function buildModel(s: Shape, body: Rgb, paint: THREE.Texture, inside: boolean):
     }
   }
   group.add(b.mesh(vertexColors()));
-  if (!bike && !(inside && has(s, 'BUS'))) {
-    // the top-down paint job across the bonnet and boot (the cabin hides its middle)
-    const deck = new THREE.Mesh(
-      new THREE.PlaneGeometry(w, h),
-      new THREE.MeshBasicMaterial({ map: paint, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide, fog: true }),
-    );
-    deck.position.z = s.deck + 0.02;
-    group.add(deck);
-  }
   return { group, animate: (clock) => anims.forEach((a) => a(clock)) };
 }
 
@@ -232,8 +222,21 @@ function lights(bw: number, h: number, z: number, box: Box): void {
 
 const bodyColors = new Map<string, Promise<Rgb>>();
 
-/** the main colour of a car's paint, from the middle band of its sprite (the doors) */
+// Base paint (B) from crates/tools/src/garage.rs. Explicit colors keep windows,
+// trim, and contrasting stripes out of the body paint, including the black Muscle.
+const garagePaints: Record<string, readonly number[]> = {
+  sprinter: [0x3fb6e8, 0xf2d04a, 0xf06aa8],
+  roadster: [0xe0402e, 0xc8ccd6, 0x3fbf6a],
+  gt: [0xb8bfcc, 0x2f44d8, 0xf0802a],
+  muscle: [0xf2a81c, 0x2e3038, 0x8a4ae0],
+  hauler: [0x8a6240, 0x4f8f4a, 0xd8dbe2],
+};
+
+/** Exact garage paint; legacy CPU sprites retain their sampled colors. */
 function bodyColor(sprite: string): Promise<Rgb> {
+  const garage = /^ui\/cars\/([a-z]+)_([0-2])\.png$/.exec(sprite);
+  const paint = garage && garagePaints[garage[1]]?.[Number(garage[2])];
+  if (paint != null) return Promise.resolve(rgb(paint));
   let c = bodyColors.get(sprite);
   if (!c) {
     c = pixels(sprite).then((p) => {
@@ -259,7 +262,7 @@ function bodyColor(sprite: string): Promise<Rgb> {
 
 /** the sprite for the car in `slot` of a race */
 export function spriteFor(slot: number, carNumber: number, mapCpuSprite: string | undefined, title = false): string {
-  if (title) return `ui/car${slot + 1}.png`;
+  if (title && carNumber === 0) return `ui/car${slot + 1}.png`;
   return carNumber > 0 ? carSprite(carNumber) : cpuSprite(mapCpuSprite, slot);
 }
 
@@ -270,56 +273,43 @@ export interface CarLook {
 }
 
 /**
- * One car on screen: its sprite (overhead) and its model (first person). The model is built
- * the first time it's needed.
+ * One car on screen with cached interior and exterior models.
  */
 export class CarView {
   readonly root = new THREE.Group();
-  private readonly sprite: THREE.Mesh;
-  private readonly spriteMaterial: THREE.MeshBasicMaterial;
-  private model: Model | null = null;
+  private models: Model[] = [];
   private modelMaterials: THREE.MeshBasicMaterial[] = [];
-  private building = false;
   private inside = false;
+  private disposed = false;
 
-  constructor(readonly spriteName: string, smoothSprite: boolean) {
-    this.spriteMaterial = new THREE.MeshBasicMaterial({ transparent: true, alphaTest: 0.05, depthWrite: false });
-    this.sprite = new THREE.Mesh(new THREE.PlaneGeometry(CAR_W, CAR_L), this.spriteMaterial);
-    this.sprite.position.z = 1;
-    this.sprite.renderOrder = 2;
-    this.root.add(this.sprite);
-    void texture(spriteName, !smoothSprite).then((t) => {
-      this.spriteMaterial.map = t;
-      this.spriteMaterial.needsUpdate = true;
-    });
-  }
-
-  /** overhead (sprite) or first person (model); `inside` = our own car, seen from the seat */
-  setMode(firstPerson: boolean, inside: boolean): void {
-    this.sprite.visible = !firstPerson;
-    if (firstPerson && (!this.model || this.inside !== inside) && !this.building) {
-      this.inside = inside;
-      this.build();
-    }
-    if (this.model) this.model.group.visible = firstPerson;
-  }
-
-  private build(): void {
-    this.building = true;
-    const inside = this.inside;
-    void Promise.all([bodyColor(this.spriteName), texture(this.spriteName, true)]).then(([body, paint]) => {
-      this.building = false;
-      if (this.model) this.root.remove(this.model.group);
-      this.model = buildModel(shapeOf(this.spriteName), body, paint, inside);
-      this.root.add(this.model.group);
-      this.modelMaterials = [];
-      this.model.group.traverse((o) => {
-        if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshBasicMaterial && !o.material.transparent) {
-          this.modelMaterials.push(o.material);
+  constructor(readonly spriteName: string, private readonly opacity = 1) {
+    void bodyColor(spriteName).then((body) => {
+      if (this.disposed) return;
+      this.models = [false, true].map((inside) => buildModel(shapeOf(spriteName), body, inside));
+      for (const model of this.models) {
+        this.root.add(model.group);
+        model.group.traverse((o) => {
+          if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshBasicMaterial && !o.material.transparent) {
+            this.modelMaterials.push(o.material);
+          }
+        });
+      }
+      if (this.opacity < 1) this.root.traverse((o) => {
+        if (!(o instanceof THREE.Mesh)) return;
+        for (const material of Array.isArray(o.material) ? o.material : [o.material]) {
+          material.transparent = true;
+          material.opacity *= this.opacity;
+          material.depthWrite = false;
         }
       });
-      if (this.inside !== inside) this.build();
-    });
+      this.setInside(this.inside);
+    }).catch((e) => console.warn('car model', e));
+  }
+
+  /** Only the followed car in first person uses the interior representation. */
+  setInside(inside: boolean): void {
+    this.inside = inside;
+    this.models.forEach((model, i) => { model.group.visible = i === (inside ? 1 : 0); });
   }
 
   /** places the car; heading in radians (0 = +x) */
@@ -333,17 +323,15 @@ export class CarView {
       const flick = 0.75 + 0.25 * Math.sin(look.burning * 40);
       tint = [1, 0.55 * flick + 0.2, 0.3 * flick];
     }
-    this.spriteMaterial.color.setRGB(...tint);
     for (const m of this.modelMaterials) if (m.vertexColors) m.color.setRGB(...tint);
-    this.model?.animate(clock);
+    this.models[this.inside ? 1 : 0]?.animate(clock);
   }
 
   dispose(): void {
-    this.root.traverse((o) => {
-      if (o instanceof THREE.Mesh) {
-        o.geometry.dispose();
-        (o.material as THREE.Material).dispose();
-      }
-    });
+    this.disposed = true;
+    disposeObject(this.root);
+    this.root.clear();
+    this.models = [];
+    this.modelMaterials = [];
   }
 }

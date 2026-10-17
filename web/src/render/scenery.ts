@@ -1,4 +1,4 @@
-// The trees and buildings of a map, stood up in 3D for the first-person view. heights.png (made
+// The trees and buildings of a map, stood up in 3D for both perspective views. heights.png (made
 // by tools from the map picture) says how tall things are on a grid of CELL x CELL patches.
 //  - buildings: blocks whose roofs are that bit of the map picture and whose walls are rows of
 //    windows, painted in the roof's colour

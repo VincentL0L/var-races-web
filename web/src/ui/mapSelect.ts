@@ -1,5 +1,4 @@
-// Choosing a track: tabs for circuits, sprints and battle arenas, a grid of map cards, and the
-// view to race in (overhead or first person). Hosting online, Create asks the server for a room.
+// A fixed track grid shared by solo time trials and multiplayer room creation.
 import type { Screen } from '../app';
 import { asset } from '../assets';
 import * as audio from '../audio';
@@ -8,20 +7,19 @@ import { allMaps } from '../game/backdrops';
 import { online } from '../game/rooms';
 import { net } from '../net';
 import { nav } from '../nav';
-import { pref, setPref } from '../prefs';
+import { pref } from '../prefs';
 import type { MapDef, MapKind, ServerMsg } from '../wasm';
 import { card, cardTitle, centered, kicker, smallButton } from './cards';
 
-const TABS: [MapKind, string, string][] = [
-  ['circuit', 'Circuits', ''],
-  ['sprint', 'Sprints', 'One run from start to finish. No laps.'],
-  ['battle', 'Battle', 'Demolition derby: ram everyone, last car driving wins. Heavy cars hit harder.'],
+const TABS: [MapKind, string][] = [
+  ['circuit', 'Circuits'], ['sprint', 'Sprints'], ['battle', 'Battles'],
 ];
 let lastMap = 'classic';
 
 export class MapSelectScreen implements Screen {
   readonly el: HTMLElement;
-  private readonly maps = allMaps();
+  private readonly maps: MapDef[];
+  private readonly tabDefs: typeof TABS;
   private selected: string;
   private readonly tiles = new Map<string, HTMLElement>();
   private readonly tabs: HTMLButtonElement[] = [];
@@ -33,27 +31,23 @@ export class MapSelectScreen implements Screen {
 
   constructor(private readonly hosting: false | 'public' | 'private') {
     audio.playMusic('music_title');
-    this.selected = lastMap;
+    this.maps = allMaps().filter((m) => hosting || m.kind !== 'battle');
+    this.tabDefs = TABS.filter(([kind]) => hosting || kind !== 'battle');
+    this.selected = this.maps.some((m) => m.id === lastMap) ? lastMap : this.maps[0].id;
     this.kickerEl = kicker(!hosting ? 'SINGLE PLAYER' : hosting === 'public' ? 'HOST A PUBLIC RACE' : 'HOST A PRIVATE RACE');
-    TABS.forEach(([kind, label]) => this.tabs.push(smallButton(label, () => this.showTab(kind))));
-    const view = smallButton(viewText(), () => {
-      setPref('firstPerson', !pref('firstPerson'));
-      view.textContent = viewText();
-    });
-    view.style.minWidth = '230px';
+    this.tabDefs.forEach(([kind, label]) => this.tabs.push(smallButton(label, () => this.showTab(kind))));
     this.el = centered(card(
       this.kickerEl,
       h('div.row', { style: { justifyContent: 'space-between', flexWrap: 'nowrap' } }, cardTitle('CHOOSE A TRACK', 40), h('div.tabs', null, ...this.tabs)),
-      h('div.scroll', null, this.grid),
+      h('div.scroll.track-scroll', null, this.grid),
       this.note,
       h('div.card-buttons', null,
         smallButton('Back', () => (hosting ? void nav.multiplayer() : void nav.menu())),
         h('div.spacer'),
-        view,
         button(hosting ? 'Create' : 'Next', () => this.go()),
       ),
     ));
-    this.el.querySelector<HTMLElement>('.card-panel')!.classList.add('wide');
+    this.el.querySelector<HTMLElement>('.card-panel')!.classList.add('track-picker');
     this.showTab(this.map(this.selected).kind);
     if (hosting) {
       this.stop = net.on((msg) => this.message(msg));
@@ -66,9 +60,9 @@ export class MapSelectScreen implements Screen {
   }
 
   private showTab(kind: MapKind): void {
-    TABS.forEach(([k, , note], i) => {
+    this.tabDefs.forEach(([k], i) => {
       this.tabs[i].classList.toggle('on', k === kind);
-      if (k === kind) this.note.textContent = note;
+      this.tabs[i].setAttribute('aria-pressed', String(k === kind));
     });
     // highlight the first map of the tab unless the picked one is already on it
     if (this.map(this.selected).kind !== kind) this.selected = this.maps.find((m) => m.kind === kind)!.id;
@@ -85,11 +79,11 @@ export class MapSelectScreen implements Screen {
           if (this.selected === m.id) this.go();
           else this.select(m.id);
         },
-        style: { width: '210px' },
+        role: 'button', tabIndex: 0,
+        onkeydown: (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.select(m.id); } },
       },
         h('img', { src: asset(`maps/${m.id}/preview.webp`), alt: m.name, loading: 'lazy', style: { imageRendering: 'auto' } }),
         h('div.name', null, m.name.toUpperCase()),
-        h('div.muted', { style: { textAlign: 'left', fontSize: '9px' } }, m.tagline),
       );
       this.tiles.set(m.id, t);
     }
@@ -130,8 +124,4 @@ export class MapSelectScreen implements Screen {
   dispose(): void {
     this.stop?.();
   }
-}
-
-function viewText(): string {
-  return pref('firstPerson') ? 'View: 1st Person' : 'View: Overhead';
 }

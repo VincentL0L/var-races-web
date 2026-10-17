@@ -2,7 +2,7 @@
 //!  - the maps and cars (`maps`, `cars`, `mapLayout`)
 //!  - `LocalRace`: a whole race run in the browser (single player and the title screen), the
 //!    very same room the server runs online
-//!  - `RacePredictor` / `SoccerPredictor`: the player's own car run ahead of the server
+//!  - `RacePredictor`: the player's own car run ahead of the server
 //!  - `encode` / `decode`: the binary messages to and from the server
 //!
 //! Values cross into JavaScript as plain objects; their TypeScript types are generated from
@@ -114,7 +114,7 @@ pub struct LocalRace {
 impl LocalRace {
     #[wasm_bindgen(constructor)]
     pub fn new(map: &str, seed: u32) -> LocalRace {
-        LocalRace { room: RaceRoom::new(maps::get(map), seed as u64) }
+        LocalRace { room: RaceRoom::solo(maps::get(map), seed as u64) }
     }
 
     /// the title screen's endless race of `cars` CPUs
@@ -129,7 +129,7 @@ impl LocalRace {
 
     #[wasm_bindgen(js_name = setSettings)]
     pub fn set_settings(&mut self, laps: u8, difficulty: u8) {
-        self.room.set_settings(Settings { laps, difficulty });
+        self.room.set_settings(Settings { laps, difficulty, cpu_count: 0 });
     }
 
     pub fn start(&mut self) {
@@ -224,58 +224,5 @@ impl RacePredictor {
     pub fn reset(&mut self) {
         self.car = None;
         self.pending.clear();
-    }
-}
-
-/// the same for the player's own soccer car
-#[wasm_bindgen]
-pub struct SoccerPredictor {
-    car: Option<sim::soccer::SoccerCar>,
-    pending: VecDeque<(u32, Input)>,
-}
-
-#[wasm_bindgen]
-impl SoccerPredictor {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> SoccerPredictor {
-        SoccerPredictor { car: None, pending: VecDeque::new() }
-    }
-
-    pub fn reconcile(&mut self, car: JsValue, ack: u32) -> Result<(), JsError> {
-        let mut car: sim::soccer::SoccerCar = serde_wasm_bindgen::from_value(car)?;
-        while self.pending.front().is_some_and(|&(seq, _)| seq <= ack) {
-            self.pending.pop_front();
-        }
-        for (_, i) in &self.pending {
-            car.predict(i, DT);
-        }
-        self.car = Some(car);
-        Ok(())
-    }
-
-    pub fn predict(&mut self, seq: u32, controls: u16) {
-        let i = input(controls);
-        self.pending.push_back((seq, i));
-        while self.pending.len() > 120 {
-            self.pending.pop_front();
-        }
-        if let Some(car) = self.car.as_mut() {
-            car.predict(&i, DT);
-        }
-    }
-
-    pub fn car(&self) -> JsValue {
-        self.car.as_ref().map_or(JsValue::NULL, to_js)
-    }
-
-    pub fn reset(&mut self) {
-        self.car = None;
-        self.pending.clear();
-    }
-}
-
-impl Default for SoccerPredictor {
-    fn default() -> Self {
-        Self::new()
     }
 }

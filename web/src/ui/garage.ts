@@ -1,5 +1,6 @@
 // The garage: five cars in three paints, each trading something off (a quick launch or a high
 // top speed, sharp handling or a heavy body), over the title race under frosted glass.
+import { CarPreview } from '../render/carPreview';
 import type { Screen } from '../app';
 import { asset, carSprite } from '../assets';
 import * as audio from '../audio';
@@ -34,7 +35,7 @@ export class GarageScreen implements Screen {
   private paint: number;
   private readonly name = cardTitle('');
   private readonly tagline = h('div.label', { style: { width: '250px', marginBottom: '14px', fontSize: '11px' } });
-  private readonly big = h('img.pixel', { style: { width: '84px', height: '168px' } });
+  private readonly preview = new CarPreview();
   private readonly bars: HTMLElement[][] = [];
   private readonly swatches: HTMLElement[] = [];
 
@@ -51,7 +52,7 @@ export class GarageScreen implements Screen {
         h('span.hud-label', { style: { width: '78px' } }, label), ...segs);
     });
     const paints = Array.from({ length: PAINTS }, (_, p) => {
-      const sw = h('div.crow.clickable', { onclick: () => { audio.play('click', 0.4); this.show(this.model, p); } },
+      const sw = h('button.crow.clickable.paint-swatch', { 'aria-label': `Paint ${p + 1}`, onclick: () => { audio.play('click', 0.4); this.show(this.model, p); } },
         h('img.pixel', { style: { width: '28px', height: '56px', margin: '0 6px' } }));
       this.swatches.push(sw);
       return sw;
@@ -60,9 +61,9 @@ export class GarageScreen implements Screen {
       kicker('GARAGE'),
       this.name,
       h('div.row', { style: { alignItems: 'flex-start', flexWrap: 'nowrap', gap: '26px' } },
-        h('div.row', { style: { gap: '8px' } },
+        h('div.row', { style: { gap: '8px', flexWrap: 'nowrap' } },
           smallButton('<', () => this.show((this.model + n - 1) % n, this.paint)),
-          h('div.crow', { style: { padding: '14px 28px' } }, this.big),
+          h('div.crow', { style: { padding: '0' } }, this.preview.canvas),
           smallButton('>', () => this.show((this.model + 1) % n, this.paint)),
         ),
         h('div', null, this.tagline, ...stats, kicker('PAINT'), h('div.row', { style: { justifyContent: 'flex-start' } }, ...paints)),
@@ -76,9 +77,12 @@ export class GarageScreen implements Screen {
         }),
       ),
     ));
-    this.el.querySelector<HTMLElement>('.card-panel')!.style.width = '640px';
+    this.el.querySelector<HTMLElement>('.card-panel')!.style.width = '720px';
     this.show(this.model, this.paint);
   }
+
+  frame(delta: number): void { this.preview.frame(delta); }
+  dispose(): void { this.preview.dispose(); }
 
   private show(model: number, paint: number): void {
     this.model = model;
@@ -87,12 +91,13 @@ export class GarageScreen implements Screen {
     this.name.textContent = car.name.toUpperCase();
     this.tagline.textContent = car.tagline;
     const src = (p: number) => asset(carSprite(model * PAINTS + p + 1).replace('.png', '.webp'));
-    this.big.src = src(paint);
+    this.preview.show(carSprite(model * PAINTS + paint + 1));
     STATS.forEach(([, key, color], s) => {
       this.bars[s].forEach((seg, k) => (seg.style.background = k < car[key] ? color : '#291f17'));
     });
     this.swatches.forEach((sw, p) => {
       (sw.firstElementChild as HTMLImageElement).src = src(p);
+      sw.setAttribute('aria-pressed', String(p === paint));
       sw.style.borderImageSource = p === paint ? 'var(--frame)' : '';
     });
   }
