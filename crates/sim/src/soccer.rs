@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::car::Input;
-use crate::math::{clamp, cos, deg, exp, sin, sqrt, wrap_angle};
+use crate::math::{angle_diff, atan2, clamp, cos, deg, exp, sin, sqrt, wrap_angle};
 
 pub const WIDTH: f32 = 1400.0;
 pub const HEIGHT: f32 = 900.0;
@@ -220,6 +220,44 @@ impl Default for SoccerBall {
 }
 
 /// The whole match. It is also the snapshot the server sends every tick.
+/// A CPU soccer driver (single player): get goal-side of the ball and drive through it toward
+/// the other goal. In 2v2 the back CPU of each team (slots 2 and 3) holds near its own goal
+/// while the ball is far away. Blue (team 0) attacks +x, orange attacks -x.
+pub fn cpu_input(m: &SoccerMatch, slot: u8) -> Input {
+    let mut input = Input::default();
+    let Some(car) = m.cars.get(slot as usize).and_then(|c| c.as_ref()) else {
+        return input;
+    };
+    let b = &m.ball;
+    let attack_x = if car.team() == 0 { WIDTH + 60.0 } else { -60.0 };
+    let own_x = if car.team() == 0 { 0.0 } else { WIDTH };
+    let (mut gx, mut gy) = (attack_x - b.x, HEIGHT / 2.0 - b.y);
+    let gl = sqrt(gx * gx + gy * gy).max(1e-3);
+    gx /= gl;
+    gy /= gl;
+    let behind = (car.x - b.x) * gx + (car.y - b.y) * gy < -10.0;
+    let keeper = m.team_size == 2 && slot >= 2 && (b.x - own_x).abs() > WIDTH * 0.45;
+    let (tx, ty) = if keeper {
+        (own_x + if car.team() == 0 { 150.0 } else { -150.0 }, clamp(b.y, HEIGHT / 2.0 - 160.0, HEIGHT / 2.0 + 160.0))
+    } else if behind {
+        (b.x + gx * 20.0, b.y + gy * 20.0) // lined up: drive straight through it
+    } else {
+        (b.x - gx * 70.0, b.y - gy * 70.0 + if car.y < b.y { -40.0 } else { 40.0 }) // get round behind it first
+    };
+    let (dx, dy) = (tx - car.x, ty - car.y);
+    let dist = sqrt(dx * dx + dy * dy);
+    let rel = angle_diff(atan2(dy, dx), car.heading); // radians, + = to the left
+    input.steer = clamp(rel / deg(28.0), -1.0, 1.0);
+    let reverse = rel.abs() > deg(120.0) && dist < 140.0;
+    let stop = keeper && dist < 40.0;
+    input.gas = !reverse && !stop;
+    input.brake = reverse;
+    input.boost = rel.abs() < deg(14.0) && dist > 220.0 && car.boost > 25.0 && !keeper;
+    let (bdx, bdy) = (b.x - car.x, b.y - car.y);
+    input.jump = b.z > 45.0 && bdx * bdx + bdy * bdy < 70.0 * 70.0;
+    input
+}
+
 #[cfg_attr(feature = "ts", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SoccerMatch {

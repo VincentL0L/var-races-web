@@ -128,7 +128,7 @@ impl Driver {
         d
     }
 
-    /// Makes this CPU weaker or stronger: 0 easy, 1 normal, 2 hard. Call once, before the race.
+    /// Makes this CPU weaker or stronger: 0 easy, 1 normal, 2 hard, 3 extra hard. Call once, before the race.
     pub fn set_difficulty(&mut self, difficulty: u8) {
         let p = &mut self.p;
         match difficulty {
@@ -148,6 +148,16 @@ impl Driver {
                 p.turn_rate *= 1.12;
                 p.corner_radius *= 0.88;
                 p.reaction *= 0.4;
+            }
+            3 => {
+                // extra hard: faster than any garage car, launches like a dragster, brakes
+                // late, carries speed through the corners and reacts at once
+                p.top_speed *= 1.18;
+                p.acceleration *= 1.65;
+                p.braking *= 1.3;
+                p.turn_rate *= 1.22;
+                p.corner_radius *= 0.78;
+                p.reaction *= 0.1;
             }
             _ => {}
         }

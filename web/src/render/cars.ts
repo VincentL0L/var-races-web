@@ -1,6 +1,6 @@
 // The cars. Overhead, a car is its sprite. In first person it's a little model built to its own
 // shape (the garage's Sprinter, Roadster, GT, Muscle and Hauler, and each city's CPU cars: Waymo,
-// kei van, taxi, police car, double-decker bus, 2CV, scooter and moon rover), with the sprite
+// kei van, taxi, police car, double-decker bus, 2CV, scooter, moon rover and F1 car), with the sprite
 // laid over the top as the paint job.
 //
 // Models are built in the car's own frame: x across, y toward the nose, z up, with the sprite
@@ -60,6 +60,8 @@ function shapeOf(sprite: string): Shape {
       return shape({ width: 0.88, deck: 3.4, cabinFrom: 0.2, cabinTo: 0.66, cabinTop: 7, wheel: 3, axle: 0.2 });
     case 'moto': // scooter and rider
       return shape({ width: 0.35, deck: 3.2, cabinFrom: 0, cabinTo: 0, cabinTop: 0, wheel: 3, axle: 0.12, extra: 'BIKE' });
+    case 'f1': // open-wheel racer: low nose, wings front and back, cockpit and halo
+      return shape({ width: 0.6, deck: 2.4, cabinFrom: 0, cabinTo: 0, cabinTop: 0, wheel: 3.2, axle: 0.16, extra: 'F1' });
     case 'rover': // moon buggy: open frame, six big wheels, gold dish
       return shape({ deck: 4.2, cabinFrom: 0, cabinTo: 0, cabinTop: 0, wheel: 3.6, axle: 0.14, extra: 'ROVER' });
     default: // the classic racers: a sports coupe
@@ -112,6 +114,21 @@ function buildModel(s: Shape, body: Rgb, paint: THREE.Texture, inside: boolean):
       box(-1.7, -h * 0.1, 5.8, 3.4, 2.6, 3.4, [0.95, 0.8, 0.2]);
       box(-1.2, -h * 0.08, 9.2, 2.4, 2.4, 2.2, [0.85, 0.2, 0.18]);
       lights(3, h * 0.7, 2.4, box);
+    }
+  } else if (has(s, 'F1')) {
+    // slim body, sidepods, a wide front wing; outside also the rear wing, airbox, cockpit,
+    // the driver's helmet and the halo
+    box(-bw / 2, -h / 2 + 3, 0.6, bw, h - 5, 1.8, body);
+    box(-bw / 2 - 1.2, -h * 0.25, 0.6, bw + 2.4, h * 0.35, 1.6, shade(body, 0.8));
+    box(-w / 2, h / 2 - 2, 0.3, w, 1.6, 0.5, [0.1, 0.1, 0.11]);
+    if (!inside) {
+      box(-w / 2 + 0.5, -h / 2, 3.2, w - 1, 1.8, 0.6, [0.1, 0.1, 0.11]);
+      box(-w / 2 + 0.8, -h / 2, 0.6, 0.4, 1.8, 3.2, [0.1, 0.1, 0.11]);
+      box(w / 2 - 1.2, -h / 2, 0.6, 0.4, 1.8, 3.2, [0.1, 0.1, 0.11]);
+      box(-1, -h * 0.2, 2.4, 2, 4, 1.6, body);
+      box(-1.2, -h * 0.02, 2.4, 2.4, 2.6, 0.4, [0.08, 0.08, 0.09]);
+      box(-0.8, 0.2, 2.5, 1.6, 1.6, 1.2, [0.95, 0.8, 0.2]);
+      box(-1.3, h * 0.08, 3.6, 2.6, 0.4, 0.4, [0.2, 0.2, 0.22]);
     }
   } else if (!(inside && has(s, 'BUS'))) {
     // lower body: dark sill, then the paint

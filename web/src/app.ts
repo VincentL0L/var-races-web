@@ -31,7 +31,10 @@ class App {
   start(): void {
     this.renderer = new Renderer(document.getElementById('world') as HTMLCanvasElement);
     this.ui = document.getElementById('ui')!;
-    addEventListener('resize', () => this.renderer.resize());
+    addEventListener('resize', () => {
+      this.renderer.resize();
+      this.fit();
+    });
     // M toggles the sound anywhere
     onKey((code) => {
       if (code === 'KeyM') audio.setMuted(!audio.isMuted());
@@ -54,6 +57,20 @@ class App {
     this.screen?.dispose?.();
     this.screen = screen;
     this.ui.replaceChildren(screen.el);
+    this.fit();
+    // cards that fill in later (rooms, levels) may grow, so look again once they have
+    setTimeout(() => this.fit(), 300);
+  }
+
+  /** shrinks any menu card too big for the window (a phone held sideways) to fit, never grows it */
+  private fit(): void {
+    for (const el of this.ui.querySelectorAll<HTMLElement>('.card-panel')) {
+      el.style.zoom = '';
+      const w = el.offsetWidth, h = el.scrollHeight + 36;
+      if (!w || !h) continue;
+      const k = Math.min(1, (innerWidth - 16) / w, (innerHeight - 16) / h);
+      if (k < 1) el.style.zoom = String(Math.max(0.45, k));
+    }
   }
 
   private loop(now: number): void {

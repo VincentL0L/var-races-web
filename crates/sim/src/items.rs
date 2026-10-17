@@ -389,6 +389,25 @@ pub fn box_rows(map: &MapDef) -> Vec<[Vec2; 3]> {
             rows.push([center - across, center, center + across]);
         }
     }
+    if rows.is_empty() {
+        // a curvy course drawn as many short pieces (the Grand Prix): a row every 900 or so along it
+        let mut since = 450.0;
+        for i in 0..stretches {
+            let (a, b) = (w[i], w[(i + 1) % n]);
+            let len = a.dist(b);
+            if len < 1e-3 {
+                continue;
+            }
+            since += len;
+            if since >= 900.0 {
+                since = 0.0;
+                let d = (b - a) * (1.0 / len);
+                let center = a.lerp(b, 0.5);
+                let across = d.perp() * 30.0;
+                rows.push([center - across, center, center + across]);
+            }
+        }
+    }
     rows
 }
 

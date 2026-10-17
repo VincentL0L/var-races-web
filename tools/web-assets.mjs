@@ -11,7 +11,7 @@ import { mkdir, readdir, readFile, rm, writeFile, copyFile } from 'node:fs/promi
 import { dirname, join, relative, extname } from 'node:path';
 import sharp from 'sharp';
 
-const root = new URL('..', import.meta.url).pathname;
+const root = decodeURIComponent(new URL('..', import.meta.url).pathname);
 const src = join(root, 'assets');
 const out = join(root, 'web/public/gen');
 const manifest = {};

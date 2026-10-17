@@ -48,7 +48,7 @@ function canvas(w: number, h: number, draw: (g: CanvasRenderingContext2D) => voi
 
 const css = (c: Rgb, a = 1) => `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a})`;
 
-export function buildSky(mapId: string, colors: SkyColors): THREE.Group {
+export function buildSky(mapId: string, colors: SkyColors, battle = false): THREE.Group {
   const sky = new THREE.Group();
   sky.renderOrder = -100;
   // the dome: haze at the horizon fading up into the sky colour, haze below
@@ -106,6 +106,8 @@ export function buildSky(mapId: string, colors: SkyColors): THREE.Group {
   let h = 0;
   for (const ch of mapId) h = (Math.imul(31, h) + ch.charCodeAt(0)) | 0;
   const rnd = seeded(h);
+  const city = !battle && !['classic', 'gp', 'summit', 'moon'].includes(mapId);
+  sky.add(skyline(colors, colors.space ? 2 : city ? 0 : 1, seeded(h ^ 0x5bd1e995)));
   if (colors.space) {
     const stars = new Float32Array(160 * 3);
     for (let i = 0; i < 160; i++) onDome(rnd() * 360, rnd() * 50 + 1, RADIUS * 0.97).toArray(stars, i * 3);
@@ -134,4 +136,98 @@ export function buildSky(mapId: string, colors: SkyColors): THREE.Group {
     }
   }
   return sky;
+}
+
+/** the skyline band covers this many degrees of elevation, from a degree below the horizon */
+const BAND = 16, BAND_W = 4096, BAND_H = 192;
+
+/**
+ * the far-off city (or hills, or moon peaks) all round the horizon, hazy with distance: a back
+ * row paler, a front row a little darker, the cities with a few lit windows. Drawn once round a
+ * band inside the dome.
+ * @param kind 0 city, 1 hills, 2 moon peaks
+ */
+function skyline(colors: SkyColors, kind: number, rnd: () => number): THREE.Mesh {
+  const parts: number[][] = [];
+  for (let az = 0; az < 360;) {
+    const w = kind === 0 ? 0.6 + rnd() * 2.2 : 4 + rnd() * 10;
+    const h = kind === 0 ? 0.6 + rnd() * rnd() * 6 : 0.6 + rnd() * 2.5;
+    parts.push([az, w, h, rnd()]);
+    az += w * (kind === 0 ? 0.85 : 0.6);
+  }
+  const lerp = (a: Rgb, b: Rgb, t: number): Rgb => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  let far = lerp(lerp(colors.low, colors.top, 0.15), [0.42, 0.47, 0.58], 0.25);
+  let near = lerp(colors.low, [0.36, 0.41, 0.52], 0.45);
+  if (kind === 1) {
+    far = lerp(colors.low, [0.42, 0.55, 0.48], 0.35);
+    near = lerp(colors.low, [0.32, 0.48, 0.36], 0.55);
+  } else if (kind === 2) {
+    far = [0.25, 0.25, 0.29];
+    near = [0.38, 0.38, 0.42];
+  }
+  const px = BAND_W / 360, py = BAND_H / BAND;
+  const base = BAND_H - py; // the horizon, a degree up from the bottom
+  const texture = canvas(BAND_W, BAND_H, (g) => {
+    for (let layer = 0; layer < 2; layer++) {
+      const col = layer === 0 ? far : near;
+      for (let i = layer; i < parts.length; i += 2) {
+        const [az, w, hh0, tone] = parts[i];
+        const hh = hh0 * (layer === 0 ? 1 : 0.7) * py, bw = w * px;
+        // drawn twice, so a building across 0 degrees wraps round
+        for (const shift of [0, -BAND_W]) {
+          const x0 = az * px + shift - bw / 2;
+          if (kind === 0) {
+            g.fillStyle = css([col[0] * (0.92 + tone * 0.12), col[1] * (0.92 + tone * 0.12), col[2] * (0.92 + tone * 0.12)]);
+            g.fillRect(x0, base - hh, bw, hh + py);
+            if (tone > 0.7 && hh0 > 3) g.fillRect(x0 + bw * 0.45, base - hh * 1.25, bw * 0.1, hh * 0.25); // a spire
+            if (layer === 1) {
+              // a few lit windows
+              g.fillStyle = 'rgba(255,217,128,0.35)';
+              for (let wy = base - 3; wy > base - hh + 3; wy -= 6) {
+                for (let wx = x0 + 2; wx < x0 + bw - 2; wx += 5) if (Math.trunc(wx * 7 + wy * 13 + i) % 9 === 0) g.fillRect(wx, wy, 2, 2);
+              }
+            }
+          } else {
+            // a rounded hill or a jagged peak
+            g.fillStyle = css([col[0] * (0.95 + tone * 0.08), col[1] * (0.95 + tone * 0.08), col[2] * (0.95 + tone * 0.08)]);
+            const peak = x0 + bw * (0.3 + tone * 0.4);
+            g.beginPath();
+            g.moveTo(x0 - bw * 0.3, base + py);
+            g.lineTo(peak, base - hh);
+            g.lineTo(x0 + bw * 1.3, base + py);
+            g.fill();
+            if (kind === 1) {
+              g.beginPath();
+              g.ellipse(x0 + bw / 2, base + py, bw / 2, hh * 1.4 * 0.5 + py, 0, Math.PI, 0);
+              g.fill();
+            }
+          }
+        }
+      }
+    }
+  });
+  texture.magFilter = THREE.NearestFilter;
+  texture.wrapS = THREE.RepeatWrapping;
+  // a band round the inside of the dome: u runs with the azimuth, v with the elevation
+  const r = RADIUS * 0.95, segments = 180;
+  const pos: number[] = [], uv: number[] = [], idx: number[] = [];
+  for (let i = 0; i <= segments; i++) {
+    const az = (i / segments) * 360, a = (az * Math.PI) / 180;
+    for (const [el, v] of [[-1, 0], [BAND - 1, 1]]) {
+      const e = (el * Math.PI) / 180;
+      pos.push(Math.cos(a) * r, Math.sin(a) * r, Math.tan(e) * r);
+      uv.push(az / 360, v);
+    }
+    if (i < segments) {
+      const k = i * 2;
+      idx.push(k, k + 2, k + 3, k, k + 3, k + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: texture, transparent: true, fog: false, depthWrite: false, side: THREE.DoubleSide }));
+  mesh.renderOrder = -98;
+  return mesh;
 }

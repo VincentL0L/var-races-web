@@ -9,6 +9,7 @@ import { mapLayout, type MapDef, type Sign, type Wall } from '../wasm';
 import { CarView, eyeHeight, type CarLook } from './cars';
 import { ItemsView, type ItemState } from './items';
 import { buildLandmarks, type Area } from './landmarks';
+import { hill, hillsOn, lift, liftAll, setHills, slope } from './hills';
 import { buildScenery } from './scenery';
 import { buildSky, skyColors, type SkyColors } from './sky';
 import { barrier, chevrons } from './textures';
@@ -65,6 +66,7 @@ export class World {
   private heading = NaN;
   private eye = 6.3;
   private clock = 0;
+  private pitch = 0;
   private followed: number | null = null;
 
   private constructor(readonly map: MapDef, layout: { walls: Wall[]; signs: Sign[]; boxes: { x: number; y: number }[][] }) {
@@ -75,7 +77,7 @@ export class World {
     this.overhead.position.z = 2000;
     this.camX = map.width / 2;
     this.camY = map.height / 2;
-    this.sky = buildSky(map.id, this.colors);
+    this.sky = buildSky(map.id, this.colors, map.kind === 'battle');
     this.solidOnly.add(this.sky);
     this.scene.add(this.flatOnly, this.solidOnly);
     this.addWalls(layout.walls, layout.signs);
@@ -95,12 +97,29 @@ export class World {
     const map = this.map;
     const picture = await texture(`maps/${map.id}/background.png`);
     const ground = new THREE.Group();
-    const flat = (t: THREE.Texture) => new THREE.MeshBasicMaterial({ map: t, depthWrite: false, fog: true });
-    const plane = (x0: number, y0: number, x1: number, y1: number, m: THREE.Material, uv?: number[]) => {
-      const g = new THREE.PlaneGeometry(x1 - x0, y1 - y0);
-      if (uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    // the ground writes depth, so on the hills a crest hides the ground behind it
+    const flat = (t: THREE.Texture) => lift(new THREE.MeshBasicMaterial({ map: t, fog: true }));
+    const plane = (x0: number, y0: number, x1: number, y1: number, m: THREE.Material, uv?: number[], z = 0) => {
+      // cut into pieces about 40 across, so it bends over the hills
+      const sx = Math.max(1, Math.min(150, Math.round((x1 - x0) / 40))), sy = Math.max(1, Math.min(150, Math.round((y1 - y0) / 40)));
+      const g = new THREE.PlaneGeometry(x1 - x0, y1 - y0, uv ? 1 : sx, uv ? 1 : sy);
+      if (uv) {
+        // stretched edges: bilinear over the four corner uvs
+        const base = new THREE.PlaneGeometry(x1 - x0, y1 - y0, sx, sy);
+        const pos = base.getAttribute('position');
+        const out: number[] = [];
+        for (let i = 0; i < pos.count; i++) {
+          const s = pos.getX(i) / (x1 - x0) + 0.5, t = pos.getY(i) / (y1 - y0) + 0.5;
+          // PlaneGeometry corners: top-left, top-right, bottom-left, bottom-right
+          const top = [uv[0] + (uv[2] - uv[0]) * s, uv[1] + (uv[3] - uv[1]) * s];
+          const bottom = [uv[4] + (uv[6] - uv[4]) * s, uv[5] + (uv[7] - uv[5]) * s];
+          out.push(bottom[0] + (top[0] - bottom[0]) * t, bottom[1] + (top[1] - bottom[1]) * t);
+        }
+        base.setAttribute('uv', new THREE.Float32BufferAttribute(out, 2));
+        g.copy(base);
+      }
       const mesh = new THREE.Mesh(g, m);
-      mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, 0);
+      mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, z);
       mesh.renderOrder = -50;
       ground.add(mesh);
       return mesh;
@@ -123,7 +142,7 @@ export class World {
       const span = 12000;
       grass.repeat.set(span / 256, span / 256);
       grass.needsUpdate = true;
-      plane(w / 2 - span / 2, h / 2 - span / 2, w / 2 + span / 2, h / 2 + span / 2, flat(grass)).renderOrder = -51;
+      plane(w / 2 - span / 2, h / 2 - span / 2, w / 2 + span / 2, h / 2 + span / 2, flat(grass), undefined, -0.5).renderOrder = -51;
     }
     plane(0, 0, w, h, flat(picture));
     this.scene.add(ground);
@@ -160,19 +179,29 @@ export class World {
     // first person: the barrier, both faces and its top
     pos.length = uv.length = idx.length = 0;
     const cols: number[] = [];
-    const face = (ax: number, ay: number, bx: number, by: number, low: number, high: number, repeat: number, shade: number[]) => {
-      quad([[ax, ay, low], [bx, by, low], [bx, by, high], [ax, ay, high]], [0, 0, repeat, 0, repeat, 1, 0, 1]);
+    const face = (ax: number, ay: number, bx: number, by: number, low: number, high: number, u0: number, u1: number, shade: number[]) => {
+      quad([[ax, ay, low], [bx, by, low], [bx, by, high], [ax, ay, high]], [u0, 0, u1, 0, u1, 1, u0, 1]);
       for (let i = 0; i < 4; i++) cols.push(...shade);
     };
+    // in pieces of about 16, so they follow the hills
+    const pieces: (Wall & { u: number })[] = [];
     for (const w of walls) {
+      const n = Math.max(1, Math.ceil((Math.abs(w.bx - w.ax) + Math.abs(w.by - w.ay)) / 16));
+      for (let k = 0; k < n; k++) {
+        const t0 = k / n, t1 = (k + 1) / n;
+        pieces.push({ ...w, u: (t0 * (Math.abs(w.bx - w.ax) + Math.abs(w.by - w.ay))) / 64, ax: w.ax + (w.bx - w.ax) * t0, ay: w.ay + (w.by - w.ay) * t0, bx: w.ax + (w.bx - w.ax) * t1, by: w.ay + (w.by - w.ay) * t1 });
+      }
+    }
+    for (const w of pieces) {
       const ox = -w.nx * WALL_THICKNESS, oy = -w.ny * WALL_THICKNESS;
       const length = Math.abs(w.bx - w.ax) + Math.abs(w.by - w.ay);
       const shade = [0.86 + w.nx * 0.08, 0.89 + w.ny * 0.06, 0.95];
-      face(w.ax, w.ay, w.bx, w.by, 0, WALL_HEIGHT, length / 64, shade);
-      face(w.bx + ox, w.by + oy, w.ax + ox, w.ay + oy, 0, WALL_HEIGHT, length / 64, shade);
+      const u0 = w.u, u1 = w.u + length / 64;
+      face(w.ax, w.ay, w.bx, w.by, 0, WALL_HEIGHT, u0, u1, shade);
+      face(w.bx + ox, w.by + oy, w.ax + ox, w.ay + oy, 0, WALL_HEIGHT, u1, u0, shade);
       quad(
         [[w.ax, w.ay, WALL_HEIGHT], [w.bx, w.by, WALL_HEIGHT], [w.bx + ox, w.by + oy, WALL_HEIGHT], [w.ax + ox, w.ay + oy, WALL_HEIGHT]],
-        [0, 1, length / 64, 1, length / 64, 0.93, 0, 0.93],
+        [u0, 1, u1, 1, u1, 0.93, u0, 0.93],
       );
       for (let i = 0; i < 4; i++) cols.push(1, 1, 1);
     }
@@ -205,13 +234,17 @@ export class World {
       }
     }
     this.solidOnly.add(boards.left, boards.right);
+    for (const o of this.solidOnly.children) if (o !== this.sky) liftAll(o);
   }
 
   /** the trees, buildings and landmarks, built the first time first person is used */
   private addScenery(): Promise<void> {
     this.scenery ??= (async () => {
       const { mesh, clear } = buildLandmarks(this.map.id);
-      if (mesh) this.solidOnly.add(mesh);
+      if (mesh) {
+        liftAll(mesh);
+        this.solidOnly.add(mesh);
+      }
       await this.addBuildings(clear).catch((e) => console.warn('scenery', e));
     })();
     return this.scenery;
@@ -224,11 +257,15 @@ export class World {
       pixels(`maps/${id}/background.png`),
       texture(`maps/${id}/background.png`),
     ]);
-    this.solidOnly.add(buildScenery(this.map, heights, picture, roof, clear));
+    const scenery = buildScenery(this.map, heights, picture, roof, clear);
+    liftAll(scenery);
+    this.solidOnly.add(scenery);
   }
 
   setFirstPerson(on: boolean): void {
     this.firstPerson = on;
+    setHills(this.map.id);
+    hillsOn(on);
     this.flatOnly.visible = !on;
     this.solidOnly.visible = on;
     this.scene.fog = on ? this.fog : null;
@@ -295,8 +332,13 @@ export class World {
       }
     }
     let target: CarFrame | undefined;
+    hillsOn(this.firstPerson);
     for (const c of frame.cars) {
-      this.cars.get(c.slot)?.update(c.x, c.y, c.heading, c.look, this.clock);
+      const view = this.cars.get(c.slot);
+      if (view) {
+        view.update(c.x, c.y, c.heading, c.look, this.clock);
+        if (this.firstPerson) this.ride(view.root, c.x, c.y, c.heading);
+      }
       if (c.slot === frame.follow) target = c;
     }
     if (target) {
@@ -322,11 +364,25 @@ export class World {
       const fx = Math.cos(this.heading), fy = Math.sin(this.heading);
       const s = frame.shake > 0.05 ? frame.shake : 0;
       const sx = s ? (Math.random() * 2 - 1) * s * 0.15 : 0, sz = s ? (Math.random() * 2 - 1) * s * 0.1 : 0;
-      this.first.position.set(target.x + fx * EYE_FORWARD - fy * sx, target.y + fy * EYE_FORWARD + fx * sx, this.eye + sz);
-      this.first.lookAt(this.first.position.x + fx, this.first.position.y + fy, this.first.position.z - 0.045);
+      // ride the hills, and look up or down the slope ahead
+      const ex = target.x + fx * EYE_FORWARD - fy * sx, ey = target.y + fy * EYE_FORWARD + fx * sx;
+      const rise = (hill(ex + fx * 30, ey + fy * 30) - hill(ex - fx * 30, ey - fy * 30)) / 60;
+      this.pitch += (rise - this.pitch) * (1 - Math.exp(-6 * delta));
+      this.first.position.set(ex, ey, this.eye + sz + hill(target.x, target.y));
+      this.first.lookAt(ex + fx, ey + fy, this.first.position.z - 0.045 + this.pitch);
       this.sky.position.copy(this.first.position);
     }
     this.items.update(frame.items, this.firstPerson, this.first.position, delta);
+    liftAll(this.items.root);
+  }
+
+  /** stands a car on the hill under it, tilted to the slope */
+  private ride(root: THREE.Object3D, x: number, y: number, heading: number): void {
+    const [sx, sy] = slope(x, y);
+    const up = new THREE.Vector3(-sx, -sy, 1).normalize();
+    const tilt = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), up);
+    root.quaternion.copy(tilt).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), heading - Math.PI / 2));
+    root.position.z = hill(x, y);
   }
 
   camera(): THREE.Camera {
@@ -339,7 +395,7 @@ export class World {
    */
   project(x: number, y: number, z: number): { x: number; y: number } | null {
     const cam = this.camera();
-    const v = new THREE.Vector3(x, y, z).project(cam);
+    const v = new THREE.Vector3(x, y, z + (this.firstPerson ? hill(x, y) : 0)).project(cam);
     if (v.z > 1 || v.x < -1 || v.x > 1 || v.y < -1 || v.y > 1) return null;
     return { x: (v.x + 1) / 2, y: (1 - v.y) / 2 };
   }

@@ -1,20 +1,18 @@
 // The trees and buildings of a map, stood up in 3D for the first-person view. heights.png (made
 // by tools from the map picture) says how tall things are on a grid of CELL x CELL patches.
-//  - buildings: blocks whose roofs are that bit of the map picture and whose walls are rows of
-//    windows, painted in the roof's colour
+//  - buildings: each designed in its city's architecture (architecture.ts), with that bit of the
+//    map picture for a roof
 //  - trees: two crossed upright pictures of a tree, tinted the colour of the leaves seen from
 //    above, so cherry blossom stays pink
 import * as THREE from 'three';
 import type { MapDef } from '../wasm';
-import { Builder, mix, vertexColors, type Rgb } from './geom';
-import { facade, tree } from './textures';
+import { CityArchitecture } from './architecture';
+import { Builder, vertexColors, type Rgb } from './geom';
+import { tree } from './textures';
 import type { Area } from './landmarks';
 
 /** map pixels per height cell (must match the height map maker) */
 const CELL = 12;
-/** one window bay is this wide, one storey this tall (map pixels) */
-const BAY = 16;
-const STOREY = 12;
 
 export function buildScenery(
   map: MapDef,
@@ -25,26 +23,41 @@ export function buildScenery(
 ): THREE.Group {
   const group = new THREE.Group();
   const gw = heights.width, gh = heights.height;
-  const height = (x: number, y: number) => (x < 0 || y < 0 || x >= gw || y >= gh ? 0 : heights.data[(y * gw + x) * 4]);
-  const kind = (x: number, y: number) => heights.data[(y * gw + x) * 4 + 1];
   const worldW = map.width, worldH = map.height, scale = map.scale;
-  const roofs = new Builder(), walls = new Builder(), trees = new Builder();
+  const inside = (x: number, y: number) => clear.some((a) => x >= a[0] && x <= a[2] && y >= a[1] && y <= a[3]);
+  // the grids, x-major; skip: a building patch a landmark stands on
+  const height: number[][] = [], kind: number[][] = [], skip: boolean[][] = [];
+  for (let gx = 0; gx < gw; gx++) {
+    height.push([]);
+    kind.push([]);
+    skip.push([]);
+    for (let gy = 0; gy < gh; gy++) {
+      const i = (gy * gw + gx) * 4;
+      height[gx].push(heights.data[i]);
+      kind[gx].push(heights.data[i + 1]);
+      skip[gx].push(inside(gx * CELL + CELL / 2, worldH - gy * CELL - CELL / 2));
+    }
+  }
+  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= gw || y >= gh ? 0 : height[x][y]);
+  // the buildings themselves, each in its city's architecture (this rounds their heights)
+  const architecture = new CityArchitecture(map.id, height, kind, skip, worldH);
+  group.add(architecture.group);
+  const roofs = new Builder(), trees = new Builder();
 
   for (let gx = 0; gx < gw; gx++) {
     for (let gy = 0; gy < gh; gy++) {
-      const h = height(gx, gy);
+      const h = height[gx][gy];
       if (h === 0) continue;
       // the picture's rows run top down; the map's y runs up
       const x0 = gx * CELL, x1 = Math.min(worldW, x0 + CELL);
       const y1 = worldH - gy * CELL, y0 = Math.max(0, y1 - CELL);
       const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-      if (clear.some((a) => cx >= a[0] && cx <= a[2] && cy >= a[1] && cy <= a[3])) continue; // a landmark stands here
-      const isTree = kind(gx, gy) === 1;
-      const avg = average(picture, Math.floor((gx * CELL) / scale), Math.floor((gy * CELL) / scale), Math.floor(CELL / scale), isTree);
-      const seed = Math.imul(gx, 73856093) ^ Math.imul(gy, 19349663);
-      if (isTree) {
+      if (inside(cx, cy)) continue; // a landmark stands here
+      if (kind[gx][gy] === 1) {
         // a tree in most tree cells, nudged about so they don't line up
+        const seed = Math.imul(gx, 73856093) ^ Math.imul(gy, 19349663);
         if (mod(seed, 10) < 3) continue;
+        const avg = average(picture, Math.floor((gx * CELL) / scale), Math.floor((gy * CELL) / scale), Math.floor(CELL / scale), true);
         const tx = cx + (mod(seed >> 4, 9) - 4), ty = cy + (mod(seed >> 8, 9) - 4);
         const size = 15 + mod(seed >> 12, 9);
         const tall = h * 1.35;
@@ -57,27 +70,17 @@ export function buildScenery(
         }
         continue;
       }
-      // building: the roof is the map picture
-      const u0 = x0 / worldW, u1 = x1 / worldW, v0 = y0 / worldH, v1 = y1 / worldH;
-      roofs.quad([x0, y0, h], [x1, y0, h], [x1, y1, h], [x0, y1, h], [1, 1, 1], [u0, v0, u1, v0, u1, v1, u0, v1]);
-      // walls of windows, painted like the roof (lighter), shaded by which way they face
-      const paint = mix(avg, [1, 1, 1], 0.35);
-      const wall = (nx: number, ny: number, ax: number, ay: number, bx: number, by: number, s: number) => {
-        const low = height(nx, ny);
-        if (low >= h) return;
-        // windows line up across the whole map: u from where along the street, v from the height
-        const ua = (ax === bx ? ay : ax) / BAY / 4, ub = (ax === bx ? by : bx) / BAY / 4;
-        const va = low / STOREY / 4, vb = h / STOREY / 4;
-        walls.quad([ax, ay, low], [bx, by, low], [bx, by, h], [ax, ay, h], [paint[0] * s, paint[1] * s, paint[2] * s], [ua, va, ub, va, ub, vb, ua, vb]);
-      };
-      wall(gx + 1, gy, x1, y0, x1, y1, 0.92);
-      wall(gx - 1, gy, x0, y1, x0, y0, 0.68);
-      wall(gx, gy - 1, x1, y1, x0, y1, 1);
-      wall(gx, gy + 1, x0, y0, x1, y0, 0.6);
+      if (!architecture.builds(gx, gy)) continue;
+      // the roof: the map's own picture of it, on top of the mansard where there is one
+      const lift = architecture.roofLift(gx, gy), inset = architecture.roofInset(gx, gy);
+      const rx0 = x0 + (at(gx - 1, gy) < h ? inset : 0), rx1 = x1 - (at(gx + 1, gy) < h ? inset : 0);
+      const ry0 = y0 + (at(gx, gy + 1) < h ? inset : 0), ry1 = y1 - (at(gx, gy - 1) < h ? inset : 0);
+      const u0 = rx0 / worldW, u1 = rx1 / worldW, v0 = ry0 / worldH, v1 = ry1 / worldH;
+      const rz = h + lift;
+      roofs.quad([rx0, ry0, rz], [rx1, ry0, rz], [rx1, ry1, rz], [rx0, ry1, rz], [1, 1, 1], [u0, v0, u1, v0, u1, v1, u0, v1]);
     }
   }
   if (!roofs.empty) group.add(roofs.mesh(vertexColors(roofTexture)));
-  if (!walls.empty) group.add(walls.mesh(vertexColors(facade())));
   if (!trees.empty) group.add(trees.mesh(vertexColors(tree(), 0.5)));
   return group;
 }

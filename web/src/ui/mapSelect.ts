@@ -1,5 +1,7 @@
 // Choosing a track: tabs for circuits, sprints and battle arenas, a grid of map cards, and the
 // view to race in (overhead or first person). Hosting online, Create asks the server for a room.
+// In single player there are also tabs for the modes that aren't races on a map: Race Car
+// Soccer, Parking and Police Chase, each with one card.
 import type { Screen } from '../app';
 import { asset } from '../assets';
 import * as audio from '../audio';
@@ -12,11 +14,22 @@ import { pref, setPref } from '../prefs';
 import type { MapDef, MapKind, ServerMsg } from '../wasm';
 import { card, cardTitle, centered, kicker, smallButton } from './cards';
 
-const TABS: [MapKind, string, string][] = [
+type Mode = 'soccer' | 'parking' | 'chase';
+type Tab = MapKind | Mode;
+const TABS: [Tab, string, string][] = [
   ['circuit', 'Circuits', ''],
   ['sprint', 'Sprints', 'One run from start to finish. No laps.'],
   ['battle', 'Battle', 'Demolition derby: ram everyone, last car driving wins. Heavy cars hit harder.'],
+  ['soccer', 'Soccer', 'In first person, against the CPU or online: knock the ball into their goal.'],
+  ['parking', 'Parking', 'Six levels, from an easy first spot to parallel parking and a timed garage.'],
+  ['chase', 'Chase', "An endless getaway in third person. Swipe or use the arrows; don't get caught."],
 ];
+const MODES: Record<Mode, [string, string]> = {
+  soccer: ['RACE CAR SOCCER', '1v1 or 2v2 against the CPU or friends online. Cars, a giant ball, two goals.'],
+  parking: ['PARKING', 'Park in the bay without a scratch. Six levels, three stars each.'],
+  chase: ['POLICE CHASE', 'Outrun the cops down an endless city street. Dodge, jump, grab coins.'],
+};
+const isMode = (t: Tab): t is Mode => t in MODES;
 let lastMap = 'classic';
 
 export class MapSelectScreen implements Screen {
@@ -30,12 +43,14 @@ export class MapSelectScreen implements Screen {
   private readonly kickerEl: HTMLElement;
   private readonly stop: (() => void) | null = null;
   private creating = false;
+  private tab: Tab = 'circuit';
 
-  constructor(private readonly hosting: false | 'public' | 'private') {
+  constructor(private readonly hosting: false | 'public' | 'private', startTab?: Tab) {
     audio.playMusic('music_title');
     this.selected = lastMap;
     this.kickerEl = kicker(!hosting ? 'SINGLE PLAYER' : hosting === 'public' ? 'HOST A PUBLIC RACE' : 'HOST A PRIVATE RACE');
-    TABS.forEach(([kind, label]) => this.tabs.push(smallButton(label, () => this.showTab(kind))));
+    // soccer, parking and the chase are single player menus of their own, not hosted races
+    TABS.filter(([kind]) => !hosting || !isMode(kind)).forEach(([kind, label]) => this.tabs.push(smallButton(label, () => this.showTab(kind))));
     const view = smallButton(viewText(), () => {
       setPref('firstPerson', !pref('firstPerson'));
       view.textContent = viewText();
@@ -43,7 +58,8 @@ export class MapSelectScreen implements Screen {
     view.style.minWidth = '230px';
     this.el = centered(card(
       this.kickerEl,
-      h('div.row', { style: { justifyContent: 'space-between', flexWrap: 'nowrap' } }, cardTitle('CHOOSE A TRACK', 40), h('div.tabs', null, ...this.tabs)),
+      cardTitle('CHOOSE A TRACK', 40),
+      h('div.tabs', { style: { flexWrap: 'wrap', justifyContent: 'flex-start' } }, ...this.tabs),
       h('div.scroll', null, this.grid),
       this.note,
       h('div.card-buttons', null,
@@ -55,6 +71,7 @@ export class MapSelectScreen implements Screen {
     ));
     this.el.querySelector<HTMLElement>('.card-panel')!.classList.add('wide');
     this.showTab(this.map(this.selected).kind);
+    if (startTab) this.showTab(startTab);
     if (hosting) {
       this.stop = net.on((msg) => this.message(msg));
       net.connect();
@@ -65,11 +82,16 @@ export class MapSelectScreen implements Screen {
     return this.maps.find((m) => m.id === id) ?? this.maps[0];
   }
 
-  private showTab(kind: MapKind): void {
+  private showTab(kind: Tab): void {
+    this.tab = kind;
     TABS.forEach(([k, , note], i) => {
-      this.tabs[i].classList.toggle('on', k === kind);
+      this.tabs[i]?.classList.toggle('on', k === kind);
       if (k === kind) this.note.textContent = note;
     });
+    if (isMode(kind)) {
+      this.grid.replaceChildren(this.modeTile(kind));
+      return;
+    }
     // highlight the first map of the tab unless the picked one is already on it
     if (this.map(this.selected).kind !== kind) this.selected = this.maps.find((m) => m.kind === kind)!.id;
     this.grid.replaceChildren(...this.maps.filter((m) => m.kind === kind).map((m) => this.tile(m)));
@@ -96,12 +118,37 @@ export class MapSelectScreen implements Screen {
     return t;
   }
 
+  /** the one card of a mode tab (tap it twice, or Next) */
+  private modeTile(mode: Mode): HTMLElement {
+    const [name, text] = MODES[mode];
+    let last = 0;
+    return h('div.card.on', {
+      onclick: () => {
+        audio.play('click', 0.4);
+        const now = performance.now();
+        if (now - last < 500) this.go();
+        last = now;
+      },
+      style: { width: '210px' },
+    },
+      h('img', { src: modePicture(mode), alt: name, style: { imageRendering: 'pixelated' } }),
+      h('div.name', null, name),
+      h('div.muted', { style: { textAlign: 'left', fontSize: '9px' } }, text),
+    );
+  }
+
   private select(id: string): void {
     this.selected = id;
     for (const [mid, t] of this.tiles) t.classList.toggle('on', mid === id);
   }
 
   private go(): void {
+    if (isMode(this.tab)) {
+      if (this.tab === 'soccer') void nav.soccer();
+      else if (this.tab === 'parking') void nav.parking();
+      else void nav.chase();
+      return;
+    }
     lastMap = this.selected;
     if (!this.hosting) {
       void nav.localLobby(this.selected);
@@ -130,6 +177,69 @@ export class MapSelectScreen implements Screen {
   dispose(): void {
     this.stop?.();
   }
+}
+
+/** a little pixel picture for a mode card, drawn here (160 x 90) */
+function modePicture(mode: Mode): string {
+  const c = document.createElement('canvas');
+  c.width = 160;
+  c.height = 90;
+  const g = c.getContext('2d')!;
+  const fill = (x: number, y: number, w: number, hh: number, col: string) => {
+    g.fillStyle = col;
+    g.fillRect(x, y, w, hh);
+  };
+  if (mode === 'soccer') {
+    for (let x = 0; x < 160; x += 16) fill(x, 0, 16, 90, (x / 16) % 2 ? '#468f38' : '#4d9e40');
+    g.strokeStyle = '#fff';
+    g.strokeRect(8.5, 8.5, 143, 73);
+    g.beginPath();
+    g.moveTo(80.5, 8);
+    g.lineTo(80.5, 82);
+    g.stroke();
+    g.beginPath();
+    g.arc(80.5, 45.5, 14, 0, Math.PI * 2);
+    g.stroke();
+    fill(2, 36, 6, 18, '#d9403a');
+    fill(152, 36, 6, 18, '#3f73e6');
+    fill(77, 42, 7, 7, '#fff');
+  } else if (mode === 'parking') {
+    fill(0, 0, 160, 90, '#5c5c61');
+    const cars = ['#d9433b', '#3f73e6', '#f2c84b', '#e6e6e6', '#33a666'];
+    for (let i = 0; i < 7; i++) {
+      const x = 6 + i * 22;
+      g.strokeStyle = '#fff';
+      g.strokeRect(x + 0.5, 8.5, 22, 36);
+      if (i === 4) fill(x + 2, 10, 19, 33, '#33e666');
+      else {
+        fill(x + 5, 12, 12, 26, cars[i % cars.length]);
+        fill(x + 6, 18, 10, 6, '#1a1f29');
+      }
+    }
+    fill(98, 56, 12, 26, '#d9433b');
+    fill(99, 60, 10, 6, '#1a1f29');
+  } else {
+    fill(0, 0, 160, 90, '#99c7f5');
+    for (let y = 30; y < 90; y++) {
+      const half = Math.round(6 + ((y - 30) / 60) * 70);
+      fill(0, y, 160, 1, '#b8b8b3');
+      fill(80 - half, y, half * 2, 1, '#45454a');
+      if ((y >> 2) % 2 === 0) {
+        fill(80 - Math.round(half / 3), y, 1, 1, '#fff');
+        fill(80 + Math.round(half / 3), y, 1, 1, '#fff');
+      }
+    }
+    const walls = ['#eddbbd', '#c7d6eb', '#ebc2b3'];
+    walls.forEach((col, i) => {
+      fill(i * 14, 8 + i * 6, 14, 60, col);
+      fill(146 - i * 14, 8 + i * 6, 14, 60, col);
+    });
+    fill(72, 58, 16, 12, '#d9403a');
+    fill(68, 76, 24, 14, '#f2f2f2');
+    fill(72, 72, 7, 4, '#e61a1a');
+    fill(81, 72, 7, 4, '#3366ff');
+  }
+  return c.toDataURL();
 }
 
 function viewText(): string {

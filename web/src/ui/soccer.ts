@@ -1,6 +1,7 @@
-// Race Car Soccer: create a 1v1 or 2v2 room and share its code, or join a friend's. The match
-// is first person only. The server plays the match; our own car is run ahead of it on our
-// controls (SoccerPredictor), the ball and the other cars glide to where the server says.
+// Race Car Soccer: play the CPU (the match runs right here, LocalSoccer), or create a 1v1 or
+// 2v2 room and share its code, or join a friend's. The match is first person only. Online the
+// server plays the match; our own car is run ahead of it on our controls (SoccerPredictor),
+// the ball and the other cars glide to where the server says.
 import { app, type Screen, type Stage } from '../app';
 import * as audio from '../audio';
 import { button, h } from '../dom';
@@ -9,7 +10,7 @@ import { FixedStep } from '../game/frames';
 import { net, WAKING_AFTER } from '../net';
 import { nav } from '../nav';
 import { SoccerView, BLUE, ORANGE } from '../render/soccerView';
-import { SoccerPredictor, type Announce, type ServerMsg, type SoccerCar, type SoccerMatch, type SoccerRoomInfo } from '../wasm';
+import { LocalSoccer, SoccerPredictor, type Announce, type ServerMsg, type SoccerCar, type SoccerMatch, type SoccerRoomInfo } from '../wasm';
 import { card, cardTitle, centered, kicker, row, smallButton } from './cards';
 import { TouchControls } from './touch';
 
@@ -48,10 +49,13 @@ export class SoccerMenuScreen implements Screen {
     };
     this.code.addEventListener('keydown', (e) => e.key === 'Enter' && join());
     this.el = centered(card(
-      kicker('FIRST PERSON  /  ONLINE MULTIPLAYER'),
+      kicker('FIRST PERSON  /  VS CPU OR ONLINE'),
       cardTitle('RACE CAR SOCCER', 34),
       h('div.label', { style: { whiteSpace: 'pre-line', marginBottom: '12px' } },
         'First to 5, or lead after 3 minutes. Ties go to overtime.\nDrive over pickups - they activate automatically.\nGOLD: boost  |  CYAN: nitro  |  PINK: power shot\nPURPLE: magnet - pull a nearby ball to your bumper.'),
+      h('div.row', { style: { flexWrap: 'nowrap' } },
+        button('VS CPU 1v1', () => this.local(1)),
+        button('VS CPU 2v2', () => this.local(2))),
       h('div.row', { style: { flexWrap: 'nowrap' } },
         button('Create 1v1', () => net.send({ SoccerCreate: { team_size: 1 } })),
         button('Create 2v2', () => net.send({ SoccerCreate: { team_size: 2 } }))),
@@ -62,10 +66,18 @@ export class SoccerMenuScreen implements Screen {
       this.rooms,
       h('div.card-buttons', null, smallButton('Back', () => {
         net.disconnect();
-        void nav.menu();
+        void nav.mapSelect();
       })),
     ));
     this.stop = net.on((msg) => this.message(msg));
+  }
+
+  /** single player: us on blue, the CPU on orange (and a CPU team-mate in 2v2) */
+  private local(teamSize: number): void {
+    net.disconnect();
+    const match = new SoccerStage('CPU', 0, teamSize);
+    app.setStage(match);
+    app.show(match.screen);
   }
 
   private message(msg: ServerMsg): void {
@@ -151,8 +163,12 @@ class SoccerStage implements Stage {
   private readonly waitCard: HTMLElement;
   private readonly endCard: HTMLElement;
 
-  constructor(private readonly code: string, private readonly slot: number) {
-    this.rematch = button('Rematch', () => net.send('Rematch'));
+  /** a match against the CPU, simulated here instead of on the server (null online) */
+  private readonly local: LocalSoccer | null;
+
+  constructor(private readonly code: string, private readonly slot: number, localTeamSize = 0) {
+    this.local = localTeamSize > 0 ? new LocalSoccer(localTeamSize) : null;
+    this.rematch = button('Rematch', () => (this.local ? this.local.rematch() : net.send('Rematch')));
     this.waitCard = h('div.screen', null, card(cardTitle('WAITING FOR PLAYERS', 26), this.waiting, button('Leave Room', () => this.leave())));
     this.endCard = h('div.screen', null, card(this.winner, this.rematch, button('Main Menu', () => this.leave())));
     this.touch = touchScreen ? new TouchControls(true, () => {}) : null;
@@ -161,7 +177,8 @@ class SoccerStage implements Stage {
     const hint = touchScreen ? null : h('div.soccer-strip.muted', null, 'WASD / ARROWS drive   |   SHIFT boost   |   SPACE jump   |   ESC leave');
     this.screen = { el: h('div.screen.soccer', { style: { padding: '0', justifyContent: 'space-between' } },
       strip, this.banner, this.toast, h('div', { style: { width: '100%' } }, readout, hint), this.touch?.el, this.waitCard, this.endCard) };
-    this.stop = net.on((msg) => this.message(msg));
+    this.stop = this.local ? () => {} : net.on((msg) => this.message(msg));
+    if (this.local) this.message({ Soccer: { state: this.local.state() as SoccerMatch, host: 0, ack: 0 } } as ServerMsg);
     this.stopKeys = onKey((k) => {
       if (k === 'Escape') this.leave();
       if (k === 'Space') this.jumpPending = true;
@@ -213,6 +230,12 @@ class SoccerStage implements Stage {
     this.step.run(delta, () => {
       const c = this.controls();
       this.seq++;
+      if (this.local) {
+        // the whole match runs here: one tick, then read it back as if the server sent it
+        this.local.step(pack(c));
+        this.message({ Soccer: { state: this.local.state() as SoccerMatch, host: 0, ack: this.seq } } as ServerMsg);
+        return;
+      }
       this.sent.push(packBytes(c));
       while (this.sent.length > 4) this.sent.shift();
       net.send({ Inputs: { last: this.seq, inputs: this.sent } });
@@ -229,7 +252,7 @@ class SoccerStage implements Stage {
     for (const target of s.cars) {
       if (!target) continue;
       if (target.slot === this.slot) {
-        cars.push((this.predictor.car() as SoccerCar | null) ?? target);
+        cars.push(this.local ? target : ((this.predictor.car() as SoccerCar | null) ?? target));
         continue;
       }
       const prev = this.shown.get(target.slot) ?? target;
@@ -246,7 +269,7 @@ class SoccerStage implements Stage {
   private hud(s: SoccerMatch, cars: SoccerCar[]): void {
     const size = s.team_size;
     const count = s.cars.filter(Boolean).length;
-    this.roomLabel.textContent = `ROOM ${this.code} | ${size}v${size}`;
+    this.roomLabel.textContent = this.local ? `VS CPU | ${size}v${size}` : `ROOM ${this.code} | ${size}v${size}`;
     this.score.textContent = `BLUE  ${s.blue} : ${s.orange}  ORANGE`;
     const t = Math.ceil(s.remaining);
     this.clock.textContent = s.remaining <= 0 ? 'OT' : `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
@@ -270,14 +293,14 @@ class SoccerStage implements Stage {
     const rel = Math.atan2(Math.sin(angle - me.heading), Math.cos(angle - me.heading)) * (180 / Math.PI);
     const bearing = Math.abs(rel) > 110 ? 'BEHIND' : rel > 20 ? 'LEFT' : rel < -20 ? 'RIGHT' : 'AHEAD';
     const dist = Math.round(Math.hypot(this.ball.x - me.x, this.ball.y - me.y));
-    this.ballInfo.textContent = this.sinceState > 2 ? 'CONNECTION LOST - waiting for server' : `BALL ${bearing}  ${dist}m`;
+    this.ballInfo.textContent = this.sinceState > 2 && !this.local ? 'CONNECTION LOST - waiting for server' : `BALL ${bearing}  ${dist}m`;
   }
 
   private leave(): void {
     if (this.disposed) return;
     this.dispose();
     app.setStage(null);
-    void nav.menu();
+    void nav.mapSelect();
   }
 
   dispose(): void {
@@ -286,6 +309,10 @@ class SoccerStage implements Stage {
     this.stop();
     this.stopKeys();
     this.predictor.free();
+    if (this.local) {
+      this.local.free();
+      return;
+    }
     net.send('Leave');
     net.inRoom = false;
   }

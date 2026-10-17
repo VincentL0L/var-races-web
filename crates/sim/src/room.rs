@@ -266,7 +266,7 @@ impl RaceRoom {
         if self.phase == Phase::Lobby {
             self.settings = Settings {
                 laps: if self.map.has_laps() { settings.laps.clamp(1, 10) } else { 1 },
-                difficulty: settings.difficulty.min(2),
+                difficulty: settings.difficulty.min(3),
             };
         }
     }

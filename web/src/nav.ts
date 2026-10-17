@@ -53,6 +53,19 @@ export const nav = {
     app.setStage(stage);
     app.show(new OnlineLobbyScreen(mapId));
   },
+  async parking(): Promise<void> {
+    const [{ ParkingScreen }] = await Promise.all([import('./ui/parking')]);
+    app.setStage(null);
+    const screen = new ParkingScreen();
+    app.setStage(screen.stage);
+    app.show(screen);
+  },
+  async chase(): Promise<void> {
+    const [{ ChaseStage }] = await Promise.all([import('./game/chase')]);
+    const stage = new ChaseStage();
+    app.setStage(stage);
+    app.show(stage.screen);
+  },
   async soccer(): Promise<void> {
     const [{ SoccerMenuScreen }, stage] = await Promise.all([import('./ui/soccer'), driftStage()]);
     app.setStage(stage);

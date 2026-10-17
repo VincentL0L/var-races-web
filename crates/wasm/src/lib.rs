@@ -279,3 +279,41 @@ impl Default for SoccerPredictor {
         Self::new()
     }
 }
+
+/// A soccer match against the CPU, run in the browser (single player): we drive slot 0
+/// (blue), CPU drivers take every other seat.
+#[wasm_bindgen]
+pub struct LocalSoccer {
+    m: sim::soccer::SoccerMatch,
+}
+
+#[wasm_bindgen]
+impl LocalSoccer {
+    #[wasm_bindgen(constructor)]
+    pub fn new(team_size: u8) -> LocalSoccer {
+        let mut m = sim::soccer::SoccerMatch::new(team_size);
+        for slot in 0..m.cars.len() as u8 {
+            m.add(slot);
+        }
+        LocalSoccer { m }
+    }
+
+    /// one tick: our controls, the CPUs' choices, then the match moves on
+    pub fn step(&mut self, controls: u16) {
+        self.m.input(0, &input(controls));
+        for slot in 1..self.m.cars.len() as u8 {
+            let i = sim::soccer::cpu_input(&self.m, slot);
+            self.m.input(slot, &i);
+        }
+        self.m.step(DT);
+    }
+
+    pub fn rematch(&mut self) {
+        self.m.restart();
+    }
+
+    /// the match, in the same shape the server sends
+    pub fn state(&self) -> JsValue {
+        to_js(&self.m)
+    }
+}

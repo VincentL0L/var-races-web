@@ -17,7 +17,7 @@ import type { MapDef, ServerMsg } from '../wasm';
 import { card, cardTitle, carIcon, centered, kicker, picker, pill, row, smallButton } from './cards';
 
 const LAP_CHOICES = [1, 2, 3, 5];
-const DIFFICULTIES = ['EASY', 'NORMAL', 'HARD'];
+const DIFFICULTIES = ['EASY', 'NORMAL', 'HARD', 'EXTRA HARD'];
 const CPUS = 3;
 
 /** the lobby's card; the local and online lobbies fill it in */
@@ -61,7 +61,7 @@ abstract class LobbyCard implements Screen {
   }
 
   private stepDifficulty(d: number): void {
-    this.changeSettings(this.settings.laps, (this.settings.difficulty + d + 3) % 3);
+    this.changeSettings(this.settings.laps, (this.settings.difficulty + d + 4) % 4);
   }
 
   /** shows the settings, with the arrows only for whoever can change them */
@@ -69,7 +69,7 @@ abstract class LobbyCard implements Screen {
     const { laps, difficulty } = this.settings;
     this.laps.value.textContent = `${laps} ${laps === 1 ? 'LAP' : 'LAPS'}`;
     this.difficulty.value.textContent = DIFFICULTIES[difficulty] ?? 'NORMAL';
-    this.difficulty.value.style.color = difficulty === 0 ? '#45a852' : difficulty === 2 ? '#ff8066' : '';
+    this.difficulty.value.style.color = difficulty === 0 ? '#45a852' : difficulty === 3 ? '#d966ff' : difficulty === 2 ? '#ff8066' : '';
     for (const b of [...this.laps.arrows, ...this.difficulty.arrows]) b.style.visibility = canChange ? '' : 'hidden';
   }
 
