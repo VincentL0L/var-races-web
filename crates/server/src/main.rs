@@ -1,11 +1,10 @@
 //! Runs the VAR Races server.
 //!
-//! Environment: PORT (default 8080), FIREBASE_SERVICE_ACCOUNT (the service account JSON;
-//! without it sign-in works but ranked is off), RUST_LOG (log filter, default "info").
+//! Environment: PORT (default 8080), RUST_LOG (log filter, default "info").
 
 use std::net::SocketAddr;
 
-use server::{accounts::Accounts, router, Hub};
+use server::{router, Hub};
 
 #[tokio::main]
 async fn main() {
@@ -14,7 +13,7 @@ async fn main() {
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
-    let app = router(Hub::new(Accounts::from_env()));
+    let app = router(Hub::new());
     let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
     let listener = tokio::net::TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], port))).await.expect("bind the port");
     tracing::info!("VAR Races server listening on port {port}");

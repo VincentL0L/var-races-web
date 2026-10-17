@@ -57,6 +57,7 @@ class App {
     this.screen?.dispose?.();
     this.screen = screen;
     this.ui.replaceChildren(screen.el);
+    document.body.classList.toggle('menu-muted', screen.el.classList.contains('frosted'));
     this.fit();
     // cards that fill in later (rooms, levels) may grow, so look again once they have
     setTimeout(() => this.fit(), 300);

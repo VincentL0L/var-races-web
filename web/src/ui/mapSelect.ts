@@ -1,7 +1,6 @@
-// Choosing a track: tabs for circuits, sprints and battle arenas, a grid of map cards, and the
-// view to race in (overhead or first person). Hosting online, Create asks the server for a room.
-// In single player there are also tabs for the modes that aren't races on a map: Race Car
-// Soccer, Parking and Police Chase, each with one card.
+// A fixed track grid shared by solo races and multiplayer room creation. In single player
+// there are also tabs for the modes that aren't races on a map, Parking and Police Chase,
+// each with one card.
 import type { Screen } from '../app';
 import { asset } from '../assets';
 import * as audio from '../audio';
@@ -10,22 +9,16 @@ import { allMaps } from '../game/backdrops';
 import { online } from '../game/rooms';
 import { net } from '../net';
 import { nav } from '../nav';
-import { pref, setPref } from '../prefs';
+import { pref } from '../prefs';
 import type { MapDef, MapKind, ServerMsg } from '../wasm';
 import { card, cardTitle, centered, kicker, smallButton } from './cards';
 
-type Mode = 'soccer' | 'parking' | 'chase';
+type Mode = 'parking' | 'chase';
 type Tab = MapKind | Mode;
-const TABS: [Tab, string, string][] = [
-  ['circuit', 'Circuits', ''],
-  ['sprint', 'Sprints', 'One run from start to finish. No laps.'],
-  ['battle', 'Battle', 'Demolition derby: ram everyone, last car driving wins. Heavy cars hit harder.'],
-  ['soccer', 'Soccer', 'In first person, against the CPU or online: knock the ball into their goal.'],
-  ['parking', 'Parking', 'Six levels, from an easy first spot to parallel parking and a timed garage.'],
-  ['chase', 'Chase', "An endless getaway in third person. Swipe or use the arrows; don't get caught."],
+const TABS: [Tab, string][] = [
+  ['circuit', 'Circuits'], ['sprint', 'Sprints'], ['battle', 'Battles'], ['parking', 'Parking'], ['chase', 'Chase'],
 ];
 const MODES: Record<Mode, [string, string]> = {
-  soccer: ['RACE CAR SOCCER', '1v1 or 2v2 against the CPU or friends online. Cars, a giant ball, two goals.'],
   parking: ['PARKING', 'Park in the bay without a scratch. Six levels, three stars each.'],
   chase: ['POLICE CHASE', 'Outrun the cops down an endless city street. Dodge, jump, grab coins.'],
 };
@@ -34,7 +27,8 @@ let lastMap = 'classic';
 
 export class MapSelectScreen implements Screen {
   readonly el: HTMLElement;
-  private readonly maps = allMaps();
+  private readonly maps: MapDef[];
+  private readonly tabDefs: typeof TABS;
   private selected: string;
   private readonly tiles = new Map<string, HTMLElement>();
   private readonly tabs: HTMLButtonElement[] = [];
@@ -45,33 +39,28 @@ export class MapSelectScreen implements Screen {
   private creating = false;
   private tab: Tab = 'circuit';
 
-  constructor(private readonly hosting: false | 'public' | 'private', startTab?: Tab) {
+  constructor(private readonly hosting: false | 'public' | 'private') {
     audio.playMusic('music_title');
-    this.selected = lastMap;
+    this.maps = allMaps().filter((m) => hosting || m.kind !== 'battle');
+    // battles are online only; parking and the chase are single player only
+    this.tabDefs = TABS.filter(([kind]) => (hosting ? !isMode(kind) : kind !== 'battle'));
+    this.selected = this.maps.some((m) => m.id === lastMap) ? lastMap : this.maps[0].id;
     this.kickerEl = kicker(!hosting ? 'SINGLE PLAYER' : hosting === 'public' ? 'HOST A PUBLIC RACE' : 'HOST A PRIVATE RACE');
-    // soccer, parking and the chase are single player menus of their own, not hosted races
-    TABS.filter(([kind]) => !hosting || !isMode(kind)).forEach(([kind, label]) => this.tabs.push(smallButton(label, () => this.showTab(kind))));
-    const view = smallButton(viewText(), () => {
-      setPref('firstPerson', !pref('firstPerson'));
-      view.textContent = viewText();
-    });
-    view.style.minWidth = '230px';
+    this.tabDefs.forEach(([kind, label]) => this.tabs.push(smallButton(label, () => this.showTab(kind))));
     this.el = centered(card(
       this.kickerEl,
       cardTitle('CHOOSE A TRACK', 40),
       h('div.tabs', { style: { flexWrap: 'wrap', justifyContent: 'flex-start' } }, ...this.tabs),
-      h('div.scroll', null, this.grid),
+      h('div.scroll.track-scroll', null, this.grid),
       this.note,
       h('div.card-buttons', null,
         smallButton('Back', () => (hosting ? void nav.multiplayer() : void nav.menu())),
         h('div.spacer'),
-        view,
         button(hosting ? 'Create' : 'Next', () => this.go()),
       ),
     ));
-    this.el.querySelector<HTMLElement>('.card-panel')!.classList.add('wide');
+    this.el.querySelector<HTMLElement>('.card-panel')!.classList.add('track-picker');
     this.showTab(this.map(this.selected).kind);
-    if (startTab) this.showTab(startTab);
     if (hosting) {
       this.stop = net.on((msg) => this.message(msg));
       net.connect();
@@ -84,9 +73,9 @@ export class MapSelectScreen implements Screen {
 
   private showTab(kind: Tab): void {
     this.tab = kind;
-    TABS.forEach(([k, , note], i) => {
-      this.tabs[i]?.classList.toggle('on', k === kind);
-      if (k === kind) this.note.textContent = note;
+    this.tabDefs.forEach(([k], i) => {
+      this.tabs[i].classList.toggle('on', k === kind);
+      this.tabs[i].setAttribute('aria-pressed', String(k === kind));
     });
     if (isMode(kind)) {
       this.grid.replaceChildren(this.modeTile(kind));
@@ -107,11 +96,11 @@ export class MapSelectScreen implements Screen {
           if (this.selected === m.id) this.go();
           else this.select(m.id);
         },
-        style: { width: '210px' },
+        role: 'button', tabIndex: 0,
+        onkeydown: (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.select(m.id); } },
       },
         h('img', { src: asset(`maps/${m.id}/preview.webp`), alt: m.name, loading: 'lazy', style: { imageRendering: 'auto' } }),
         h('div.name', null, m.name.toUpperCase()),
-        h('div.muted', { style: { textAlign: 'left', fontSize: '9px' } }, m.tagline),
       );
       this.tiles.set(m.id, t);
     }
@@ -144,9 +133,7 @@ export class MapSelectScreen implements Screen {
 
   private go(): void {
     if (isMode(this.tab)) {
-      if (this.tab === 'soccer') void nav.soccer();
-      else if (this.tab === 'parking') void nav.parking();
-      else void nav.chase();
+      void (this.tab === 'parking' ? nav.parking() : nav.chase());
       return;
     }
     lastMap = this.selected;
@@ -189,21 +176,7 @@ function modePicture(mode: Mode): string {
     g.fillStyle = col;
     g.fillRect(x, y, w, hh);
   };
-  if (mode === 'soccer') {
-    for (let x = 0; x < 160; x += 16) fill(x, 0, 16, 90, (x / 16) % 2 ? '#468f38' : '#4d9e40');
-    g.strokeStyle = '#fff';
-    g.strokeRect(8.5, 8.5, 143, 73);
-    g.beginPath();
-    g.moveTo(80.5, 8);
-    g.lineTo(80.5, 82);
-    g.stroke();
-    g.beginPath();
-    g.arc(80.5, 45.5, 14, 0, Math.PI * 2);
-    g.stroke();
-    fill(2, 36, 6, 18, '#d9403a');
-    fill(152, 36, 6, 18, '#3f73e6');
-    fill(77, 42, 7, 7, '#fff');
-  } else if (mode === 'parking') {
+  if (mode === 'parking') {
     fill(0, 0, 160, 90, '#5c5c61');
     const cars = ['#d9433b', '#3f73e6', '#f2c84b', '#e6e6e6', '#33a666'];
     for (let i = 0; i < 7; i++) {
@@ -240,8 +213,4 @@ function modePicture(mode: Mode): string {
     fill(81, 72, 7, 4, '#3366ff');
   }
   return c.toDataURL();
-}
-
-function viewText(): string {
-  return pref('firstPerson') ? 'View: 1st Person' : 'View: Overhead';
 }

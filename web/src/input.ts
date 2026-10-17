@@ -12,15 +12,14 @@ export interface Controls {
   automatic: boolean;
   /** touch: the joystick pulled back, so gas reverses */
   backwards: boolean;
-  jump: boolean;
 }
 
 export const NO_CONTROLS: Controls = {
-  gas: false, brake: false, boost: false, steer: 0, item: false, automatic: false, backwards: false, jump: false,
+  gas: false, brake: false, boost: false, steer: 0, item: false, automatic: false, backwards: false,
 };
 
 export function pack(c: Controls): number {
-  const flags = +c.gas | (+c.brake << 1) | (+c.boost << 2) | (+c.item << 3) | (+c.automatic << 4) | (+c.backwards << 5) | (+c.jump << 6);
+  const flags = +c.gas | (+c.brake << 1) | (+c.boost << 2) | (+c.item << 3) | (+c.automatic << 4) | (+c.backwards << 5);
   const steer = Math.round(Math.max(-1, Math.min(1, c.steer)) * 127) & 0xff;
   return flags | (steer << 8);
 }
@@ -63,21 +62,6 @@ export function raceKeys(): Controls {
     item: down('KeyE'),
     automatic: false,
     backwards: false,
-    jump: false,
-  };
-}
-
-/** soccer controls from the keyboard: WASD or arrows, Shift boost, Space jump */
-export function soccerKeys(): Controls {
-  return {
-    gas: down('KeyW', 'ArrowUp'),
-    brake: down('KeyS', 'ArrowDown'),
-    boost: down('ShiftLeft', 'ShiftRight'),
-    steer: (down('KeyA', 'ArrowLeft') ? 1 : 0) - (down('KeyD', 'ArrowRight') ? 1 : 0),
-    item: false,
-    automatic: false,
-    backwards: false,
-    jump: down('Space'),
   };
 }
 

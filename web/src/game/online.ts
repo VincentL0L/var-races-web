@@ -26,6 +26,7 @@ interface Received {
 
 export class OnlineSource implements RaceSource {
   readonly online = true;
+  readonly trial = false;
   readonly canRestart = false;
   private readonly predictor: RacePredictor;
   private readonly step = new FixedStep();

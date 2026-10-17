@@ -1,8 +1,8 @@
 # VAR Races
 
-A 16-bit arcade racer for the browser, with an overhead and a first-person view.
-It has circuits in eight cities, point-to-point sprints, battle arenas with items, and Race Car Soccer.
-Play single player against CPU cars, or online in public, private and ranked races.
+A 16-bit arcade racer for the browser, with first-person and third-person chase views.
+It has circuits in eight cities, point-to-point sprints, multiplayer battle arenas with items.
+Set personal bests in solo time trials, or race online in public and private rooms with up to three optional CPUs.
 
 Live at https://var-races.web.app (any page accepts `?server=wss://host` to pick another server).
 
@@ -12,10 +12,10 @@ The whole game runs on one simulation written in Rust.
 The server runs it natively, and the browser runs the same code compiled to WebAssembly.
 
 ```
-crates/sim      the game: car physics, CPU drivers, items, battle, soccer, races and rooms
+crates/sim      the game: car physics, CPU drivers, items, battle, races and rooms
                 (deterministic, fixed 60 Hz tick, no I/O; maps and road masks are built in)
 crates/proto    the binary wire protocol (postcard), shared by server and browser
-crates/server   the online server: tokio + axum WebSockets, one task per room, accounts and ranked
+crates/server   the online server: tokio + axum WebSockets, one task per room, guest multiplayer
 crates/wasm     the simulation for the browser (wasm-bindgen)
 crates/tools    asset generators: maps, cars, items, heights, audio, packed road masks
 web/            the client: TypeScript, three.js for the world, HTML/CSS for menus and HUD
@@ -23,12 +23,12 @@ assets/         source art, fonts and sound (made by the generators and tools/*.
 data/masks      every map's road mask, packed to 1 bit a pixel (made from assets/maps)
 ```
 
-- **Single player** runs the server's own room code in the browser, CPU cars included.
+- **Single player** runs locally with no CPUs or items. Personal bests and optional non-colliding ghosts are saved in IndexedDB on this browser, per track, lap count and car model (paints share records). No accounts or record uploads are needed. Clearing site data clears records; blocked storage falls back to session memory.
 - **Online**, the server is authoritative: clients send inputs, never positions.
   Each client predicts its own car with the shared physics and reconciles against the server's snapshots.
-  Other cars and the ball are interpolated through an adaptive jitter buffer.
-- **Ranked** races sign in with Firebase.
-  The server verifies the ID token and keeps Elo ratings in Firestore.
+  Racing opponents are interpolated through an adaptive jitter buffer.
+- **Cameras** are entirely client-side. Press V or use the View button to switch between
+  first person and third person while driving. Camera changes never alter network messages or physics.
 
 ## Playing locally
 
@@ -46,15 +46,14 @@ After changing Rust code, stop it and run it again.
 
 ## Controls
 
-| | Race | Soccer |
-|---|---|---|
-| Drive | WASD or arrow keys | WASD or arrow keys |
-| Boost | Space | Shift |
-| Item | E | |
-| Jump | | Space |
-| Switch view | V | |
-| Pause, then restart or quit | Esc or P, then R or Q | Esc leaves |
-| Mute | M | M |
+| Control | Action |
+|---|---|
+| WASD or arrow keys | Drive |
+| Space | Boost |
+| E | Use item (multiplayer) |
+| V or View button | Switch driving camera |
+| Esc or P, then R or Q | Pause, then restart or quit |
+| M | Mute |
 
 Phones and tablets get touch controls.
 Double-tap and hold gas to boost, and hold brake to reverse.
@@ -69,7 +68,9 @@ Double-tap and hold gas to boost, and hold brake to reverse.
 | `cargo test --workspace` | simulation, protocol and server tests (the server tests play whole online games) |
 | `npm run wasm` | build the simulation for the browser into `web/src/wasm/pkg` |
 | `npm run assets` | convert `assets/` for the web (WebP, hashed URLs) into `web/public/gen` |
-| `node tools/e2e.mjs` | with `npm run dev` running: two players race online, then play soccer, in Chrome |
+| `node tools/e2e.mjs` | with `npm run dev` running: guest racing and CPU settings in Chrome |
+| `node tools/menu-check.mjs` | with the dev servers running: stable menus, garage, PBs and ghosts |
+| `node tools/camera-check.mjs` | with `npm run dev` running: camera modes, input packet invariance, cleanup, and preference migration |
 | `node tools/shot.mjs <url> <out.png>` | a screenshot of the game in headless Chrome, for checking by eye |
 
 ## Remaking assets
@@ -101,7 +102,8 @@ The Python tools need Pillow, and the fonts also need fonttools, brotli and shap
   Hashed files under `/assets` and `/gen` are cached for a year, and the page itself is always revalidated.
 - **Server:** Render builds the `Dockerfile` (see `render.yaml`).
   This gives a static binary in an empty image of a few megabytes, which starts in milliseconds.
-  It reads `PORT`, `FIREBASE_SERVICE_ACCOUNT` (the service account JSON; without it, ranked is off) and `RUST_LOG`.
+  It reads `PORT` and `RUST_LOG`; no account credentials or database are required.
+- **Protocol updates:** deploy matching browser and server builds together. Protocol v3 adds CPU count settings and removes the retired game mode messages; older clients must reload. Deploy matching browser and server builds together.
 
 ## Credits
 

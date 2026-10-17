@@ -1,4 +1,6 @@
-// The race on screen: the world (overhead or first person), the HUD, the start lights and flag,
+import { carSprite } from '../assets';
+import * as THREE from 'three';
+// The race on screen: the world (third or first person), the HUD, the start lights and flag,
 // the pause menu, every sound, and the finish. The race itself comes from a RaceSource: run
 // right here in single player, or by the server online.
 import { app, type Screen, type Stage } from '../app';
@@ -7,6 +9,7 @@ import { button, h } from '../dom';
 import { NO_CONTROLS, onKey, raceKeys, touchScreen, type Controls } from '../input';
 import { nav } from '../nav';
 import { pref, setPref } from '../prefs';
+import { cameraLabel, nextCameraMode } from '../render/camera';
 import { spriteFor } from '../render/cars';
 import { World } from '../render/world';
 import { ALIVE, Hud, type Standing } from '../ui/hud';
@@ -52,8 +55,8 @@ export class RaceStage implements Stage {
   private carsKey = '';
 
   private constructor(private readonly source: RaceSource, private readonly w: World) {
-    this.hud = new Hud(source.map, () => this.setPaused(!this.paused), () => this.useItem());
-    this.touch = touchScreen ? new TouchControls(false, () => this.useItem()) : null;
+    this.hud = new Hud(source.map, () => this.setPaused(!this.paused), () => this.useItem(), () => this.toggleView(), source.trial, source.best?.time ?? null);
+    this.touch = touchScreen ? new TouchControls(!source.trial, () => this.useItem()) : null;
     this.pausePanel = h('div.pause', null,
       h('div.panel', null,
         h('div.title.medium', null, 'PAUSED'),
@@ -68,14 +71,15 @@ export class RaceStage implements Stage {
     this.pausePanel.style.display = 'none';
     this.el = h('div.screen.race', { style: { padding: '0' } }, this.hud.el, this.lights.el, this.touch?.el, this.pausePanel);
     this.stopKeys = onKey((code) => this.key(code));
-    w.setFirstPerson(pref('firstPerson'));
+    w.setCameraMode(pref('cameraMode'));
+    this.showView();
     this.syncCars();
     audio.stopMusic();
   }
 
   /** opens the race screen (the flag waves over it first) */
   static async open(source: RaceSource): Promise<RaceStage> {
-    const world = await World.create(source.map);
+    const [world] = await Promise.all([World.create(source.map), source.prepare?.()]);
     const race = new RaceStage(source, world);
     race.flag = new StartFlag();
     document.body.append(race.flag.el);
@@ -100,12 +104,20 @@ export class RaceStage implements Stage {
     if (code === 'Escape' || code === 'KeyP') this.setPaused(!this.paused);
     else if (this.paused && code === 'KeyR') this.restart();
     else if (this.paused && code === 'KeyQ') this.quit();
-    else if (code === 'KeyV') {
-      // driver's seat <-> overhead (remembered for the next race)
-      const fp = !this.w.isFirstPerson();
-      setPref('firstPerson', fp);
-      this.w.setFirstPerson(fp);
-    } else if (code === 'KeyE') this.useItem();
+    else if (code === 'KeyV') this.toggleView();
+    else if (code === 'KeyE') this.useItem();
+  }
+
+  private toggleView(): void {
+    const mode = nextCameraMode(this.w.cameraMode());
+    setPref('cameraMode', mode);
+    this.w.setCameraMode(mode);
+    this.showView();
+  }
+
+  private showView(): void {
+    this.el.dataset.cameraMode = this.w.cameraMode();
+    this.hud.setView(cameraLabel(this.w.cameraMode()));
   }
 
   /** the item button: used on the next tick, with its sound right away */
@@ -135,9 +147,9 @@ export class RaceStage implements Stage {
   /** single player: back to a fresh lobby; online: leave the race */
   private restart(): void {
     if (this.source.canRestart) {
-      const id = this.source.map.id;
+      const next = this.source.retry?.();
       this.dispose();
-      void nav.localLobby(id);
+      if (next) void RaceStage.open(next);
     } else this.quit();
   }
 
@@ -154,7 +166,7 @@ export class RaceStage implements Stage {
     const c = this.touch?.active() ? this.touch.controls() : keys;
     const item = this.itemPressed || keys.item;
     this.itemPressed = false;
-    return { ...c, item };
+    return { ...c, item: !this.source.trial && item };
   }
 
   frame(delta: number): void {
@@ -173,6 +185,8 @@ export class RaceStage implements Stage {
     const cars = this.source.cars();
     this.shake = Math.max(0, this.shake - delta * 8);
     this.w.update({ cars, items: itemsOf(s), follow: this.source.mySlot, shake: this.shake }, delta);
+    const ghost = this.source.ghost?.();
+    this.w.showGhost(ghost ? carSprite(ghost.car) : '', ghost?.frame ?? null);
     // the engine note follows our speed
     if (car && !this.paused && this.finishedAt < 0) {
       const c = this.controls();
@@ -294,7 +308,7 @@ export class RaceStage implements Stage {
     g.setTransform(ratio, 0, 0, ratio, 0, 0);
     g.clearRect(0, 0, W, H);
     const u = Math.min(1, W / 900, H / 620);
-    const fp = this.w.isFirstPerson();
+    const fp = this.w.cameraMode() === 'firstPerson';
     for (const c of s.cars) {
       if (c.out) continue;
       const hp = Math.max(0, Math.min(1, c.hp / 100));
@@ -307,17 +321,17 @@ export class RaceStage implements Stage {
         g.fillStyle = hp > 0.5 ? 'rgb(89,217,77)' : hp > 0.25 ? 'rgb(242,191,77)' : 'rgb(242,77,77)';
         g.fillRect(x, y, w * hp, hh);
       }
-      if (c.slot === this.source.mySlot || (p && !fp)) continue;
-      if (fp && p) continue;
+      if (c.slot === this.source.mySlot || p) continue;
       // pin an arrow to the edge, along the line from the middle of the screen
       const me = s.cars.find((x) => x.slot === this.source.mySlot);
       if (!me) continue;
-      let dx = c.car.pos.x - me.car.pos.x, dy = -(c.car.pos.y - me.car.pos.y);
-      if (fp) {
-        // in first person, the direction relative to where we're looking
-        const a = -me.car.heading + Math.PI / 2;
-        [dx, dy] = [dx * Math.cos(a) + (-dy) * -Math.sin(a), -(dx * Math.sin(a) + -dy * Math.cos(a))];
-      }
+      // Bearing in the active camera's frame, including chase-camera turn smoothing.
+      const cam = this.w.camera();
+      const forward = cam.getWorldDirection(new THREE.Vector3());
+      const heading = Math.atan2(forward.y, forward.x);
+      const wx = c.car.pos.x - me.car.pos.x, wy = c.car.pos.y - me.car.pos.y;
+      const dx = wx * Math.sin(heading) - wy * Math.cos(heading);
+      const dy = -(wx * Math.cos(heading) + wy * Math.sin(heading));
       const margin = 46 * u, top = Math.min(H * 0.45, 290 * u);
       const cx = W / 2, cy = (top + H - margin) / 2, halfW = cx - margin, halfH = (H - margin - top) / 2;
       const t = Math.min(halfW / Math.max(1e-3, Math.abs(dx)), halfH / Math.max(1e-3, Math.abs(dy)));

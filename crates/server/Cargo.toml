@@ -1,6 +1,6 @@
 [package]
 name = "server"
-description = "VAR Races online server: race and soccer rooms over WebSockets"
+description = "VAR Races online server: race rooms over WebSockets"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -13,13 +13,9 @@ path = "src/main.rs"
 [dependencies]
 sim.workspace = true
 proto.workspace = true
-serde.workspace = true
 axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "net", "signal"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
-jsonwebtoken = "9"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-serde_json = "1"
 rand = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

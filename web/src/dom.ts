@@ -24,8 +24,10 @@ export function h<K extends keyof HTMLElementTagNameMap>(
 }
 
 /** a gilded button that clicks when pressed */
-export function button(label: string, onClick: () => void, cls = ''): HTMLButtonElement {
-  return h(`button.btn${cls ? '.' + cls : ''}` as 'button', {
+export type ButtonVariant = 'primary' | 'secondary' | 'tertiary';
+
+export function button(label: string, onClick: () => void, cls = '', variant: ButtonVariant = 'primary'): HTMLButtonElement {
+  return h(`button.btn.${variant}${cls ? '.' + cls : ''}` as 'button', {
     onclick: (e: Event) => {
       const b = e.currentTarget as HTMLButtonElement;
       if (!b.disabled) onClick();

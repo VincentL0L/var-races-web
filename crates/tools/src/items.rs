@@ -205,6 +205,15 @@ pub fn draw_all(root: &Path) -> Result<(), String> {
             }
         }
         img.save(dir.join(format!("{name}.png")), true)?;
+        if name == "box" {
+            // Cubes need an opaque square face, unlike the rounded HUD icon.
+            for (y, row) in rows.iter().enumerate() {
+                for (x, ch) in row.chars().take(16).enumerate() {
+                    if ch == '.' { img.set(x, y, 0xfff2_b83a); }
+                }
+            }
+            img.save(dir.join("box_face.png"), true)?;
+        }
     }
     // the shield ring drawn around a protected car (32 x 32)
     let mut ring = Picture::new(32, 32);

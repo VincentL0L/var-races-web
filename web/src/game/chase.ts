@@ -109,8 +109,8 @@ export class ChaseStage implements Stage, View {
   private readonly roadTex = roadTexture();
   private readonly facade = facadeTexture();
   private readonly facadeMaterial: THREE.MeshBasicMaterial;
-  private readonly player = new CarView(carSprite(pref('car')), false);
-  private readonly cop = new CarView('ui/cop.png', false);
+  private readonly player = new CarView(carSprite(pref('car')));
+  private readonly cop = new CarView('ui/cop.png');
   private things: Thing[] = [];
   private blocks: Block[] = [];
   private readonly scoreLabel = h('span.title.small.plain', { style: { marginRight: '18px' } }, '0');
@@ -141,7 +141,6 @@ export class ChaseStage implements Stage, View {
     this.facadeMaterial = new THREE.MeshBasicMaterial({ map: this.facade, vertexColors: true });
     this.scene.add(this.ground, this.road, this.player.root, this.cop.root);
     for (const c of [this.player, this.cop]) {
-      c.setMode(true, false);
       c.root.scale.setScalar(CAR_L / MODEL_L);
     }
     audio.playMusic('music_race');
@@ -422,8 +421,7 @@ export class ChaseStage implements Stage, View {
   private add(kind: number, lane: number, y: number, z: number, sprite = 0, speed = 0): void {
     const t: Thing = { kind, lane, sprite, x: (lane - 1) * LANE, y, z, speed, gone: false };
     if (kind === TRAFFIC) {
-      t.car = new CarView(TRAFFIC_ART[sprite], false);
-      t.car.setMode(true, false);
+      t.car = new CarView(TRAFFIC_ART[sprite]);
       t.car.root.scale.setScalar((sprite === BUS ? 34 : CAR_L) / MODEL_L);
       this.scene.add(t.car.root);
     } else {

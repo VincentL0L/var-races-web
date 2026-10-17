@@ -85,8 +85,6 @@ pub struct Input {
     pub automatic: bool,
     /// touch controls: the joystick pulled back, so gas reverses
     pub backwards: bool,
-    /// soccer: jump (a press)
-    pub jump: bool,
 }
 
 impl Input {
@@ -97,8 +95,7 @@ impl Input {
             | (self.boost as u8) << 2
             | (self.item as u8) << 3
             | (self.automatic as u8) << 4
-            | (self.backwards as u8) << 5
-            | (self.jump as u8) << 6;
+            | (self.backwards as u8) << 5;
         [flags, (clamp(self.steer, -1.0, 1.0) * 127.0) as i8 as u8]
     }
 
@@ -110,7 +107,6 @@ impl Input {
             item: b[0] & 8 != 0,
             automatic: b[0] & 16 != 0,
             backwards: b[0] & 32 != 0,
-            jump: b[0] & 64 != 0,
             steer: b[1] as i8 as f32 / 127.0,
         }
     }

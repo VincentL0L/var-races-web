@@ -66,8 +66,8 @@ def button(name, top, mid, bottom, shadow, pressed=False):
             if d == 0:
                 c = OUTLINE
             elif pressed:
-                # pressed in: dark lip on top, flat face
-                c = shadow if y <= 2 else mid
+                # The face moves down; the shorter shadow stays underneath.
+                c = shadow if y >= h - 2 else (top if y == 1 or x == 1 else mid)
             elif y >= h - 4:
                 c = shadow                      # thick bottom lip gives the 3D bevel
             elif y == 1 or x == 1:

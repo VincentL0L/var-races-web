@@ -7,7 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::car::{yaw_factor, Car, Input, Spec, LENGTH, MAX_YAW_RATE, WIDTH};
+use crate::car::{yaw_factor, Car, Input, Spec, LENGTH, MAX_YAW_RATE, WIDTH, WALL_RADIUS};
 use crate::maps::{MapDef, MapKind};
 use crate::math::{angle_diff, clamp, deg, lerp, sqrt, Vec2};
 use crate::rng::Rng;
@@ -16,7 +16,7 @@ use crate::track::Track;
 /// how far off the middle of the road a CPU may drive (the road is about 125 wide)
 const MAX_LINE_OFFSET: f32 = 28.0;
 /// seconds off the road before a CPU is put back on it
-const RESCUE_TIME: f32 = 3.0;
+const RESCUE_TIME: f32 = 5.0;
 /// how strongly a CPU steers toward where it wants to point (per second)
 const STEER_GAIN: f32 = 5.0;
 
@@ -83,6 +83,9 @@ pub struct Driver {
     back_up: f32,
     stuck: f32,
     hunting: Option<u8>,
+    progress_anchor: Vec2,
+    #[cfg(test)]
+    pub(crate) rescues: u32,
 }
 
 impl Driver {
@@ -123,6 +126,9 @@ impl Driver {
             back_up: 0.0,
             stuck: 0.0,
             hunting: None,
+            progress_anchor: Vec2::ZERO,
+            #[cfg(test)]
+            rescues: 0,
         };
         d.pick_target(map, rng);
         d
@@ -222,6 +228,21 @@ impl Driver {
         }
 
         let pos = car.pos;
+        if pos.dist(self.progress_anchor) > 15.0 {
+            self.progress_anchor = pos;
+            self.stuck = 0.0;
+        } else if find_car_ahead(car, others, 65.0).is_none_or(|ahead| ahead.speed < 10.0) {
+            self.stuck += dt;
+        }
+        if self.back_up > 0.0 {
+            self.back_up -= dt;
+            let diff = angle_diff((self.target - pos).angle(), car.heading);
+            return Input { brake: true, steer: -diff.signum() * 0.7, ..Input::default() };
+        }
+        if self.stuck > 2.0 {
+            self.stuck = 0.0;
+            self.back_up = 0.7;
+        }
         // reached the current waypoint: move on and pick a new line for the next one
         if pos.dist(self.target) < self.arrive_radius
             || pos.dist(map.waypoint(self.waypoint)) < self.arrive_radius
@@ -256,13 +277,13 @@ impl Driver {
         // traffic: keep a gap to a car in front and pull out to the side to pass it
         let mut follow_speed = f32::MAX;
         let mut dodge = None;
-        if let Some(ahead) = find_car_ahead(car, others, 30.0 + speed * 0.3) {
-            // keep a gap, but never stop completely: a crawling car can still steer around
-            follow_speed = (ahead.speed + (ahead.along - LENGTH - 8.0) * 4.0).max(45.0);
+        if let Some(ahead) = find_car_ahead(car, others, 50.0 + speed * 0.85) {
+            // Stop behind blocked traffic; crawl only when a passing corridor is clear.
+            follow_speed = (ahead.speed + (ahead.along - LENGTH - 18.0 - speed * 0.18) * 1.6).max(0.0);
             if self.pass_hold <= 0.0 {
                 // car on our right: pass on the left, and the other way round
                 self.pass_side = if ahead.lateral.abs() > 0.5 {
-                    ahead.lateral.signum()
+                    -ahead.lateral.signum()
                 } else if self.p.line_bias >= 0.0 {
                     -1.0
                 } else {
@@ -271,12 +292,12 @@ impl Driver {
             }
             self.pass_hold = 1.2; // keep the passing line until we're well past it
             // right behind it: steer straight for a spot beside it (whichever side has road)
-            if ahead.along < 70.0 {
-                dodge = dodge_point(pos, f, ahead.pos, self.pass_side, track)
+            if ahead.along < 160.0 && (ahead.speed < 20.0 || !(self.corner_sharpness(map) > 0.35 && pos.dist(self.base_point) < 200.0)) {
+                dodge = dodge_point(pos, f, ahead.pos, self.pass_side, track, others, speed)
                     .map(|p| (p, self.pass_side))
-                    .or_else(|| dodge_point(pos, f, ahead.pos, -self.pass_side, track).map(|p| (p, -self.pass_side)));
+                    .or_else(|| dodge_point(pos, f, ahead.pos, -self.pass_side, track, others, speed).map(|p| (p, -self.pass_side)));
                 match dodge {
-                    Some((_, side)) => self.pass_side = side,
+                    Some((_, side)) => { self.pass_side = side; follow_speed = follow_speed.max(75.0); },
                     None => follow_speed = follow_speed.min(ahead.speed),
                 }
             }
@@ -285,28 +306,38 @@ impl Driver {
         // no passing moves in the middle of a sharp corner: wait for the exit
         let corner = self.corner_sharpness(map);
         let in_corner = corner > 0.5 && pos.dist(self.base_point) < 140.0;
-        let pass_target = if self.pass_hold > 0.0 && !in_corner { self.pass_side * 30.0 } else { 0.0 };
+        let pass_target = if dodge.is_some() && self.pass_hold > 0.0 && !in_corner { self.pass_side * 30.0 } else { 0.0 };
         self.pass_shift += clamp(pass_target - self.pass_shift, -60.0 * dt, 60.0 * dt);
         self.update_target();
 
         // steer toward the target
-        let aim = dodge.map(|(p, _)| p).unwrap_or(self.target);
+        // Follow a point on the incoming segment, then approach the corner itself.
+        // A short lookahead avoids cutting across the inside of tight bends.
+        let from = self.point_before(map, self.waypoint);
+        let segment = self.base_point - from;
+        let length = segment.len().max(1.0);
+        let along = clamp((pos - from).dot(segment) / length, 0.0, length);
+        let look = clamp(35.0 + speed * 0.22, 45.0, 115.0);
+        let center = from + segment * ((along + look).min(length) / length);
+        let candidate = center + self.left_of_travel * clamp(self.line_offset + self.pass_shift, -MAX_LINE_OFFSET, MAX_LINE_OFFSET);
+        let line = if safe_point(candidate, track) { candidate } else { center };
+        let aim = dodge.map(|(p, _)| p).unwrap_or(line);
         let wanted = (aim - pos).angle();
         let diff = angle_diff(wanted, heading);
         // edge of the road coming up: steer back harder and ease off
-        let near_edge = !track.on_road(pos + f * (speed * 0.12));
+        let near_edge = !safe_point(pos + f * (20.0 + speed * 0.2), track);
         let gain = if near_edge { STEER_GAIN * 1.8 } else { STEER_GAIN };
-        let steer = self.steer_for(diff * gain + deg(self.wobble), speed, car.spec);
+        let steer = self.steer_for(diff * gain + deg(self.wobble) * if near_edge || in_corner || follow_speed < f32::MAX { 0.0 } else { 1.0 }, speed, car.spec);
 
         // pick a speed: full speed on straights, slow down before sharp corners
         let top = self.p.top_speed;
         let mut desired = top * self.throttle_noise;
-        let distance = pos.dist(self.target);
+        let distance = pos.dist(self.base_point);
         if corner > 0.05 {
             let corner_speed = lerp(top, self.corner_speed(car.spec), corner);
             // brake early enough to reach the corner speed by the time we get there
             let brake_distance = ((speed * speed - corner_speed * corner_speed) / (2.0 * self.p.braking)).max(0.0);
-            if distance < brake_distance + 40.0 {
+            if distance < brake_distance + 65.0 {
                 desired = desired.min(corner_speed);
             }
         }
@@ -408,13 +439,14 @@ impl Driver {
         self.wobble_timer -= dt;
         if self.wobble_timer <= 0.0 {
             self.wobble_timer = rng.range(0.4, 1.2);
-            self.wobble_target = rng.range(-12.0, 12.0);
+            self.wobble_target = rng.range(-2.0, 2.0);
         }
         self.wobble += (self.wobble_target - self.wobble) * (3.0 * dt).min(1.0);
     }
 
     /// back onto the middle of the course, a little before the waypoint it was heading for
     fn rescue(&mut self, car: &mut Car, map: &MapDef, rng: &mut Rng) {
+        #[cfg(test)] { self.rescues += 1; }
         let to = map.waypoint(self.waypoint);
         let from = self.point_before(map, self.waypoint);
         let d = to - from;
@@ -499,11 +531,11 @@ struct Ahead {
 fn find_car_ahead(me: &Car, others: &[Other], range: f32) -> Option<Ahead> {
     let f = me.forward();
     let mut best: Option<Ahead> = None;
-    for o in others.iter().filter(|o| o.active) {
+    for o in others {
         let r = o.pos - me.pos;
         let along = r.dot(f);
-        let lateral = -r.cross(f); // positive = to the right of travel
-        if along > 0.0 && along < range && lateral.abs() < WIDTH + 4.0 && best.as_ref().is_none_or(|b| along < b.along) {
+        let lateral = -r.cross(f); // positive = to the left of travel
+        if along > 0.0 && along < range && (lateral.abs().min((lateral + (o.vel - me.vel).dot(f.perp()) * 0.35).abs()) < WIDTH + 7.0) && best.as_ref().is_none_or(|b| along < b.along) {
             best = Some(Ahead { along, lateral, speed: o.vel.dot(f).max(0.0), pos: o.pos });
         }
     }
@@ -512,16 +544,23 @@ fn find_car_ahead(me: &Car, others: &[Other], range: f32) -> Option<Ahead> {
 
 /// A spot beside and a little past the car in front (side 1 = its left), if the whole way
 /// there and a bit past it is road (no cutting across a corner).
-fn dodge_point(pos: Vec2, f: Vec2, ahead: Vec2, side: f32, track: &Track) -> Option<Vec2> {
-    let p = ahead + f.perp() * (side * 24.0) + f * 25.0;
+fn dodge_point(pos: Vec2, f: Vec2, ahead: Vec2, side: f32, track: &Track, others: &[Other], speed: f32) -> Option<Vec2> {
+    let p = ahead + f.perp() * (side * 32.0) + f * 25.0;
     let beyond = p + f * 20.0;
     for i in 1..=6 {
         let t = i as f32 / 6.0;
-        if !track.on_road(pos.lerp(p, t)) || !track.on_road(p.lerp(beyond, t)) {
+        let at = pos.lerp(p, t);
+        let arrival = pos.dist(at) / speed.max(80.0);
+        if !safe_point(at, track) || !safe_point(p.lerp(beyond, t), track)
+            || others.iter().any(|other| at.dist(other.pos + other.vel * arrival) < LENGTH - 2.0) {
             return None;
         }
     }
     Some(p)
+}
+
+fn safe_point(p: Vec2, track: &Track) -> bool {
+    track.on_road(p) && track.in_bounds(p, WALL_RADIUS + 4.0)
 }
 
 /// the nearest car still in (or a random one), to hunt in a battle
@@ -549,10 +588,11 @@ mod tests {
     use crate::race::{Course, Standing};
 
     /// one CPU alone on a map: how long it takes to finish, if it does within the limit
-    fn solo_time(map: &MapDef, seed: u64, limit: f32) -> Option<f32> {
+    fn solo_time(map: &MapDef, seed: u64, limit: f32, difficulty: u8) -> Option<f32> {
         let track = maps::track(map);
         let mut rng = Rng::new(seed);
         let mut driver = Driver::new(map, &mut rng);
+        driver.set_difficulty(difficulty);
         let spawn = maps::cpu_spawn(map, 0);
         let mut car = Car::new(spawn.pos, spawn.heading, driver.spec());
         let course = Course::new(map);
@@ -568,7 +608,8 @@ mod tests {
             t += dt;
             course.update(&mut standing, car.pos, t);
             if standing.finished() {
-                println!("{:<9} seed {seed}: {crashes} wall hits", map.id);
+                assert!(crashes <= 3, "{} seed {seed} difficulty {difficulty}: {crashes} wall hits", map.id);
+                assert_eq!(driver.rescues, 0, "{} seed {seed} difficulty {difficulty}: rescued", map.id);
                 return Some(t);
             }
         }
@@ -579,9 +620,10 @@ mod tests {
     fn cpus_finish_every_course() {
         for map in maps::ALL.iter().filter(|m| m.kind != MapKind::Battle) {
             for seed in 0..3 {
-                let time = solo_time(map, seed, 240.0);
-                assert!(time.is_some(), "{} seed {seed}: CPU never finished", map.id);
-                println!("{:<9} seed {seed}: {:.1} s", map.id, time.unwrap());
+                for difficulty in 0..3 {
+                    let time = solo_time(map, seed, 240.0, difficulty);
+                    assert!(time.is_some(), "{} seed {seed} difficulty {difficulty}: CPU never finished", map.id);
+                }
             }
         }
     }

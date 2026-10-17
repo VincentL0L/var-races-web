@@ -1,6 +1,4 @@
-// The lobby before a race: one gilded card over the drifting, frosted track. It lists the
-// drivers (with their cars and whether they're ready), the race settings, and Leave and Ready.
-// Once everyone is ready the red start flag waves and the race takes over.
+// Shared ready-screen presentation; controllers own local simulation or server messages.
 import type { Screen } from '../app';
 import * as audio from '../audio';
 import { button, h } from '../dom';
@@ -9,210 +7,180 @@ import { OnlineSource } from '../game/online';
 import { RaceStage } from '../game/race';
 import { leaveRoom, online } from '../game/rooms';
 import { LocalSource } from '../game/session';
+import { readBest, recordKey } from '../game/records';
 import { carSprite, cpuSprite } from '../assets';
 import { net } from '../net';
 import { nav } from '../nav';
-import { pref } from '../prefs';
-import type { MapDef, ServerMsg } from '../wasm';
+import { pref, setPref } from '../prefs';
+import type { MapDef, ServerMsg, Settings } from '../wasm';
 import { card, cardTitle, carIcon, centered, kicker, picker, pill, row, smallButton } from './cards';
+import { formatTime } from './hud';
 
 const LAP_CHOICES = [1, 2, 3, 5];
 const DIFFICULTIES = ['EASY', 'NORMAL', 'HARD', 'EXTRA HARD'];
-const CPUS = 3;
+interface Participant { sprite: string; name: string; you: boolean; status: 'READY' | 'NOT READY' | 'CPU' }
 
-/** the lobby's card; the local and online lobbies fill it in */
 abstract class LobbyCard implements Screen {
   readonly el: HTMLElement;
   protected readonly map: MapDef;
   protected readonly kickerEl: HTMLElement;
-  protected readonly drivers = h('div');
+  protected readonly drivers = h('div.lobby-drivers');
   protected readonly note = h('div.note');
   protected readonly ready: HTMLButtonElement;
-  private readonly laps = picker('LAPS', (d) => this.stepLaps(d));
-  private readonly difficulty = picker('CPU DIFFICULTY', (d) => this.stepDifficulty(d));
-  protected settings = { laps: 1, difficulty: 1 };
+  protected readonly laps = picker('LAPS', (d) => {
+    const i = Math.max(0, LAP_CHOICES.indexOf(this.settings.laps));
+    this.changeSettings({ ...this.settings, laps: LAP_CHOICES[(i + d + LAP_CHOICES.length) % LAP_CHOICES.length] });
+  });
+  private readonly difficulty = picker('CPU DIFFICULTY', (d) => this.changeSettings({ ...this.settings, difficulty: (this.settings.difficulty + d + 4) % 4 }));
+  private readonly addCpu = smallButton('Add CPU', () => this.changeSettings({ ...this.settings, cpu_count: Math.min(3, this.settings.cpu_count + 1) }));
+  protected readonly extra = h('div');
+  protected settings: Settings = { laps: 1, difficulty: 1, cpu_count: 0 };
+  private driversKey = '';
 
-  constructor(mapId: string, kickerText: string, title: string, showSettings: boolean) {
+  constructor(mapId: string, kickerText: string, title: string, private readonly solo: boolean) {
     audio.playMusic('music_title');
     this.map = mapById(mapId);
     this.kickerEl = kicker(kickerText);
     this.ready = button('Ready', () => this.onReady());
-    this.el = centered(card(
-      this.kickerEl,
-      cardTitle(title),
-      kicker('DRIVERS'),
-      this.drivers,
-      showSettings && kicker('RACE SETTINGS'),
-      showSettings && this.map.kind === 'circuit' && this.laps.el,
-      showSettings && this.difficulty.el,
-      this.note,
-      h('div.card-buttons', null, smallButton('Leave', () => this.onLeave()), h('div.spacer'), this.ready),
-    ));
-    this.showSettings(false);
+    if (!solo) this.drivers.classList.add('multiplayer-drivers');
+    this.el = centered(card(this.kickerEl, cardTitle(title), kicker('DRIVERS'), this.drivers,
+      h('div.lobby-add-cpu', null, this.addCpu),
+      kicker('RACE SETTINGS'), this.map.kind === 'circuit' && this.laps.el,
+      this.difficulty.el, this.extra, this.note,
+      h('div.card-buttons', null, smallButton(solo ? 'Back' : 'Leave', () => this.onLeave()), h('div.spacer'), this.ready)));
   }
-
   protected abstract onReady(): void;
   protected abstract onLeave(): void;
-  protected abstract changeSettings(laps: number, difficulty: number): void;
+  protected abstract changeSettings(settings: Settings): void;
 
-  private stepLaps(d: number): void {
-    const i = Math.max(0, LAP_CHOICES.indexOf(this.settings.laps));
-    this.changeSettings(LAP_CHOICES[(i + d + LAP_CHOICES.length) % LAP_CHOICES.length], this.settings.difficulty);
-  }
-
-  private stepDifficulty(d: number): void {
-    this.changeSettings(this.settings.laps, (this.settings.difficulty + d + 4) % 4);
-  }
-
-  /** shows the settings, with the arrows only for whoever can change them */
-  protected showSettings(canChange: boolean): void {
-    const { laps, difficulty } = this.settings;
+  protected renderView(participants: Participant[], canChange: boolean, waiting: boolean): void {
+    const key = JSON.stringify([participants, canChange]);
+    if (key !== this.driversKey) {
+      this.driversKey = key;
+      this.drivers.replaceChildren(...participants.map((p) => {
+        const remove = smallButton('×', () => this.changeSettings({ ...this.settings, cpu_count: Math.max(0, this.settings.cpu_count - 1) }));
+        remove.classList.add('remove-cpu');
+        remove.setAttribute('aria-label', `Remove ${p.name}`);
+        remove.title = `Remove ${p.name}`;
+        remove.disabled = !canChange;
+        return row(carIcon(p.sprite),
+        h(p.you ? 'span.grow.gold' : 'span.grow', null, p.name),
+        pill(p.status, p.status === 'CPU' ? 'cpu' : p.status === 'READY' ? 'ready' : ''),
+        p.status === 'CPU' && remove);
+      }));
+    }
+    const { laps, difficulty, cpu_count } = this.settings;
     this.laps.value.textContent = `${laps} ${laps === 1 ? 'LAP' : 'LAPS'}`;
-    this.difficulty.value.textContent = DIFFICULTIES[difficulty] ?? 'NORMAL';
+    this.addCpu.disabled = !canChange || cpu_count >= 3;
+    this.addCpu.textContent = cpu_count >= 3 ? '3 / 3 CPUs' : 'Add CPU';
+    this.addCpu.title = cpu_count >= 3 ? 'Maximum of 3 CPUs' : 'Add a CPU driver';
+    this.difficulty.value.textContent = DIFFICULTIES[difficulty];
     this.difficulty.value.style.color = difficulty === 0 ? '#45a852' : difficulty === 3 ? '#d966ff' : difficulty === 2 ? '#ff8066' : '';
-    for (const b of [...this.laps.arrows, ...this.difficulty.arrows]) b.style.visibility = canChange ? '' : 'hidden';
-  }
-
-  protected driverRow(sprite: string, name: string, you: boolean, status: 'READY' | 'NOT READY' | 'CPU'): HTMLElement {
-    return row(
-      carIcon(sprite),
-      h(you ? 'span.grow.gold' : 'span.grow', null, name),
-      status === 'CPU' ? pill(this.map.cpu_name, 'cpu') : pill(status, status === 'READY' ? 'ready' : ''),
-    );
+    for (const control of [this.laps, this.difficulty]) {
+      control.arrows.forEach((b) => { b.disabled = !canChange; });
+    }
+    this.difficulty.arrows.forEach((b) => { b.disabled ||= cpu_count === 0; });
+    const insufficient = this.map.kind === 'battle' && participants.length < 2;
+    this.ready.disabled = waiting || insufficient;
+    this.ready.textContent = waiting ? 'Waiting' : 'Ready';
+    this.note.textContent = insufficient ? 'Add a CPU or invite another driver to battle.' : !this.solo && !canChange ? 'The host picks race settings.'
+      : this.solo && cpu_count === 0 ? 'No CPUs: a time trial against your best (and its ghost).' : '';
   }
 }
 
-/** single player: the race runs here, against three CPUs */
 export class LocalLobbyScreen extends LobbyCard {
   private starting = false;
+  private disposed = false;
+  private lookup = 0;
+  private readonly bestLabel = h('div.note');
+  private readonly ghost = smallButton('', () => { setPref('ghost', !pref('ghost')); this.updateGhost(); });
+  private hasGhost = false;
 
   constructor(mapId: string) {
     super(mapId, 'SINGLE PLAYER', mapById(mapId).name.toUpperCase(), true);
+    this.extra.append(this.bestLabel, this.ghost);
     this.render();
   }
-
+  private updateGhost(): void {
+    this.ghost.textContent = `Ghost: ${pref('ghost') ? 'On' : 'Off'}`;
+    this.ghost.disabled = !this.hasGhost || this.starting;
+    this.ghost.setAttribute('aria-pressed', String(pref('ghost')));
+  }
   private render(): void {
-    const car = pref('car');
-    this.drivers.replaceChildren(
-      this.driverRow(carSprite(car), 'YOU', true, this.starting ? 'READY' : 'NOT READY'),
-      ...Array.from({ length: CPUS }, (_, i) => this.driverRow(cpuSprite(this.map.cpu_sprite, i), `${this.map.cpu_name} ${i + 1}`, false, 'CPU')),
-    );
-    this.showSettings(!this.starting);
+    const participants: Participant[] = [{ sprite: carSprite(pref('car')), name: 'YOU', you: true, status: this.starting ? 'READY' : 'NOT READY' }];
+    for (let i = 0; i < this.settings.cpu_count; i++) participants.push({ sprite: cpuSprite(this.map.cpu_sprite, i), name: `${this.map.cpu_name} ${i + 1}`, you: false, status: 'CPU' });
+    this.renderView(participants, !this.starting, this.starting);
+    // personal bests and the ghost are for time trials (no CPUs)
+    this.extra.style.display = this.settings.cpu_count ? 'none' : '';
+    const lookup = ++this.lookup;
+    this.hasGhost = false;
+    this.bestLabel.textContent = 'Personal best: —';
+    this.updateGhost();
+    void readBest(recordKey(this.map.id, this.settings.laps, pref('car'))).then((best) => {
+      if (this.disposed || lookup !== this.lookup) return;
+      this.bestLabel.textContent = `Personal best: ${best ? formatTime(best.time) : '—'} · saved in this browser`;
+      this.hasGhost = !!best?.samples.length;
+      this.updateGhost();
+    });
   }
-
-  protected changeSettings(laps: number, difficulty: number): void {
-    this.settings = { laps, difficulty };
-    this.render();
-  }
-
+  protected changeSettings(settings: Settings): void { if (!this.starting) { this.settings = settings; this.render(); } }
   protected onReady(): void {
     if (this.starting) return;
     this.starting = true;
     audio.play('ready', 0.5);
-    this.ready.disabled = true;
     this.render();
-    void RaceStage.open(new LocalSource(this.map, pref('car'), this.settings.laps, this.settings.difficulty));
+    const { laps, cpu_count, difficulty } = this.settings;
+    void RaceStage.open(new LocalSource(this.map, pref('car'), laps, cpu_count, difficulty));
   }
-
-  protected onLeave(): void {
-    if (!this.starting) void nav.menu();
-  }
+  protected onLeave(): void { if (!this.starting) void nav.mapSelect(); }
+  dispose(): void { this.disposed = true; }
 }
 
-/** online: the room's players, the host's settings, and (ranked) the queue */
 export class OnlineLobbyScreen extends LobbyCard {
   private readonly stop: () => void;
   private readonly stopClose: () => void;
-  private readyPressed = false;
+  private pendingReady = false;
   private starting = false;
+  private disconnected = false;
 
   constructor(mapId: string) {
     const room = online.room!;
-    const ranked = room.visibility === 'Ranked';
-    const map = mapById(mapId);
-    const kickerText = ranked
-      ? `RANKED  /  ${map.name.toUpperCase()}`
-      : `${room.visibility === 'Public' ? 'PUBLIC ROOM' : 'PRIVATE ROOM'}  /  ${map.name.toUpperCase()}`;
-    super(mapId, kickerText, ranked ? 'RANKED RACE' : room.code, !ranked);
+    super(mapId, `${room.visibility === 'Public' ? 'PUBLIC ROOM' : 'PRIVATE ROOM'}  /  ${mapById(mapId).name.toUpperCase()}`, room.code, false);
     this.stop = net.on((msg) => this.message(msg));
     this.stopClose = net.onClose(() => {
+      this.disconnected = true;
       this.kickerEl.textContent = (net.error ?? 'Lost connection').toUpperCase();
       this.kickerEl.classList.add('error');
       this.ready.disabled = true;
     });
     this.render();
   }
-
   private message(msg: ServerMsg): void {
-    if (typeof msg === 'object' && 'Race' in msg && !this.starting) {
-      // everyone's ready: the race begins (its first message carries the flag)
+    if (typeof msg !== 'object') return;
+    if ('Lobby' in msg || 'Error' in msg) this.pendingReady = false;
+    if ('Race' in msg && !this.starting) {
       this.starting = true;
       const room = online.room!;
-      const source = new OnlineSource(this.map, room.slot, online.lobby?.players ?? [], msg);
-      void RaceStage.open(source);
+      void RaceStage.open(new OnlineSource(this.map, room.slot, online.lobby?.players ?? [], msg));
     }
   }
-
   private render(): void {
-    const room = online.room;
-    const lobby = online.lobby;
-    if (!room || !lobby) return;
-    const ranked = room.visibility === 'Ranked';
-    this.settings = { laps: lobby.settings.laps, difficulty: lobby.settings.difficulty };
-    const host = lobby.host === room.slot;
-    const me = lobby.players.find((p) => p.slot === room.slot);
-    // you first, then everyone else, then the CPUs (sharing one row)
-    const others = lobby.players.filter((p) => p.slot !== room.slot);
-    const key = JSON.stringify([lobby.players, lobby.settings, lobby.host, online.queue]);
-    if (this.drivers.dataset.key !== key) {
-      this.drivers.dataset.key = key;
-      this.drivers.replaceChildren(
-        ...(me ? [this.driverRow(carSprite(me.car), 'YOU', true, me.ready ? 'READY' : 'NOT READY')] : []),
-        ...others.map((p) => this.driverRow(carSprite(p.car), p.name.toUpperCase(), false, p.ready ? 'READY' : 'NOT READY')),
-        row(
-          ...Array.from({ length: CPUS }, (_, i) => carIcon(cpuSprite(this.map.cpu_sprite, i))),
-          h('span.grow', null, `+ ${CPUS} ${this.map.cpu_name}S`),
-          pill(this.map.cpu_name, 'cpu'),
-        ),
-      );
-      this.showSettings(host && !ranked);
-    }
-    if (ranked) {
-      const q = online.queue;
-      this.ready.disabled = true;
-      this.ready.textContent = q ? `Starts in ${q.seconds}` : 'Waiting';
-      this.note.textContent = q && q.players < 2 ? `Waiting for other racers... (racing alone in ${q.seconds}s doesn't count)` : '';
-    } else {
-      this.ready.disabled = this.readyPressed;
-      this.ready.textContent = this.readyPressed ? 'Waiting' : 'Ready';
-      this.note.textContent = host ? '' : 'The host picks the laps and CPU difficulty';
-    }
+    const room = online.room, lobby = online.lobby;
+    if (!room || !lobby) { this.ready.disabled = true; return; }
+    this.settings = lobby.settings;
+    const players = [...lobby.players].sort((a, b) => Number(b.slot === room.slot) - Number(a.slot === room.slot));
+    const participants: Participant[] = players.map((p) => ({ sprite: carSprite(p.car), name: p.slot === room.slot ? 'YOU' : p.name.toUpperCase(), you: p.slot === room.slot, status: p.ready ? 'READY' : 'NOT READY' }));
+    for (let i = 0; i < this.settings.cpu_count; i++) participants.push({ sprite: cpuSprite(this.map.cpu_sprite, i), name: `${this.map.cpu_name} ${i + 1}`, you: false, status: 'CPU' });
+    const me = players.find((p) => p.slot === room.slot);
+    this.renderView(participants, lobby.host === room.slot && !this.starting && !this.disconnected, this.pendingReady || !!me?.ready || this.starting || this.disconnected);
   }
-
-  protected changeSettings(laps: number, difficulty: number): void {
-    net.send({ Settings: { laps, difficulty } });
-  }
-
+  protected changeSettings(settings: Settings): void { net.send({ Settings: settings }); }
   protected onReady(): void {
-    if (this.readyPressed) return;
-    this.readyPressed = true;
-    net.send({ Ready: true });
+    if (this.pendingReady || this.starting || this.disconnected) return;
+    this.pendingReady = net.send({ Ready: true });
     audio.play('ready', 0.5);
   }
-
-  protected onLeave(): void {
-    if (this.starting) return;
-    leaveRoom();
-    void nav.multiplayer();
-  }
-
-  /** the lobby redraws from what the server says */
-  frame(): void {
-    this.render();
-  }
-
-  dispose(): void {
-    this.stop();
-    this.stopClose();
-  }
+  protected onLeave(): void { if (!this.starting) { leaveRoom(); void nav.multiplayer(); } }
+  frame(): void { this.render(); }
+  dispose(): void { this.stop(); this.stopClose(); }
 }

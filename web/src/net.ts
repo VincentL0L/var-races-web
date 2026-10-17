@@ -34,8 +34,6 @@ class Connection {
   inRoom = false;
   /** why the connection failed, for the menus (null while all is well) */
   error: string | null = null;
-  /** the sign-in token to show the server on every new connection */
-  private token: string | null = null;
 
   /** starts connecting (and keeps trying) if not already */
   connect(): void {
@@ -55,7 +53,6 @@ class Connection {
       this.open = true;
       this.trying = 0;
       this.raw({ Hello: { version: protocolVersion() } });
-      if (this.token) this.raw({ Auth: { token: this.token } });
     };
     ws.onmessage = (e) => {
       const msg = decode(new Uint8Array(e.data as ArrayBuffer)) as ServerMsg | null;
@@ -131,14 +128,6 @@ class Connection {
     return () => this.listeners.delete(listener);
   }
 
-  /** shows the server who we are (null when signed out) */
-  setToken(token: string | null): void {
-    if (token === this.token) return;
-    const was = this.token;
-    this.token = token;
-    if (token) this.send({ Auth: { token } });
-    else if (was) this.send('SignOut');
-  }
 }
 
 export const net = new Connection();

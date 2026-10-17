@@ -1,7 +1,6 @@
-// The online menu: ranked (sign in, then find a race), the open public races, hosting a public
+// The online menu: open public races, hosting a public
 // or private race, and joining a friend's race with its code.
 import type { Screen } from '../app';
-import { account, openEmailForm, signInWithGoogle, startAccounts } from '../account';
 import * as audio from '../audio';
 import { button, h } from '../dom';
 import { mapById } from '../game/backdrops';
@@ -10,34 +9,27 @@ import { net, WAKING_AFTER } from '../net';
 import { nav } from '../nav';
 import { pref } from '../prefs';
 import type { RoomInfo, ServerMsg } from '../wasm';
-import { card, cardTitle, centered, kicker, pill, row, smallButton } from './cards';
+import { card, cardTitle, centered, kicker, row, smallButton } from './cards';
 
 const REFRESH_TIME = 2;
 const BLOCKED_AFTER = 75;
 const MAX_ROWS = 3;
 const MAX_PLAYERS = 6;
 
-export const TIER_COLORS: Record<string, string> = {
-  CHAMPION: '#ff598c', DIAMOND: '#73d9ff', PLATINUM: '#bff2e6', GOLD: '#ffcc47', SILVER: '#d1d6e0', BRONZE: '#cc8c52',
-};
-
 export class MultiplayerScreen implements Screen {
   readonly el: HTMLElement;
   private readonly kickerEl = kicker('CONNECTING...');
-  private readonly ranked = h('div');
   private readonly rooms = h('div');
   private readonly code = h('input.field', { placeholder: 'ABCD', maxLength: 4, style: { width: '100%', textAlign: 'center', textTransform: 'uppercase' } });
   private readonly actions: HTMLButtonElement[];
   private readonly stop: () => void;
   private refresh = REFRESH_TIME;
   private shownRooms = '';
-  private shownRanked = '';
   private list: RoomInfo[] = [];
 
   constructor() {
     audio.playMusic('music_title');
     net.connect();
-    void startAccounts();
     const pub = button('Public', () => this.host('public'));
     const priv = button('Private', () => this.host('private'));
     const join = button('Join', () => this.join(this.code.value));
@@ -49,7 +41,6 @@ export class MultiplayerScreen implements Screen {
     this.el = centered(card(
       this.kickerEl,
       cardTitle('ONLINE RACE'),
-      kicker('RANKED'), this.ranked,
       kicker('OPEN RACES'), this.rooms,
       kicker('HOST A RACE'), h('div.row', { style: { flexWrap: 'nowrap' } }, pub, priv),
       kicker('JOIN WITH A CODE'), h('div.row', { style: { flexWrap: 'nowrap' } }, h('div', { style: { flex: '1' } }, this.code), join),
@@ -98,7 +89,6 @@ export class MultiplayerScreen implements Screen {
       net.send('ListRooms');
     }
     this.renderRooms();
-    this.renderRanked();
   }
 
   private renderRooms(): void {
@@ -119,40 +109,6 @@ export class MultiplayerScreen implements Screen {
       h('span', { style: { marginRight: '12px' } }, `${r.players}/${MAX_PLAYERS}`),
       smallButton('Join', () => this.join(r.code)),
     )));
-  }
-
-  private renderRanked(): void {
-    const p = online.profile;
-    const state = !account.ready ? (account.error ? 'none' : 'loading')
-      : !account.uid ? `out:${account.error}`
-      : !p ? 'checking' : `${p.name}${p.rating}${p.ranked_on}${p.tier}`;
-    if (state === this.shownRanked) return;
-    this.shownRanked = state;
-    if (state === 'none') {
-      this.ranked.replaceChildren(row(h('span.grow', null, "Ranked isn't available right now")));
-    } else if (state === 'loading') {
-      this.ranked.replaceChildren(row(h('span.grow.muted', null, '...')));
-    } else if (!account.uid) {
-      this.ranked.replaceChildren(row(
-        h('span.grow', null, account.error ? 'Sign-in failed, try again' : 'Sign in for ranked'),
-        smallButton('Email', openEmailForm),
-        smallButton('Google', signInWithGoogle),
-      ));
-    } else if (!p) {
-      this.ranked.replaceChildren(row(h('span.grow', null, 'Signing in...')));
-    } else {
-      const tier = pill(p.tier);
-      tier.style.background = TIER_COLORS[p.tier] ?? '#cc8c52';
-      tier.style.color = 'var(--dark)';
-      const find = smallButton('Find Race', () => net.send({ Ranked: { car: pref('car') } }));
-      find.disabled = !p.ranked_on;
-      this.ranked.replaceChildren(row(
-        tier,
-        h('span.grow.gold', null, `${p.name}  ${p.rating}`),
-        smallButton('Top 20', () => void nav.leaderboard()),
-        find,
-      ));
-    }
   }
 
   dispose(): void {

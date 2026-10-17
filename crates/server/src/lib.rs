@@ -1,14 +1,12 @@
-//! VAR Races online server: race and soccer rooms over WebSockets.
+//! VAR Races online server: race rooms over WebSockets.
 //!
 //! Players connect to `/` with a WebSocket (binary frames, see the proto crate). A plain GET of
 //! `/` or `/health` answers with a short status, for the host's health checks.
 
-pub mod accounts;
 mod conn;
 mod hub;
 mod inputs;
 mod race;
-mod soccer;
 
 use std::sync::Arc;
 
@@ -36,6 +34,6 @@ async fn root(ws: Result<WebSocketUpgrade, WebSocketUpgradeRejection>, State(hub
 }
 
 async fn health(State(hub): State<Arc<Hub>>) -> String {
-    let (races, soccer) = hub.counts();
-    format!("VAR Races server: {races} races, {soccer} soccer matches\n")
+    let races = hub.counts();
+    format!("VAR Races server: {races} races\n")
 }
