@@ -16,7 +16,6 @@ import { ALIVE, Hud, type Standing } from '../ui/hud';
 import { StartFlag, StartLights } from '../ui/start';
 import { TouchControls } from '../ui/touch';
 import type { Event, Item, Snapshot } from '../wasm';
-import { itemsOf } from './frames';
 import type { RaceSource } from './session';
 
 /** how far from the course counts as off it (the road is about 125 wide) */
@@ -184,7 +183,8 @@ export class RaceStage implements Stage {
     // the cars, with ours where we see it (predicted online)
     const cars = this.source.cars();
     this.shake = Math.max(0, this.shake - delta * 8);
-    this.w.update({ cars, items: itemsOf(s), follow: this.source.mySlot, shake: this.shake }, delta);
+    const items = this.source.items(cars);
+    this.w.update({ cars, items, follow: this.source.mySlot, shake: this.shake }, delta);
     const ghost = this.source.ghost?.();
     this.w.showGhost(ghost ? carSprite(ghost.car) : '', ghost?.frame ?? null);
     // the engine note follows our speed

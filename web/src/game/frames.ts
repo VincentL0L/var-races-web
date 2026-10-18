@@ -50,12 +50,46 @@ export function framesOf(prev: Snapshot, now: Snapshot, t: number): CarFrame[] {
   return now.cars.map((c) => carFrame(c, prev.cars.find((p) => p.slot === c.slot), t));
 }
 
-export function itemsOf(s: Snapshot): ItemState {
+/** how fast rockets and shots fly (as in crates/sim/src/items.rs), to follow one between snapshots */
+const ROCKET_SPEED = 720;
+const SHOT_SPEED = 620;
+
+/**
+ * The items `t` of the way from snapshot `a` to `b`, so they move as smoothly as the cars and in
+ * step with them. `cars` are the cars as drawn this frame (shields ride along with them).
+ */
+export function itemsBetween(a: Snapshot, b: Snapshot, t: number, cars: CarFrame[]): ItemState {
+  const seconds = Math.max(1, Number(b.tick) - Number(a.tick)) * TICK;
+  const shielded = new Set(b.cars.filter((c) => c.shield).map((c) => c.slot));
   return {
-    boxes: s.boxes,
-    rockets: s.rockets,
-    shots: s.shots,
-    slicks: s.slicks,
-    shields: s.cars.filter((c) => c.shield).map((c) => [c.car.pos.x, c.car.pos.y]),
+    boxes: t < 0.5 ? a.boxes : b.boxes,
+    rockets: flying(a.rockets, b.rockets, t, ROCKET_SPEED * seconds),
+    shots: flying(a.shots, b.shots, t, SHOT_SPEED * seconds),
+    slicks: b.slicks,
+    shields: cars.filter((c) => shielded.has(c.slot)).map((c) => [c.x, c.y]),
   };
+}
+
+/**
+ * Projectiles `t` of the way from `from` to `to`. Snapshots don't say which is which, so each one
+ * in `to` is matched to whichever in `from` is nearest to where it was `step` units back along
+ * its heading. One just fired is drawn coming out of the car at the same speed.
+ */
+function flying<P extends [number, number, number, ...unknown[]]>(from: P[], to: P[], t: number, step: number): P[] {
+  const used = new Set<number>();
+  return to.map((p) => {
+    const bx = p[0] - Math.cos(p[2]) * step, by = p[1] - Math.sin(p[2]) * step;
+    let best = -1, bestDistance = 24 + step * 0.5;
+    from.forEach((q, i) => {
+      const d = Math.hypot(q[0] - bx, q[1] - by);
+      if (!used.has(i) && d < bestDistance) {
+        best = i;
+        bestDistance = d;
+      }
+    });
+    if (best < 0) return [bx + (p[0] - bx) * t, by + (p[1] - by) * t, ...p.slice(2)] as P;
+    used.add(best);
+    const q = from[best];
+    return [q[0] + (p[0] - q[0]) * t, q[1] + (p[1] - q[1]) * t, lerpAngle(q[2], p[2], t), ...p.slice(3)] as P;
+  });
 }
