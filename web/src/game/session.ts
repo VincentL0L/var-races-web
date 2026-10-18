@@ -4,10 +4,11 @@ import { pref } from '../prefs';
 import { readBest, saveBest, recordKey, TrialRecording, ghostFrame, type PersonalBest, type TrialResult } from './records';
 import type { Controls } from '../input';
 import { pack } from '../input';
+import type { ItemState } from '../render/items';
 import type { CarFrame } from '../render/world';
 import type { Car, Event, MapDef, Snapshot } from '../wasm';
 import { LocalRace } from '../wasm';
-import { FixedStep, framesOf } from './frames';
+import { FixedStep, framesOf, itemsBetween } from './frames';
 
 export interface RaceSource {
   readonly map: MapDef;
@@ -27,6 +28,8 @@ export interface RaceSource {
   tick(delta: number, controls: Controls, paused: boolean): void;
   /** every car where it should be drawn this frame */
   cars(): CarFrame[];
+  /** the items where they should be drawn this frame, in step with `cars` (as it returned them) */
+  items(cars: CarFrame[]): ItemState;
   /** the newest state of the race */
   latest(): Snapshot;
   /** our own car, as we see it (predicted online) */
@@ -106,6 +109,10 @@ export class LocalSource implements RaceSource {
 
   cars(): CarFrame[] {
     return framesOf(this.prev, this.now, this.step.alpha());
+  }
+
+  items(cars: CarFrame[]): ItemState {
+    return itemsBetween(this.prev, this.now, this.step.alpha(), cars);
   }
 
   latest(): Snapshot {
